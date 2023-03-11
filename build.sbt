@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets
 name := "turbol"
 scalaVersion := dependencies.versionOfScala
 Compile / scalacOptions ++= Seq(
-  "-Ypartial-unification"
+  "-Ypartial-unification",
+  "-new-syntax",
+  "-rewrite",
+  "-deprecation"
 )
 Compile / javacOptions ++= Seq(
   "-source",
@@ -33,9 +36,9 @@ val versionRegex = "[v]?([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
 git.baseVersion := "0.0.0"
 git.useGitDescribe := true
 git.gitTagToVersionNumber := {
-  case versionRegex(version, "") => Some(version)
+  case versionRegex(version, "")     => Some(version)
   case versionRegex(version, commit) => Some(s"$version-$commit")
-  case _ => None
+  case _                             => None
 }
 
 inThisBuild(
@@ -53,7 +56,9 @@ inThisBuild(
 lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
 val commonSettings = Seq(
   moduleName := "turbol-" + moduleName.value,
-  Compile / ideOutputDirectory := Some(target.value.getParentFile / "out/production"),
+  Compile / ideOutputDirectory := Some(
+    target.value.getParentFile / "out/production"
+  ),
   Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
   Test / fork := true,
   // Linting and formatting
@@ -144,7 +149,9 @@ docker / imageNames := Seq(
 docker := { docker dependsOn packager / Universal / packageZipTarball }.value
 
 // Release
-val checkIsDevelop = taskKey[Unit]("Makes sure the current branch is develop - useful when releasing.")
+val checkIsDevelop = taskKey[Unit](
+  "Makes sure the current branch is develop - useful when releasing."
+)
 checkIsDevelop := {
   assert(
     SbtGit.git.gitCurrentBranch.value.contains("develop"),
@@ -152,38 +159,43 @@ checkIsDevelop := {
   )
 }
 
-lazy val initialVcsChecks = { st: State =>
-  def vcs(st: State): Vcs = {
-    Project
-      .extract(st)
-      .get(releaseVcs)
-      .getOrElse(sys.error("Aborting release. Working directory is not a repository of a recognized VCS."))
-  }
+lazy val initialVcsChecks = {
+  st: State =>
+    def vcs(st: State): Vcs = {
+      Project
+        .extract(st)
+        .get(releaseVcs)
+        .getOrElse(
+          sys.error(
+            "Aborting release. Working directory is not a repository of a recognized VCS."
+          )
+        )
+    }
 
-  val extracted = Project.extract(st)
-  val hasUntrackedFiles = vcs(st).hasUntrackedFiles
-  val hasModifiedFiles = vcs(st).hasModifiedFiles
-  if (hasModifiedFiles) {
-    sys.error(s"""Aborting release: unstaged modified files
+    val extracted = Project.extract(st)
+    val hasUntrackedFiles = vcs(st).hasUntrackedFiles
+    val hasModifiedFiles = vcs(st).hasModifiedFiles
+    if (hasModifiedFiles) {
+      sys.error(s"""Aborting release: unstaged modified files
          |
          |Modified files:
          |
          |${vcs(st).modifiedFiles.mkString(" - ", "\n", "")}
         """.stripMargin)
-  }
-  if (hasUntrackedFiles && !extracted.get(releaseIgnoreUntrackedFiles)) {
-    sys.error(
-      s"""Aborting release: untracked files. Remove them or specify 'releaseIgnoreUntrackedFiles := true' in settings
+    }
+    if (hasUntrackedFiles && !extracted.get(releaseIgnoreUntrackedFiles)) {
+      sys.error(
+        s"""Aborting release: untracked files. Remove them or specify 'releaseIgnoreUntrackedFiles := true' in settings
          |
          |Untracked files:
          |
          |${vcs(st).untrackedFiles.mkString(" - ", "\n", "")}
           """.stripMargin
-    )
-  }
+      )
+    }
 
-  st.log.info("Starting release process off commit: " + vcs(st).currentHash)
-  st
+    st.log.info("Starting release process off commit: " + vcs(st).currentHash)
+    st
 }
 
 val releaseVersionTask: Def.Initialize[Task[String]] = Def.task {
@@ -195,11 +207,15 @@ val releaseVersionTask: Def.Initialize[Task[String]] = Def.task {
     }
   releaseVersion
 }
-val updateVersionToDeploy = taskKey[Unit]("Updates the version that is deployed in production.")
+val updateVersionToDeploy =
+  taskKey[Unit]("Updates the version that is deployed in production.")
 updateVersionToDeploy := {
   val deploymentVariablesFilename = "deployment/digital-ocean/variables.tf"
   val content =
-    FileUtils.readFileToString(file(deploymentVariablesFilename), StandardCharsets.UTF_8)
+    FileUtils.readFileToString(
+      file(deploymentVariablesFilename),
+      StandardCharsets.UTF_8
+    )
   val versionToBeDeployed = releaseVersionTask.value
 
   println(s"Version to be deployed $versionToBeDeployed")
@@ -222,8 +238,13 @@ updateVersionToDeploy := {
     StandardCharsets.UTF_8
   )
 
-  SbtGit.GitKeys.gitRunner.value.apply("add", deploymentVariablesFilename)(file("."), Logger.Null)
-  SbtGit.GitKeys.gitRunner.value.apply("commit", "-m", "Updated app version to be deployed.")(file("."), Logger.Null)
+  SbtGit.GitKeys.gitRunner.value
+    .apply("add", deploymentVariablesFilename)(file("."), Logger.Null)
+  SbtGit.GitKeys.gitRunner.value.apply(
+    "commit",
+    "-m",
+    "Updated app version to be deployed."
+  )(file("."), Logger.Null)
 }
 
 releaseTagName := { releaseVersionTask.value }

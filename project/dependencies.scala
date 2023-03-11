@@ -13,6 +13,9 @@ object dependencies {
   val logbackVersion = "1.4.5"
   val scalaLoggingVersion = "3.9.5"
 
+  // Reflection / macros
+  val lihaoyiSourcecodeVersion = "0.3.0"
+
   // Storage
   val h2Version = "2.1.214"
   val postgresVersion = "42.5.4"
@@ -44,6 +47,8 @@ object dependencies {
       "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
       // Logging
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
+      // Reflection / macros
+      "com.lihaoyi" %% "sourcecode" % lihaoyiSourcecodeVersion,
       // Serialization
       "io.circe" %% "circe-core" % circeVersion,
       "io.circe" %% "circe-parser" % circeVersion,
