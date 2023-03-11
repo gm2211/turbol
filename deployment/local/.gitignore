@@ -1,0 +1,6 @@
+*.tfstate
+*.terraform*
+local-dev-config
+**/generated-passwords.yml
+**/runtime.yml
+nohup.out

@@ -1,0 +1,66 @@
+# Deploy infra - Digital Ocean
+Note: The environment variable `TF_VAR_digitalocean_root_token` is assumed to be set.
+
+1. Run script scripts/kube/prepare-cluster.sh
+2. Comment out vault module in main.tf (in this folder)
+3. Run: terraform init && terraform apply
+4. Uncomment vault module
+5. Run: terraform init && terraform apply
+
+Note: IF there are random issues with connecting to services such as vault via the registered domain, make sure that
+there aren't any old dns entries in the digitalocean Networking admin dashboard.
+
+# Vault
+Vault needs to be installed manually onto the kubernetes cluster (this is usually done via a helm chart).
+You also need to unlock vault (the keys must not be checked in and should be distributed "offline").
+The easiest way to do that is to run `kubectl port-forward vault-0 8200:8200`, then navigate to `localhost:8200/ui` and enter 3 out of 5 key fragments.
+
+For ease of use with terraform and digital ocean, remember to set the `TF_VAR_digitalocean_root_token` and `TF_VAR_vault_root_token` env variables.
+
+Also make sure to populate path in vault 'secret/oauth' with Auth0/oauth secrets (see OAuth2SecretsConfig) for details.
+
+# Deploy to digital ocean
+To deploy to digital ocean do: `terraform apply`
+
+# Manage Kubernetes ($project = the root directory of this project)
+To login into kube's dashboard you can use the `$project/scripts/kube/start-kube-ui.sh script`. To get the login token use the `$project/scripts/kube/get-kube-secret.sh` script.\
+If you have issues with the dashboard (i.e. things not displaying properly + warning notifications), run: `kubectl apply -f $project/scripts/kube/policies`
+
+If not installed, you can install kubeapps to make the management of helm charts easier:
+```
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install --name kubeapps --namespace kubeapps bitnami/kubeapps
+```
+
+If kubeapps is installed, it can be reached like this:
+```
+export POD_NAME=$(kubectl get pods --namespace kubeapps -l "app=kubeapps" -o jsonpath="{.items[0].metadata.name}")
+kubectl port-forward --namespace kubeapps $POD_NAME 8080:8080
+```
+
+You can then access the app at `http://127.0.0.1:8080/#/apps/ns/_all`
+
+You can use the same token as the dashboard by using the `$project/scripts/kube/get-kube-secret.sh` script.
+
+You can also install the service catalog by:
+```
+git clone git@github.com:kubernetes-sigs/service-catalog.git
+cd service-catalog/charts/catalog
+helm install . --name catalog --namespace catalog
+```
+
+### Circleci
+
+The following env variables are going to be necessary in circle:
+
+DIGITAL_OCEAN_BEARER_TOKEN # This is from ~/.kube/config
+DIGITAL_OCEAN_CA_DATA # This is from ~/.kube/config
+DOCEAN_TOKEN # This you can create in digital ocean's admin panel
+DOCKERHUB_PASS
+DOCKERHUB_USERNAME
+TERRAFORM_CLOUD_TOKEN
+TF_VAR_digitalocean_root_token # Can be same as DOCEAN_TOKEN
+TF_VAR_docker_hub_password
+TF_VAR_vault_root_token
+
+

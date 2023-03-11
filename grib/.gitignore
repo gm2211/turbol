@@ -1,0 +1,40 @@
+# mac
+.DS_Store
+
+# jenv
+.java-version
+
+# idea
+/.idea/
+*.iml
+
+# logs
+**/log/*
+**/log/**
+**/*.log
+
+# compiled
+**/target/**
+**/out/**
+.js
+.jvm
+
+# terraform
+.terraform/
+**/terraform_env.tf
+**/terraform.tfstate
+**/terraform.tfstate.backup
+
+# sbt
+.bsp
+.hydra
+
+# python
+*.pyc
+
+# vim
+*.swp
+*.swo
+
+# data
+data/

@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "grib"
+version = "0.1.0"
+description = ""
+authors = ["Giulio Mecocci <gmecocci@outlook.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+jupyter = "^1.0.0"
+numpy = "^1.24.2"
+matplotlib = "^3.7.0"
+pytz = "^2022.7.1"
+cfgrib = "^0.9.10.3"
+requests = "^2.28.2"
+eccodes = "^1.5.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
