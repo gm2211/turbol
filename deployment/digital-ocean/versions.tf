@@ -1,9 +1,9 @@
 terraform {
-  // Store terraform state remotely (on terraform cloud)
   backend "remote" {
     organization = "gm2211"
+
     workspaces {
-      name = "turbol"
+      name = "turbol-cli"
     }
   }
   required_providers {

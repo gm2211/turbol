@@ -4,18 +4,18 @@ provider "digitalocean" {
 }
 
 // Data
-data "digitalocean_kubernetes_cluster" "gm2211-eu" {
-  name = "gm2211-eu"
+data "digitalocean_kubernetes_cluster" "k8s-turbol" {
+  name = "k8s-turbol"
 }
 
 // Locals
 locals {
-  domain                       = "gm2211.work"
+  domain                       = "turbol.live"
   // K8s - digitalocean
-  digital_ocean_k8s_host       = data.digitalocean_kubernetes_cluster.gm2211-eu.endpoint
-  digital_ocean_k8s_token      = data.digitalocean_kubernetes_cluster.gm2211-eu.kube_config[0].token
+  digital_ocean_k8s_host       = data.digitalocean_kubernetes_cluster.k8s-turbol.endpoint
+  digital_ocean_k8s_token      = data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].token
   digital_ocean_k8s_cluster_ca = base64decode(
-  data.digitalocean_kubernetes_cluster.gm2211-eu.kube_config[0].cluster_ca_certificate
+  data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
   )
   // App
   prod_app_name                = "turbol"
@@ -60,24 +60,22 @@ module "prod" {
   postgres_port               = local.postgres_port
   postgres_superuser          = local.postgres_superuser
   postgres_superuser_password = var.postgres_superuser_password
-  vault_address               = module.infra.vault_address
-  vault_root_token            = var.vault_root_token
 }
 
-module "staging" {
-  source                      = "./modules/app-and-db"
-  environment_name            = "staging"
-  app_name                    = local.staging_app_name
-  app_version                 = var.staging_app_version
-  dockerhub_password          = var.docker_hub_password
-  domain                      = local.domain
-  k8s_cluster_ca              = local.digital_ocean_k8s_cluster_ca
-  k8s_host                    = local.digital_ocean_k8s_host
-  k8s_token                   = local.digital_ocean_k8s_token
-  postgres_host               = local.postgres_host
-  postgres_port               = local.postgres_port
-  postgres_superuser          = local.postgres_superuser
-  postgres_superuser_password = var.postgres_superuser_password
-  vault_address               = module.infra.vault_address
-  vault_root_token            = var.vault_root_token
-}
+#module "staging" {
+#  source                      = "./modules/app-and-db"
+#  environment_name            = "staging"
+#  app_name                    = local.staging_app_name
+#  app_version                 = var.staging_app_version
+#  dockerhub_password          = var.docker_hub_password
+#  domain                      = local.domain
+#  k8s_cluster_ca              = local.digital_ocean_k8s_cluster_ca
+#  k8s_host                    = local.digital_ocean_k8s_host
+#  k8s_token                   = local.digital_ocean_k8s_token
+#  postgres_host               = local.postgres_host
+#  postgres_port               = local.postgres_port
+#  postgres_superuser          = local.postgres_superuser
+#  postgres_superuser_password = var.postgres_superuser_password
+#  vault_address               = module.infra.vault_address
+#  vault_root_token            = var.vault_root_token
+#}

@@ -3,7 +3,6 @@
 locals {
   # Install
   install_config = {
-    frontend-assets-path = var.frontend_assets_path
     http-port            = var.app_port
     database-config      = {
       hostname              = var.postgres_host
@@ -18,10 +17,7 @@ locals {
   runtime_config = {
     logging = {
       root-logger-level   = "info"
-      level-by-class-name = {
-        "com.gm2211.turbol.backend.authentication.oauth.Auth0OAuthManager" = "debug"
-        "com.gm2211.turbol.backend.secrets.VaultBasedSecretsRegistry"      = "debug"
-      }
+      level-by-class-name = { }
     }
   }
 }

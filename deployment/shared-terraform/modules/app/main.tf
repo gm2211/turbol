@@ -13,17 +13,8 @@ module "app-config" {
   postgres_port                         = var.postgres_port
   postgres_user                         = var.postgres_user
   postgres_password_env_var_name        = local.postgres_password_env_var_name
-  vault_address                         = var.vault_address
-  vault_authz_path                      = var.vault_authz_path
-  vault_oauth2_path                     = var.vault_oauth2_path
-  vault_postgres_admin_role_name        = var.vault_postgres_admin_role_name
-  vault_postgres_read_only_role_name    = var.vault_postgres_read_only_role_name
-  vault_postgres_read_write_role_name   = var.vault_postgres_read_write_role_name
-  vault_postgres_roles_path             = var.vault_postgres_roles_path
-  vault_postgres_secrets_path           = var.vault_postgres_secrets_path
-  vault_postgres_superuser_password_key = var.vault_postgres_superuser_password_key
-  vault_root_token                      = var.vault_root_token
 }
+
 ########## App ##############
 # Locals
 locals {

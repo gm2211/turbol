@@ -2,22 +2,12 @@
 Note: The environment variable `TF_VAR_digitalocean_root_token` is assumed to be set.
 
 1. Run script scripts/kube/prepare-cluster.sh
-2. Comment out vault module in main.tf (in this folder)
-3. Run: terraform init && terraform apply
-4. Uncomment vault module
-5. Run: terraform init && terraform apply
+2. Run: terraform init && terraform apply
+3. Uncomment vault module
+4. Run: terraform init && terraform apply
 
 Note: IF there are random issues with connecting to services such as vault via the registered domain, make sure that
 there aren't any old dns entries in the digitalocean Networking admin dashboard.
-
-# Vault
-Vault needs to be installed manually onto the kubernetes cluster (this is usually done via a helm chart).
-You also need to unlock vault (the keys must not be checked in and should be distributed "offline").
-The easiest way to do that is to run `kubectl port-forward vault-0 8200:8200`, then navigate to `localhost:8200/ui` and enter 3 out of 5 key fragments.
-
-For ease of use with terraform and digital ocean, remember to set the `TF_VAR_digitalocean_root_token` and `TF_VAR_vault_root_token` env variables.
-
-Also make sure to populate path in vault 'secret/oauth' with Auth0/oauth secrets (see OAuth2SecretsConfig) for details.
 
 # Deploy to digital ocean
 To deploy to digital ocean do: `terraform apply`
@@ -62,5 +52,3 @@ TERRAFORM_CLOUD_TOKEN
 TF_VAR_digitalocean_root_token # Can be same as DOCEAN_TOKEN
 TF_VAR_docker_hub_password
 TF_VAR_vault_root_token
-
-

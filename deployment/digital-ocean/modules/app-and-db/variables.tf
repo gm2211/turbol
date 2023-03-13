@@ -10,5 +10,3 @@ variable postgres_host {}
 variable postgres_port {}
 variable postgres_superuser {}
 variable postgres_superuser_password {}
-variable vault_address {}
-variable vault_root_token {}
