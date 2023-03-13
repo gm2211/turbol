@@ -11,6 +11,8 @@ variable k8s_cluster_token {}
 variable postgres_database_name {}
 variable postgres_host {}
 variable postgres_port {}
+variable postgres_user {}
+variable postgres_password {}
 variable vault_address {}
 variable vault_authz_path {}
 variable vault_postgres_secrets_path {}

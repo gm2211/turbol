@@ -32,13 +32,13 @@ object Launcher extends IOApp with BackendLogging {
       )
       .setBlocking(
         ExecutionContext.fromExecutorService(
-          MoreSchedulers.boundedCached("blocking", 4, 1.minute)
+          MoreSchedulers.boundedCached("blocking", 100, 1.minute)
         ),
         () => log.info("Shutting down blocking scheduler")
       )
       .setCompute(
         ExecutionContext.fromExecutorService(
-          MoreSchedulers.boundedCached("compute", 4, 1.minute)
+          MoreSchedulers.boundedCached("compute", 100, 1.minute)
         ),
         () => log.info("Shutting down compute")
       )
