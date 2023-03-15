@@ -1,5 +1,5 @@
 # Sensitive values - can be set by exporting env variables like TF_VAR_<var_name>
-variable digitalocean_root_token {
+variable digitalocean_api_token {
   sensitive = true
 }
 variable docker_hub_password {

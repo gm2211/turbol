@@ -16,14 +16,14 @@ locals {
   cert_issuer_secret_name = "letsencrypt-prod-secret"
   cert_issuer_email       = "turbol@gmeco.cc"
   // Hostnames
-  prod_hostname           = "${var.prod_app_name}.${var.domain}"
-  staging_hostname        = "${var.staging_app_name}.${var.domain}"
+  prod_hostname           = "app.${var.domain}"
+  staging_hostname        = "app.${var.domain}"
 }
 
 // External DNS
 resource "helm_release" "external-dns" {
   depends_on = [
-#    kubernetes_manifest.install-cert-manager-issuer
+    kubernetes_manifest.install-cert-manager-issuer
   ]
   name       = "external-dns"
   chart      = "external-dns"
@@ -43,7 +43,7 @@ resource "helm_release" "external-dns" {
 
   set {
     name  = "digitalocean.apiToken"
-    value = var.digitalocean_root_token
+    value = var.digitalocean_api_token
   }
 
   set {
@@ -90,13 +90,13 @@ resource "helm_release" "cert-manager" {
     value = "true"
   }
 }
-resource "kubernetes_secret" "cert-manager-docean-dns-token" {
+resource "kubernetes_secret" "docean-api-token-for-cert-manager" {
   metadata {
-    name = "cert-manager-docean-dns"
+    name = "docean-api-token-for-cert-manager"
   }
   type = "kubernetes.io/generic"
   data = {
-    access-token = var.digitalocean_root_token
+    access-token = var.digitalocean_api_token
   }
 }
 resource "null_resource" "clean-up-issuer" {
@@ -105,48 +105,48 @@ resource "null_resource" "clean-up-issuer" {
   }
 }
 
-#resource "kubernetes_manifest" "install-cert-manager-issuer" {
-#  depends_on = [
-#    helm_release.cert-manager,
-#    null_resource.clean-up-issuer
-#  ]
-#  manifest = {
-#    "apiVersion" = "cert-manager.io/v1alpha2"
-#    "kind"       = "Issuer"
-#    "metadata"   = {
-#      "name"      = local.cert_issuer_name
-#      "namespace" = "default"
-#    }
-#    "spec" = {
-#      "acme" = {
-#        "email"               = local.cert_issuer_email
-#        "privateKeySecretRef" = {
-#          "name" = local.cert_issuer_secret_name
-#        }
-#        "server"  = "https://acme-v02.api.letsencrypt.org/directory"
-#        "solvers" = [
-#          {
-#            dns01 = {
-#              "digitalocean" = {
-#                "tokenSecretRef" = {
-#                  "key"  = "access-token"
-#                  "name" = kubernetes_secret.cert-manager-docean-dns-token.metadata[0].name
-#                }
-#              }
-#            }
-#            selector = {}
-#          },
-#        ]
-#      }
-#    }
-#  }
-#}
-#
+resource "kubernetes_manifest" "install-cert-manager-issuer" {
+  depends_on = [
+    helm_release.cert-manager,
+    null_resource.clean-up-issuer
+  ]
+  manifest = {
+    "apiVersion" = "cert-manager.io/v1"
+    "kind"       = "Issuer"
+    "metadata"   = {
+      "name"      = local.cert_issuer_name
+      "namespace" = "default"
+    }
+    "spec" = {
+      "acme" = {
+        "email"               = local.cert_issuer_email
+        "privateKeySecretRef" = {
+          "name" = local.cert_issuer_secret_name
+        }
+        "server"  = "https://acme-v02.api.letsencrypt.org/directory"
+        "solvers" = [
+          {
+            dns01 = {
+              "digitalocean" = {
+                "tokenSecretRef" = {
+                  "key"  = "access-token"
+                  "name" = kubernetes_secret.docean-api-token-for-cert-manager.metadata[0].name
+                }
+              }
+            }
+            selector = {}
+          },
+        ]
+      }
+    }
+  }
+}
+
 // Ingress
 resource "helm_release" "nginx-ingress" {
-#  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
+  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
   name       = "nginx"
-  version    = "2.12.1"
+  version    = "4.5.2"
   chart      = "ingress-nginx"
   repository = var.nginx_helm_stable_repo
   timeout    = 10 * 60
@@ -161,12 +161,12 @@ resource "helm_release" "nginx-ingress" {
 resource "null_resource" "ingresses-should-depend-on-this" {
   depends_on = [
     kubernetes_namespace.cert-manager,
-#    kubernetes_manifest.install-cert-manager-issuer,
+    kubernetes_manifest.install-cert-manager-issuer,
     helm_release.nginx-ingress
   ]
 }
 
-resource "kubernetes_ingress" "main-ingress" {
+resource "kubernetes_ingress_v1" "main-ingress" {
   depends_on = [
     null_resource.ingresses-should-depend-on-this
   ]
@@ -196,8 +196,12 @@ resource "kubernetes_ingress" "main-ingress" {
       http {
         path {
           backend {
-            service_name = var.prod_app_name
-            service_port = var.prod_app_port
+            service {
+              name = var.prod_app_name
+              port {
+                number = var.prod_app_port
+              }
+            }
           }
         }
       }
@@ -207,8 +211,12 @@ resource "kubernetes_ingress" "main-ingress" {
       http {
         path {
           backend {
-            service_name = var.staging_app_name
-            service_port = var.staging_app_port
+            service {
+              name = var.staging_app_name
+              port {
+                number = var.staging_app_port
+              }
+            }
           }
         }
       }

@@ -1,6 +1,6 @@
 // Providers
 provider "digitalocean" {
-  token = var.digitalocean_root_token
+  token = var.digitalocean_api_token
 }
 
 // Data
@@ -35,7 +35,7 @@ module "infra" {
   digital_ocean_k8s_cluster_ca  = local.digital_ocean_k8s_cluster_ca
   digital_ocean_k8s_host        = local.digital_ocean_k8s_host
   digital_ocean_k8s_token       = local.digital_ocean_k8s_token
-  digitalocean_root_token       = var.digitalocean_root_token
+  digitalocean_api_token       = var.digitalocean_api_token
   domain                        = local.domain
   external_dns_helm_stable_repo = "https://charts.bitnami.com/bitnami"
   helm_jetstack_repo            = "https://charts.jetstack.io"

@@ -4,7 +4,7 @@ libraryDependencies += "commons-io" % "commons-io" % "2.11.0"
 addSbtPlugin("org.jetbrains" % "sbt-ide-settings" % "1.0.0")
 addSbtPlugin("au.com.onegeek" %% "sbt-dotenv" % "2.1.146")
 // Packaging
-addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.6.1")
+addSbtPlugin("com.typesafe.sbt" % "sbt-native-packager" % "1.8.1")
 // Versioning
 addSbtPlugin("com.typesafe.sbt" % "sbt-git" % "1.0.0")
 addSbtPlugin("com.github.gseitz" % "sbt-release" % "1.0.13")
