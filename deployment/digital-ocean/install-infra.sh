@@ -1,5 +1,5 @@
 #!/bin/bash --
-if terraform apply --target=module.infra --auto-approve -var-file="../secrets.tfvars"; then 
+if terraform apply --target=module.infra --auto-approve; then 
   exit 0
 else 
 

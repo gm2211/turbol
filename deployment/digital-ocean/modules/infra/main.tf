@@ -22,7 +22,9 @@ locals {
 
 // External DNS
 resource "helm_release" "external-dns" {
-  depends_on = [kubernetes_manifest.install-cert-manager-issuer]
+  depends_on = [
+#    kubernetes_manifest.install-cert-manager-issuer
+  ]
   name       = "external-dns"
   chart      = "external-dns"
   repository = var.external_dns_helm_stable_repo
@@ -70,7 +72,7 @@ resource "helm_release" "cert-manager" {
   name       = "cert-manager"
   namespace  = kubernetes_namespace.cert-manager.metadata[0].name
   chart      = "cert-manager"
-  version    = "v1.5.3"
+  version    = "v1.11"
   repository = var.helm_jetstack_repo
   timeout    = 10 * 60
   # timeout for each k8s action - 10 minutes
@@ -103,46 +105,46 @@ resource "null_resource" "clean-up-issuer" {
   }
 }
 
-resource "kubernetes_manifest" "install-cert-manager-issuer" {
-  depends_on = [
-    helm_release.cert-manager,
-    null_resource.clean-up-issuer
-  ]
-  manifest = {
-    "apiVersion" = "cert-manager.io/v1alpha2"
-    "kind"       = "Issuer"
-    "metadata"   = {
-      "name"      = local.cert_issuer_name
-      "namespace" = "default"
-    }
-    "spec" = {
-      "acme" = {
-        "email"               = local.cert_issuer_email
-        "privateKeySecretRef" = {
-          "name" = local.cert_issuer_secret_name
-        }
-        "server"  = "https://acme-v02.api.letsencrypt.org/directory"
-        "solvers" = [
-          {
-            dns01 = {
-              "digitalocean" = {
-                "tokenSecretRef" = {
-                  "key"  = "access-token"
-                  "name" = kubernetes_secret.cert-manager-docean-dns-token.metadata[0].name
-                }
-              }
-            }
-            selector = {}
-          },
-        ]
-      }
-    }
-  }
-}
-
+#resource "kubernetes_manifest" "install-cert-manager-issuer" {
+#  depends_on = [
+#    helm_release.cert-manager,
+#    null_resource.clean-up-issuer
+#  ]
+#  manifest = {
+#    "apiVersion" = "cert-manager.io/v1alpha2"
+#    "kind"       = "Issuer"
+#    "metadata"   = {
+#      "name"      = local.cert_issuer_name
+#      "namespace" = "default"
+#    }
+#    "spec" = {
+#      "acme" = {
+#        "email"               = local.cert_issuer_email
+#        "privateKeySecretRef" = {
+#          "name" = local.cert_issuer_secret_name
+#        }
+#        "server"  = "https://acme-v02.api.letsencrypt.org/directory"
+#        "solvers" = [
+#          {
+#            dns01 = {
+#              "digitalocean" = {
+#                "tokenSecretRef" = {
+#                  "key"  = "access-token"
+#                  "name" = kubernetes_secret.cert-manager-docean-dns-token.metadata[0].name
+#                }
+#              }
+#            }
+#            selector = {}
+#          },
+#        ]
+#      }
+#    }
+#  }
+#}
+#
 // Ingress
 resource "helm_release" "nginx-ingress" {
-  depends_on = [kubernetes_manifest.install-cert-manager-issuer]
+#  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
   name       = "nginx"
   version    = "2.12.1"
   chart      = "ingress-nginx"
@@ -159,7 +161,7 @@ resource "helm_release" "nginx-ingress" {
 resource "null_resource" "ingresses-should-depend-on-this" {
   depends_on = [
     kubernetes_namespace.cert-manager,
-    kubernetes_manifest.install-cert-manager-issuer,
+#    kubernetes_manifest.install-cert-manager-issuer,
     helm_release.nginx-ingress
   ]
 }

@@ -11,12 +11,12 @@ terraform {
       source = "digitalocean/digitalocean"
     }
     helm = {
-      source = "hashicorp/helm"
-      version = "~> 2.3.0"
+      source  = "hashicorp/helm"
+      version = "~> 2.9.0"
     }
     kubernetes = {
       source = "hashicorp/kubernetes"
     }
   }
-  required_version = ">= 1.0.6"
+  required_version = ">= 1.4.0"
 }

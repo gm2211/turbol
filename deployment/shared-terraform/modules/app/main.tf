@@ -6,13 +6,13 @@ provider "kubernetes" {
 }
 
 module "app-config" {
-  source                                = "../app-config"
-  app_port                              = var.app_port
-  postgres_database_name                = var.postgres_database_name
-  postgres_host                         = var.postgres_host
-  postgres_port                         = var.postgres_port
-  postgres_user                         = var.postgres_user
-  postgres_password_env_var_name        = local.postgres_password_env_var_name
+  source                         = "../app-config"
+  app_port                       = var.app_port
+  postgres_database_name         = var.postgres_database_name
+  postgres_host                  = var.postgres_host
+  postgres_port                  = var.postgres_port
+  postgres_user                  = var.postgres_user
+  postgres_password_env_var_name = local.postgres_password_env_var_name
 }
 
 ########## App ##############
@@ -33,6 +33,7 @@ locals {
     (local.runtime_config_filename) = yamlencode(module.app-config.runtime_config)
   }
   postgres_password_env_var_name = "POSTGRES_PASSWORD"
+  postgres_password_env_var_key  = "password"
 }
 resource "kubernetes_secret" "docker-hub-login" {
   metadata {
@@ -64,7 +65,9 @@ resource "kubernetes_secret" "postgres-password" {
   metadata {
     name = "postgres-password"
   }
-  data = base64encode(var.postgres_password)
+  data = {
+    (local.postgres_password_env_var_key) = base64encode(var.postgres_password)
+  }
 }
 
 resource "kubernetes_deployment" "app" {
@@ -130,11 +133,11 @@ resource "kubernetes_deployment" "app" {
             value = "${local.server_configs_dir}/${local.runtime_config_filename}"
           }
           env {
-            name      = local.postgres_password_env_var_name
-            valueFrom = {
-              secretKeyRef = {
-                name = kubernetes_secret.postgres-password
-                key  = username
+            name = local.postgres_password_env_var_name
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres-password.metadata[0].name
+                key  = local.postgres_password_env_var_key
               }
             }
           }

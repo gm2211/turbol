@@ -1,2 +1,2 @@
 #!/bin/bash --
-terraform apply --auto-approve -var-file="../secrets.tfvars"
+terraform apply --auto-approve

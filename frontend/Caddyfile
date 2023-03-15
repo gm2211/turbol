@@ -1,0 +1,9 @@
+:80 {
+  root * /usr/share/caddy
+  file_server
+  encode gzip
+  log {
+    output stdout
+    format json
+  }
+}
