@@ -6,7 +6,6 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 import sbtrelease.Vcs
 import org.apache.commons.io.FileUtils
 
-import java.io.File
 import java.nio.charset.StandardCharsets
 
 name := "turbol"
@@ -28,7 +27,6 @@ Compile / javacOptions ++= Seq(
   "-Xss4M"
 )
 
-enablePlugins(sbtdocker.DockerPlugin)
 enablePlugins(GitVersioning)
 enablePlugins(UniversalPlugin)
 
@@ -54,7 +52,7 @@ inThisBuild(
 
 // Reusable settings for all modules
 lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
-lazy val commonSettings = Seq(
+val commonSettings = Seq(
   moduleName := "turbol-" + moduleName.value,
   Compile / ideOutputDirectory := Some(
     target.value.getParentFile / "out/production"
@@ -90,7 +88,6 @@ lazy val root = project
 // Backend
 lazy val backend = project
   .in(file("backend"))
-  .enablePlugins(JavaServerAppPackaging)
   .enablePlugins(AutomateHeaderPlugin)
   .settings(commonSettings)
   .settings(
@@ -107,93 +104,34 @@ lazy val packager = project
   .in(packagerDir)
   .dependsOn(backend)
   .enablePlugins(JavaServerAppPackaging)
+  .enablePlugins(DockerPlugin)
   .settings(commonSettings)
-  .settings(dockerBuildxSettings)
   .settings(
     normalizedName := name.value,
     Compile / mainClass := (backend / Compile / mainClass).value
   )
 
 // Docker
-import scala.sys.process.Process
-lazy val ensureDockerBuildx =
-  taskKey[Unit]("Ensure that docker buildx configuration exists")
-lazy val dockerBuildWithBuildx =
-  taskKey[Unit]("Build docker images using buildx")
-lazy val dockerBuildxSettings = Seq(
-  ensureDockerBuildx := {
-    if (Process("docker buildx inspect multi-arch-builder").! == 1) {
-      Process(
-        "docker buildx create --use --name multi-arch-builder",
-        baseDirectory.value
-      ).!
-    }
-  },
-  dockerBuildWithBuildx := {
-    streams.value.log("Building and pushing image with Buildx")
-    dockerAliases.value.foreach(alias =>
-      Process(
-        "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
-          alias + " .",
-        baseDirectory.value / "target" / "docker" / "stage"
-      ).!
-    )
-  },
-  Docker / publish := Def
-    .sequential(
-      Docker / publishLocal,
-      ensureDockerBuildx,
-      dockerBuildWithBuildx
-    )
-    .value
-)
-docker / dockerfile := {
-  new Dockerfile {
-    val dockerAppPath: String = s"/${name.value.toLowerCase}/"
-    val packagedFile: File = (packager / Universal / packageZipTarball).value
-
-    from("java")
-    copy(packagedFile, s"$dockerAppPath${packagedFile.name}")
-    workDir(dockerAppPath)
-    run("tar", "xvf", packagedFile.name, "--strip", "1")
-    run("rm", packagedFile.name)
-    entryPoint("bin/packager")
-  }
+Docker / dockerBuildCommand := {
+  // Use buildx with platform to build supported amd64 images on other CPU architectures
+  // this may require that you have first run 'docker buildx create' to set docker buildx up
+  dockerExecCommand.value ++ Seq(
+    "buildx",
+    "build",
+    "--platform=linux/arm64/v8,linux/amd64",
+    "--push"
+  ) ++ dockerBuildOptions.value :+ "."
 }
 
-docker / buildOptions := BuildOptions(
-  cache = false,
-  removeIntermediateContainers = BuildOptions.Remove.Always,
-  pullBaseImage = BuildOptions.Pull.Always
-)
-
 val dockerhubRepoName = "gm2211"
-docker / dockerAliases := Seq(
-  DockerAlias(
-    registryHost = Some("https://index.docker.io/v1/"),
-    username = Some(dockerhubRepoName),
-    name = s"${name.value.toLowerCase}",
-    tag = Some(SbtGit.git.gitDescribedVersion.value.toString)
-  ),
-  DockerAlias(
-    registryHost = Some("https://index.docker.io/v1/"),
-    username = Some(dockerhubRepoName),
-    name = s"${name.value.toLowerCase}",
-    tag = Some("latest")
-  )
-)
-docker / imageNames := Seq(
-  ImageName(
-    repository = s"$dockerhubRepoName/${name.value.toLowerCase}",
-    tag = SbtGit.git.gitDescribedVersion.value
-  ),
-  ImageName(
-    repository = s"$dockerhubRepoName/${name.value.toLowerCase}",
-    tag = Some("latest")
-  )
-)
+val registryHost = "index.docker.io"
 
-docker := { docker dependsOn packager / Universal / packageZipTarball }.value
+dockerRepository := Some(registryHost)
+dockerUsername := Some(dockerhubRepoName)
+dockerBaseImage := "openjdk:19-jdk"
+Docker / version := SbtGit.git.gitDescribedVersion.value.get
+dockerUpdateLatest := true
+dockerExposedPorts ++= Seq(443)
 
 // Release
 val checkIsDevelop = taskKey[Unit](

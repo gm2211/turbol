@@ -12,7 +12,7 @@ addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.10.0-RC1")
 // Dependencies
 addSbtPlugin("com.timushev.sbt" % "sbt-updates" % "0.5.1")
 // Docker
-addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.8.2")
+//addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.8.2")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.6")
 // Linting
 addSbtPlugin("org.scalastyle" %% "scalastyle-sbt-plugin" % "1.0.0")
