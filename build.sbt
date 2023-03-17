@@ -111,6 +111,18 @@ lazy val packager = project
     Compile / mainClass := (backend / Compile / mainClass).value
   )
 
+
+val dockerhubRepoName = "gm2211"
+val registryHost = "index.docker.io"
+
+dockerRepository := Some(registryHost)
+dockerUsername := Some(dockerhubRepoName)
+dockerBaseImage := "openjdk:19-jdk"
+Docker / version := SbtGit.git.gitDescribedVersion.value.get
+dockerUpdateLatest := true
+dockerExposedPorts ++= Seq(443)
+dockerBuildOptions := Seq("--no-cache", "--force-rm")
+
 // Docker
 Docker / dockerBuildCommand := {
   // Use buildx with platform to build supported amd64 images on other CPU architectures
@@ -122,16 +134,6 @@ Docker / dockerBuildCommand := {
     "--push"
   ) ++ dockerBuildOptions.value :+ "."
 }
-
-val dockerhubRepoName = "gm2211"
-val registryHost = "index.docker.io"
-
-dockerRepository := Some(registryHost)
-dockerUsername := Some(dockerhubRepoName)
-dockerBaseImage := "openjdk:19-jdk"
-Docker / version := SbtGit.git.gitDescribedVersion.value.get
-dockerUpdateLatest := true
-dockerExposedPorts ++= Seq(443)
 
 // Release
 val checkIsDevelop = taskKey[Unit](
