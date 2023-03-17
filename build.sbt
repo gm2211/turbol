@@ -39,6 +39,8 @@ git.gitTagToVersionNumber := {
   case _                             => None
 }
 
+val dockerhubRepoName = "gm2211"
+val registryHost = "docker.io"
 inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
@@ -46,7 +48,25 @@ inThisBuild(
     ThisBuild / envFileName := "run.env",
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
-    resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/"
+    resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
+    // Docker
+    dockerRepository := Some(s"$registryHost/$dockerhubRepoName"),
+    dockerUsername := Some(dockerhubRepoName),
+    dockerBaseImage := "openjdk:19-jdk",
+    version := SbtGit.git.gitDescribedVersion.value.get,
+    dockerUpdateLatest := true,
+    dockerExposedPorts ++= Seq(443),
+    dockerBuildOptions := Seq("--no-cache", "--force-rm"),
+    dockerBuildCommand := {
+      // Use buildx with platform to build supported amd64 images on other CPU architectures
+      // this may require that you have first run 'docker buildx create' to set docker buildx up
+      dockerExecCommand.value ++ Seq(
+        "buildx",
+        "build",
+        "--platform=linux/arm64/v8,linux/amd64",
+        "--push"
+      ) ++ dockerBuildOptions.value :+ "."
+    }
   )
 )
 
@@ -76,10 +96,7 @@ val commonSettings = Seq(
 
 lazy val root = project
   .in(file("."))
-  .aggregate(
-    backend,
-    packager
-  )
+  .aggregate(backend)
   .settings(
     publishArtifact := false,
     Compile / run := (backend / Compile / run).evaluated
@@ -89,51 +106,17 @@ lazy val root = project
 lazy val backend = project
   .in(file("backend"))
   .enablePlugins(AutomateHeaderPlugin)
+  .enablePlugins(JavaServerAppPackaging)
+  .enablePlugins(DockerPlugin)
   .settings(commonSettings)
   .settings(
+    normalizedName := name.value,
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
     Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
     Test / envFileName := "backend/var/conf/test.env",
     Test / envVars := (Test / envFromFile).value
   )
-
-// Packaging
-lazy val packagerDir = file("packager")
-lazy val packager = project
-  .in(packagerDir)
-  .dependsOn(backend)
-  .enablePlugins(JavaServerAppPackaging)
-  .enablePlugins(DockerPlugin)
-  .settings(commonSettings)
-  .settings(
-    normalizedName := name.value,
-    Compile / mainClass := (backend / Compile / mainClass).value
-  )
-
-
-val dockerhubRepoName = "gm2211"
-val registryHost = "index.docker.io"
-
-dockerRepository := Some(registryHost)
-dockerUsername := Some(dockerhubRepoName)
-dockerBaseImage := "openjdk:19-jdk"
-Docker / version := SbtGit.git.gitDescribedVersion.value.get
-dockerUpdateLatest := true
-dockerExposedPorts ++= Seq(443)
-dockerBuildOptions := Seq("--no-cache", "--force-rm")
-
-// Docker
-Docker / dockerBuildCommand := {
-  // Use buildx with platform to build supported amd64 images on other CPU architectures
-  // this may require that you have first run 'docker buildx create' to set docker buildx up
-  dockerExecCommand.value ++ Seq(
-    "buildx",
-    "build",
-    "--platform=linux/arm64/v8,linux/amd64",
-    "--push"
-  ) ++ dockerBuildOptions.value :+ "."
-}
 
 // Release
 val checkIsDevelop = taskKey[Unit](
