@@ -40,7 +40,7 @@ git.gitTagToVersionNumber := {
 }
 
 val dockerhubRepoName = "gm2211"
-val registryHost = "docker.io"
+val registryHost = "index.docker.io/v1/"
 inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
