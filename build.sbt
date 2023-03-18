@@ -5,6 +5,7 @@ import sbt.{Compile, Def, Resolver}
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 import sbtrelease.Vcs
 import org.apache.commons.io.FileUtils
+import scala.sys.process.Process
 
 import java.nio.charset.StandardCharsets
 
@@ -43,7 +44,7 @@ inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
     organization := "com.gm2211.turbol",
-    ThisBuild / envFileName := "run.env",
+    envFileName := "run.env",
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
@@ -54,6 +55,37 @@ inThisBuild(
 
 // Reusable settings for all modules
 lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
+lazy val ensureDockerBuildx =
+  taskKey[Unit]("Ensure that docker buildx configuration exists")
+lazy val dockerBuildWithBuildx =
+  taskKey[Unit]("Build docker images using buildx")
+lazy val dockerBuildxSettings = Seq(
+  ensureDockerBuildx := {
+    if (Process("docker buildx inspect multi-arch-builder").! == 1) {
+      Process(
+        "docker buildx create --use --name multi-arch-builder",
+        baseDirectory.value
+      ).!
+    }
+  },
+  dockerBuildWithBuildx := {
+    streams.value.log("Building and pushing image with Buildx")
+    dockerAliases.value.foreach(alias =>
+      Process(
+        "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+          alias + " .",
+        baseDirectory.value / "target" / "docker" / "stage"
+      ).!
+    )
+  },
+  Docker / publish := Def
+    .sequential(
+      Docker / publishLocal,
+      ensureDockerBuildx,
+      dockerBuildWithBuildx
+    )
+    .value
+)
 
 lazy val root = project
   .in(file("."))
@@ -68,6 +100,7 @@ lazy val backend = project
   .enablePlugins(AutomateHeaderPlugin)
   .enablePlugins(JavaServerAppPackaging)
   .enablePlugins(DockerPlugin)
+  .settings(dockerBuildxSettings)
   .settings(
     moduleName := "turbol-backend",
     Compile / ideOutputDirectory := Some(
@@ -87,28 +120,25 @@ lazy val backend = project
     dockerUsername := Some("gm2211"),
     dockerBaseImage := "openjdk:19",
     Docker / packageName := "turbol",
-    version := SbtGit.git.gitDescribedVersion.value.get,
+    version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerUpdateLatest := true,
     dockerExposedPorts ++= Seq(8080),
-    Docker / dockerBuildCommand := {
-      // Use buildx with platform to build supported amd64 images on other CPU architectures
-      // this may require that you have first run 'docker buildx create' to set docker buildx up
-      val imageNameWithoutVersion = s"${dockerRepository.value.get}/${dockerUsername.value.get}/${packageName.value}"
-
-      dockerExecCommand.value ++ Seq(
-        "buildx",
-        "build",
-        "--platform=linux/amd64",
-        "-t",
-        s"$imageNameWithoutVersion:${(Docker / version).value}",
-        "-t",
-        s"$imageNameWithoutVersion:latest",
-        "--push",
-        "."
+    dockerAliases := Seq(
+      DockerAlias(
+        dockerRepository.value,
+        dockerUsername.value,
+        (Docker / packageName).value,
+        Some(version.value)
+      ),
+      DockerAlias(
+        dockerRepository.value,
+        dockerUsername.value,
+        (Docker / packageName).value,
+        Some("latest")
       )
-    },
+    ),
     // Run
-    Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
+      Compile / mainClass := Some ("com.gm2211.turbol.backend.Launcher"),
     // Test
     Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
     Test / fork := true,
