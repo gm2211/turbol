@@ -39,8 +39,6 @@ git.gitTagToVersionNumber := {
   case _                             => None
 }
 
-val dockerhubRepoName = "gm2211"
-val registryHost = "index.docker.io/v1/"
 inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
@@ -49,56 +47,18 @@ inThisBuild(
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
-    // Docker
-    dockerRepository := Some(s"$registryHost/$dockerhubRepoName"),
-    dockerUsername := Some(dockerhubRepoName),
-    dockerBaseImage := "openjdk:19-jdk",
-    version := SbtGit.git.gitDescribedVersion.value.get,
-    dockerUpdateLatest := true,
-    dockerExposedPorts ++= Seq(443),
-    dockerBuildOptions := Seq("--no-cache", "--force-rm"),
-    dockerBuildCommand := {
-      // Use buildx with platform to build supported amd64 images on other CPU architectures
-      // this may require that you have first run 'docker buildx create' to set docker buildx up
-      dockerExecCommand.value ++ Seq(
-        "buildx",
-        "build",
-        "--platform=linux/arm64/v8,linux/amd64",
-        "--push"
-      ) ++ dockerBuildOptions.value :+ "."
-    }
+    publishArtifact := false,
+    publish / skip := true
   )
 )
 
 // Reusable settings for all modules
 lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
-val commonSettings = Seq(
-  moduleName := "turbol-" + moduleName.value,
-  Compile / ideOutputDirectory := Some(
-    target.value.getParentFile / "out/production"
-  ),
-  Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
-  Test / fork := true,
-  // Linting and formatting
-  scalastyleFailOnWarning := true,
-  compileScalastyle := (Compile / scalastyle).toTask("").value,
-  compile := ((Compile / compile) dependsOn (compileScalastyle, Compile / scalafmtAll, Compile / scalafmtCheck)).value,
-  // Copyright
-  headerLicense := Some(
-    HeaderLicense.Custom(
-      """|Copyright 2020 Giulio Mecocci
-         |
-         |All rights reserved.
-         |""".stripMargin
-    )
-  )
-)
 
 lazy val root = project
   .in(file("."))
   .aggregate(backend)
   .settings(
-    publishArtifact := false,
     Compile / run := (backend / Compile / run).evaluated
   )
 
@@ -108,14 +68,61 @@ lazy val backend = project
   .enablePlugins(AutomateHeaderPlugin)
   .enablePlugins(JavaServerAppPackaging)
   .enablePlugins(DockerPlugin)
-  .settings(commonSettings)
   .settings(
-    normalizedName := name.value,
+    moduleName := "turbol-backend",
+    Compile / ideOutputDirectory := Some(
+      target.value.getParentFile / "out/production"
+    ),
+    // Linting and formatting
+    scalastyleFailOnWarning := true,
+    compileScalastyle := (Compile / scalastyle).toTask("").value,
+    compile := (
+      (Compile / compile) dependsOn (compileScalastyle, Compile / scalafmtAll, Compile / scalafmtCheck)
+    ).value,
+    // Deps
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
+    // Docker
+    dockerRepository := Some("docker.io"),
+    dockerUsername := Some("gm2211"),
+    dockerBaseImage := "openjdk:19",
+    Docker / packageName := "turbol",
+    version := SbtGit.git.gitDescribedVersion.value.get,
+    dockerUpdateLatest := true,
+    dockerExposedPorts ++= Seq(8080),
+    Docker / dockerBuildCommand := {
+      // Use buildx with platform to build supported amd64 images on other CPU architectures
+      // this may require that you have first run 'docker buildx create' to set docker buildx up
+      val imageNameWithoutVersion = s"${dockerRepository.value.get}/${dockerUsername.value.get}/${packageName.value}"
+
+      dockerExecCommand.value ++ Seq(
+        "buildx",
+        "build",
+        "--platform=linux/amd64",
+        "-t",
+        s"$imageNameWithoutVersion:${(Docker / version).value}",
+        "-t",
+        s"$imageNameWithoutVersion:latest",
+        "--push",
+        "."
+      )
+    },
+    // Run
     Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
+    // Test
+    Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
+    Test / fork := true,
     Test / envFileName := "backend/var/conf/test.env",
-    Test / envVars := (Test / envFromFile).value
+    Test / envVars := (Test / envFromFile).value,
+    // Copyright
+    headerLicense := Some(
+      HeaderLicense.Custom(
+        """|Copyright 2020 Giulio Mecocci
+           |
+           |All rights reserved.
+           |""".stripMargin
+      )
+    )
   )
 
 // Release
