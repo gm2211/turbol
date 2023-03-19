@@ -15,17 +15,17 @@ locals {
   digital_ocean_k8s_host       = data.digitalocean_kubernetes_cluster.k8s-turbol.endpoint
   digital_ocean_k8s_token      = data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].token
   digital_ocean_k8s_cluster_ca = base64decode(
-  data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
+    data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
   )
   // App
-  prod_app_name                = "turbol"
-  staging_app_name             = "turbol-staging"
-  app_port                     = 443
+  prod_app_name      = "turbol"
+  staging_app_name   = "turbol-staging"
+  app_port           = 443
   // Postgres
-  postgres_port                = 25060
+  postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
-  postgres_host                = "private-postgres-do-user-6593469-0.a.db.ondigitalocean.com"
-  postgres_superuser           = "doadmin"
+  postgres_host      = "private-postgres-do-user-6593469-0.a.db.ondigitalocean.com"
+  postgres_superuser = "doadmin"
 }
 
 // Modules
@@ -35,7 +35,7 @@ module "infra" {
   digital_ocean_k8s_cluster_ca  = local.digital_ocean_k8s_cluster_ca
   digital_ocean_k8s_host        = local.digital_ocean_k8s_host
   digital_ocean_k8s_token       = local.digital_ocean_k8s_token
-  digitalocean_api_token       = var.digitalocean_api_token
+  digitalocean_api_token        = var.digitalocean_api_token
   domain                        = local.domain
   external_dns_helm_stable_repo = "https://charts.bitnami.com/bitnami"
   helm_jetstack_repo            = "https://charts.jetstack.io"
@@ -51,6 +51,7 @@ module "prod" {
   environment_name            = "prod"
   app_name                    = local.prod_app_name
   app_version                 = var.prod_app_version
+  app_port                    = local.app_port
   dockerhub_password          = var.docker_hub_password
   domain                      = local.domain
   k8s_cluster_ca              = local.digital_ocean_k8s_cluster_ca

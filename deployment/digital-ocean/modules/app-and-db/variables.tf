@@ -1,6 +1,7 @@
 variable environment_name {}
 variable app_name {}
 variable app_version {}
+variable app_port {}
 variable dockerhub_password {}
 variable domain {}
 variable k8s_cluster_ca {}

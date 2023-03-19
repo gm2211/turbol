@@ -1,6 +1,4 @@
 locals {
-  app_port = 443
-
   postgres_database_name = var.environment_name
 }
 
@@ -8,7 +6,7 @@ module "app" {
   source                                = "../../../shared-terraform/modules/app"
   app_image_name                        = "turbol"
   app_name                              = var.app_name
-  app_port                              = local.app_port
+  app_port                              = var.app_port
   app_version                           = var.app_version
   dockerhub_username                    = "gm2211"
   dockerhub_password                    = var.dockerhub_password

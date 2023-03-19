@@ -17,7 +17,7 @@ locals {
   cert_issuer_email       = "turbol@gmeco.cc"
   // Hostnames
   prod_hostname           = "app.${var.domain}"
-  staging_hostname        = "app.${var.domain}"
+  staging_hostname        = "app-staging.${var.domain}"
 }
 
 // External DNS
