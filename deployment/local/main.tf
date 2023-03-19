@@ -22,5 +22,5 @@ module "app-config" {
   postgres_host                  = module.local-infra.postgres_host
   postgres_port                  = module.local-infra.postgres_port
   postgres_user                  = module.local-infra.postgres_superuser
-  postgres_password_env_var_name = module.local-infra.postgres_superuser_password_env_var_name
+  postgres_password_env_var_name = "POSTGRES_PASSWORD" # Must be kept in sync with `ete.env`
 }
