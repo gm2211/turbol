@@ -49,7 +49,8 @@ inThisBuild(
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
     publishArtifact := false,
-    publish / skip := true
+    publish / skip := true,
+    versionScheme := Some("semver-spec")
   )
 )
 
@@ -122,7 +123,6 @@ lazy val backend = project
     Docker / packageName := "turbol",
     version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerUpdateLatest := true,
-    dockerExposedPorts ++= Seq(8080),
     dockerAliases := Seq(
       DockerAlias(
         dockerRepository.value,

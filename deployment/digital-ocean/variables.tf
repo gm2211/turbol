@@ -9,7 +9,7 @@ variable postgres_superuser_password {
   sensitive = true
 }
 variable prod_app_version {
-  default = "0.0.0"
+  default = "1.0.0"
 }
 variable staging_app_version {
   default = "latest"

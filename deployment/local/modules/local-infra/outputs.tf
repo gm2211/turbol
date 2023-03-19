@@ -1,12 +1,3 @@
-output vault_address {
-  value = local.vault_address
-}
-output vault_dev_root_token {
-  value = local.vault_dev_root_token
-}
-output vault_service_port {
-  value = local.vault_service_port
-}
 output postgres_database_name {
   value = local.postgres_database_name
 }

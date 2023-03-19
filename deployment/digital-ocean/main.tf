@@ -20,7 +20,7 @@ locals {
   // App
   prod_app_name      = "turbol"
   staging_app_name   = "turbol-staging"
-  app_port           = 443
+  app_port           = 8050
   // Postgres
   postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
@@ -29,6 +29,14 @@ locals {
 }
 
 // Modules
+resource "kubernetes_secret" "postgres-password" {
+  metadata {
+    name = "postgres-password"
+  }
+  data = {
+    (local.postgres_password_env_var_key) = base64encode(var.postgres_superuser_password)
+  }
+}
 
 module "infra" {
   source                        = "./modules/infra"
