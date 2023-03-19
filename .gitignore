@@ -29,6 +29,7 @@
 
 # python
 *.pyc
+poetry.lock
 
 # vim
 *.swp

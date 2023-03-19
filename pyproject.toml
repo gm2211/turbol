@@ -3,10 +3,10 @@ name = "grib"
 version = "0.1.0"
 description = ""
 authors = ["Giulio Mecocci <gmecocci@outlook.com>"]
-readme = "README.md"
+readme = "readme.md"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.11"
 jupyter = "^1.0.0"
 numpy = "^1.24.2"
 matplotlib = "^3.7.0"
