@@ -125,7 +125,7 @@ lazy val backend = project
     // Docker
     dockerRepository := Some("docker.io"),
     dockerUsername := Some("gm2211"),
-    dockerBaseImage := "openjdk:19",
+    dockerBaseImage := "openjdk:19-jdk-bullseye",
     Docker / packageName := "turbol",
     version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerUpdateLatest := true,
