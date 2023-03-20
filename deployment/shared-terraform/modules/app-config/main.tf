@@ -1,6 +1,9 @@
 ########## App ##############
 # Locals
 locals {
+  install_secrets = {
+    postgres-password = var.postgres_password
+  }
   # Install
   install_config = {
     http-port            = var.app_port
@@ -9,7 +12,6 @@ locals {
       port                  = var.postgres_port
       database-name         = var.postgres_database_name
       postgres-user         = var.postgres_user
-      password_env_var_name = var.postgres_password_env_var_name
     }
   }
 

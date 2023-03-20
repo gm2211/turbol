@@ -3,11 +3,6 @@ Note: The environment variable `TF_VAR_digitalocean_root_token` is assumed to be
 
 1. Run script scripts/kube/prepare-cluster.sh
 2. Run: terraform init && terraform apply
-3. Uncomment vault module
-4. Run: terraform init && terraform apply
-
-Note: IF there are random issues with connecting to services such as vault via the registered domain, make sure that
-there aren't any old dns entries in the digitalocean Networking admin dashboard.
 
 # Deploy to digital ocean
 To deploy to digital ocean do: `terraform apply`
@@ -51,4 +46,3 @@ DOCKERHUB_USERNAME
 TERRAFORM_CLOUD_TOKEN
 TF_VAR_digitalocean_root_token # Can be same as DOCEAN_TOKEN
 TF_VAR_docker_hub_password
-TF_VAR_vault_root_token

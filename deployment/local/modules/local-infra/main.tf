@@ -4,7 +4,6 @@ provider "helm" {
     config_path    = "~/.kube/config"
   }
 }
-
 resource "random_password" "postgres_superuser_password" {
   length           = 25
   special          = true
@@ -18,7 +17,6 @@ locals {
   postgres_port                  = 5432
   postgres_superuser             = "postgres" # must be 'postgres' or else it won't have superuser privileges
   postgres_superuser_password    = random_password.postgres_superuser_password.result
-  postgres_password_env_var_name = "POSTGRES_PASSWORD"
 }
 
 resource "helm_release" "postgresql" {

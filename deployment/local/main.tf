@@ -7,6 +7,10 @@ resource "local_file" "install-yml" {
   filename = "${path.root}/install.yml"
   content  = yamlencode(module.app-config.install_config)
 }
+resource "local_file" "secrets-yml" {
+  filename = "${path.root}/secrets.yml"
+  content  = yamlencode(module.app-config.install_secrets)
+}
 
 // Modules
 
@@ -16,11 +20,11 @@ module "local-infra" {
 }
 
 module "app-config" {
-  source                         = "../shared-terraform/modules/app-config"
-  app_port                       = 8050
-  postgres_database_name         = module.local-infra.postgres_database_name
-  postgres_host                  = module.local-infra.postgres_host
-  postgres_port                  = module.local-infra.postgres_port
-  postgres_user                  = module.local-infra.postgres_superuser
-  postgres_password_env_var_name = "POSTGRES_PASSWORD" # Must be kept in sync with `ete.env`
+  source                 = "../shared-terraform/modules/app-config"
+  app_port               = 8050
+  postgres_database_name = module.local-infra.postgres_database_name
+  postgres_host          = module.local-infra.postgres_host
+  postgres_port          = module.local-infra.postgres_port
+  postgres_user          = module.local-infra.postgres_superuser
+  postgres_password      = module.local-infra.postgres_superuser_password
 }

@@ -88,6 +88,12 @@ lazy val dockerBuildxSettings = Seq(
     .value
 )
 
+lazy val grib = project
+  .in(file("grib"))
+
+lazy val deployment = project
+  .in(file("deployment"))
+
 lazy val root = project
   .in(file("."))
   .aggregate(backend)
@@ -138,7 +144,7 @@ lazy val backend = project
       )
     ),
     // Run
-      Compile / mainClass := Some ("com.gm2211.turbol.backend.Launcher"),
+    Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
     // Test
     Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
     Test / fork := true,

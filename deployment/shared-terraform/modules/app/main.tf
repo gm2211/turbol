@@ -6,13 +6,13 @@ provider "kubernetes" {
 }
 
 module "app-config" {
-  source                         = "../app-config"
-  app_port                       = var.app_port
-  postgres_database_name         = var.postgres_database_name
-  postgres_host                  = var.postgres_host
-  postgres_port                  = var.postgres_port
-  postgres_user                  = var.postgres_user
-  postgres_password_env_var_name = local.postgres_password_env_var_name
+  source                 = "../app-config"
+  app_port               = var.app_port
+  postgres_database_name = var.postgres_database_name
+  postgres_host          = var.postgres_host
+  postgres_port          = var.postgres_port
+  postgres_user          = var.postgres_user
+  postgres_password      = var.postgres_password
 }
 
 ########## App ##############
@@ -32,8 +32,11 @@ locals {
     (local.install_config_filename) = yamlencode(module.app-config.install_config),
     (local.runtime_config_filename) = yamlencode(module.app-config.runtime_config)
   }
-  postgres_password_env_var_name = "POSTGRES_PASSWORD"
-  postgres_password_env_var_key  = "password"
+  server_secrets_dir         = "/etc/conf/secrets"
+  server_secrets_volume_name = "server-install-secrets"
+  server_secrets_data        = {
+    (local.server_install_secrets_filename) = yamlencode(module.app-config.install_secrets)
+  }
 }
 resource "kubernetes_secret" "docker-hub-login" {
   metadata {
@@ -61,15 +64,12 @@ resource "kubernetes_config_map" "app-server-config" {
   }
   data = local.server_config_map_data
 }
-resource "kubernetes_secret" "postgres-password" {
+resource "kubernetes_secret" "app-server-install-secrets" {
   metadata {
-    name = "postgres-password"
+    name = "${var.app_name}-install-secrets"
   }
-  data = {
-    (local.postgres_password_env_var_key) = base64encode(var.postgres_password)
-  }
+  data = local.server_secrets_data
 }
-
 resource "kubernetes_deployment" "app" {
   metadata {
     name = var.app_name
@@ -124,6 +124,11 @@ resource "kubernetes_deployment" "app" {
             name       = "server-config"
             read_only  = true
           }
+          volume_mount {
+            mount_path = local.server_secrets_dir
+            name       = local.server_secrets_volume_name
+            read_only  = true
+          }
           env {
             name  = "INSTALL_CONFIG_OVERRIDES_PATH"
             value = "${local.server_configs_dir}/${local.install_config_filename}"
@@ -133,13 +138,8 @@ resource "kubernetes_deployment" "app" {
             value = "${local.server_configs_dir}/${local.runtime_config_filename}"
           }
           env {
-            name = local.postgres_password_env_var_name
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret.postgres-password.metadata[0].name
-                key  = local.postgres_password_env_var_key
-              }
-            }
+            name  = "INSTALL_SECRETS_PATH"
+            value = "${local.server_secrets_dir}/${local.server_install_secrets_filename}"
           }
         }
         volume {
@@ -148,6 +148,14 @@ resource "kubernetes_deployment" "app" {
             default_mode = "0444"
             // readonly
             name         = kubernetes_config_map.app-server-config.metadata[0].name
+          }
+        }
+        volume {
+          name = local.server_secrets_volume_name
+          secret {
+            default_mode = "0444"
+            // readonly
+            secret_name  = kubernetes_secret.app-server-install-secrets.metadata[0].name
           }
         }
       }

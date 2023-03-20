@@ -22,9 +22,7 @@ locals {
 
 // External DNS
 resource "helm_release" "external-dns" {
-  depends_on = [
-    kubernetes_manifest.install-cert-manager-issuer
-  ]
+  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
   name       = "external-dns"
   chart      = "external-dns"
   repository = var.external_dns_helm_stable_repo

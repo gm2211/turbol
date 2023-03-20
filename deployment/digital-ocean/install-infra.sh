@@ -1,4 +1,7 @@
 #!/bin/bash --
+
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.11.0/cert-manager.crds.yaml
+
 if terraform apply --target=module.infra --auto-approve; then 
   exit 0
 else 

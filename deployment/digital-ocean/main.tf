@@ -29,15 +29,6 @@ locals {
 }
 
 // Modules
-resource "kubernetes_secret" "postgres-password" {
-  metadata {
-    name = "postgres-password"
-  }
-  data = {
-    (local.postgres_password_env_var_key) = base64encode(var.postgres_superuser_password)
-  }
-}
-
 module "infra" {
   source                        = "./modules/infra"
   digital_ocean_k8s_cluster_ca  = local.digital_ocean_k8s_cluster_ca
@@ -55,20 +46,22 @@ module "infra" {
 }
 
 module "prod" {
-  source                      = "./modules/app-and-db"
-  environment_name            = "prod"
-  app_name                    = local.prod_app_name
-  app_version                 = var.prod_app_version
-  app_port                    = local.app_port
-  dockerhub_password          = var.docker_hub_password
-  domain                      = local.domain
-  k8s_cluster_ca              = local.digital_ocean_k8s_cluster_ca
-  k8s_host                    = local.digital_ocean_k8s_host
-  k8s_token                   = local.digital_ocean_k8s_token
-  postgres_host               = local.postgres_host
-  postgres_port               = local.postgres_port
-  postgres_superuser          = local.postgres_superuser
-  postgres_superuser_password = var.postgres_superuser_password
+  source                                = "../shared-terraform/modules/app"
+  app_image_name                        = "turbol"
+  app_name                              = local.prod_app_name
+  app_port                              = local.app_port
+  app_version                           = var.prod_app_version
+  dockerhub_username                    = "gm2211"
+  dockerhub_password                    = var.docker_hub_password
+  domain                                = local.domain
+  k8s_cluster_ca                        = local.digital_ocean_k8s_cluster_ca
+  k8s_cluster_host                      = local.digital_ocean_k8s_host
+  k8s_cluster_token                     = local.digital_ocean_k8s_token
+  postgres_database_name                = "prod"
+  postgres_host                         = local.postgres_host
+  postgres_port                         = local.postgres_port
+  postgres_user                         = local.postgres_superuser
+  postgres_password                     = var.postgres_superuser_password
 }
 
 #module "staging" {
@@ -85,6 +78,4 @@ module "prod" {
 #  postgres_port               = local.postgres_port
 #  postgres_superuser          = local.postgres_superuser
 #  postgres_superuser_password = var.postgres_superuser_password
-#  vault_address               = module.infra.vault_address
-#  vault_root_token            = var.vault_root_token
 #}
