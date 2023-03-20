@@ -21,6 +21,9 @@ locals {
   prod_app_name      = "turbol"
   staging_app_name   = "turbol-staging"
   app_port           = 8050
+  // Hostnames
+  prod_hostname           = "app.${local.domain}"
+  staging_hostname        = "app-staging.${local.domain}"
   // Postgres
   postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
@@ -39,10 +42,6 @@ module "infra" {
   external_dns_helm_stable_repo = "https://charts.bitnami.com/bitnami"
   helm_jetstack_repo            = "https://charts.jetstack.io"
   nginx_helm_stable_repo        = "https://kubernetes.github.io/ingress-nginx"
-  prod_app_name                 = local.prod_app_name
-  prod_app_port                 = local.app_port
-  staging_app_name              = local.staging_app_name
-  staging_app_port              = local.app_port
 }
 
 module "prod" {
@@ -79,3 +78,58 @@ module "prod" {
 #  postgres_superuser          = local.postgres_superuser
 #  postgres_superuser_password = var.postgres_superuser_password
 #}
+
+resource "kubernetes_ingress_v1" "main-ingress" {
+  metadata {
+    name        = "main-ingress"
+    annotations = {
+      "kubernetes.io/ingress.class"            = "nginx"
+      "certmanager.k8s.io/issuer"              = module.infra.cert_issuer_name
+      "certmanager.k8s.io/acme-challenge-type" = "dns01"
+      "certmanager.k8s.io/acme-dns01-provider" = "digitalocean"
+      "kubernetes.io/ingress.allow-http"       = false
+      "kubernetes.io/tls-acme"                 = true
+    }
+  }
+
+  spec {
+    tls {
+      hosts = [
+        local.prod_hostname,
+        local.staging_hostname
+      ]
+      // Needs to be different than "local.certIssuerSecretName"
+      secret_name = "main-ingress-auth-tls"
+    }
+    rule {
+      host = local.prod_hostname
+      http {
+        path {
+          backend {
+            service {
+              name = local.prod_app_name
+              port {
+                number = local.app_port
+              }
+            }
+          }
+        }
+      }
+    }
+    rule {
+      host = local.staging_hostname
+      http {
+        path {
+          backend {
+            service {
+              name = local.staging_app_name
+              port {
+                number = local.app_port
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

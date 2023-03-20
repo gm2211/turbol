@@ -15,9 +15,6 @@ locals {
   cert_issuer_name        = "letsencrypt-prod"
   cert_issuer_secret_name = "letsencrypt-prod-secret"
   cert_issuer_email       = "turbol@gmeco.cc"
-  // Hostnames
-  prod_hostname           = "app.${var.domain}"
-  staging_hostname        = "app-staging.${var.domain}"
 }
 
 // External DNS
@@ -162,62 +159,4 @@ resource "null_resource" "ingresses-should-depend-on-this" {
     kubernetes_manifest.install-cert-manager-issuer,
     helm_release.nginx-ingress
   ]
-}
-
-resource "kubernetes_ingress_v1" "main-ingress" {
-  depends_on = [
-    null_resource.ingresses-should-depend-on-this
-  ]
-  metadata {
-    name        = "main-ingress"
-    annotations = {
-      "kubernetes.io/ingress.class"            = "nginx"
-      "certmanager.k8s.io/issuer"              = local.cert_issuer_name
-      "certmanager.k8s.io/acme-challenge-type" = "dns01"
-      "certmanager.k8s.io/acme-dns01-provider" = "digitalocean"
-      "kubernetes.io/ingress.allow-http"       = false
-      "kubernetes.io/tls-acme"                 = true
-    }
-  }
-
-  spec {
-    tls {
-      hosts = [
-        local.prod_hostname,
-        local.staging_hostname
-      ]
-      // Needs to be different than "local.certIssuerSecretName"
-      secret_name = "main-ingress-auth-tls"
-    }
-    rule {
-      host = local.prod_hostname
-      http {
-        path {
-          backend {
-            service {
-              name = var.prod_app_name
-              port {
-                number = var.prod_app_port
-              }
-            }
-          }
-        }
-      }
-    }
-    rule {
-      host = local.staging_hostname
-      http {
-        path {
-          backend {
-            service {
-              name = var.staging_app_name
-              port {
-                number = var.staging_app_port
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 }
