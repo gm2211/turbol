@@ -1,4 +1,5 @@
 import au.com.onegeek.sbtdotenv.SbtDotenv.autoImport.{envFileName, envFromFile}
+import scala.sys.process._
 import com.typesafe.sbt.SbtGit
 import sbt.Keys.{libraryDependencies, resolvers}
 import sbt.{Compile, Def, Resolver}
@@ -88,6 +89,23 @@ lazy val dockerBuildxSettings = Seq(
     .value
 )
 
+// Build tasks
+lazy val buildFrontedDocker =
+  taskKey[Unit]("Runs build script for frontend docker image")
+
+// Modules
+lazy val frontend = project
+  .in(file("frontend"))
+  .settings(
+    buildFrontedDocker := {
+      val exitCode =
+        Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
+      if (exitCode != 0) {
+        throw new RuntimeException("Failed to build frontend docker image")
+      }
+    }
+  )
+
 lazy val grib = project
   .in(file("grib"))
 
@@ -108,6 +126,11 @@ lazy val backend = project
   .enablePlugins(JavaServerAppPackaging)
   .enablePlugins(DockerPlugin)
   .settings(dockerBuildxSettings)
+  .settings(
+    (Docker / publish) := (Docker / publish)
+      .dependsOn(frontend / buildFrontedDocker)
+      .value
+  )
   .settings(
     moduleName := "turbol-backend",
     Compile / ideOutputDirectory := Some(

@@ -1,4 +1,4 @@
-FROM caddy:2.6.4-alpine
+FROM caddy:2.6.4
 
 # Copy the Vue.js app dist to the image
 COPY dist /usr/share/caddy
