@@ -19,11 +19,13 @@ locals {
   )
   // App
   prod_app_name      = "turbol"
+  fe_prod_app_name   = "${local.prod_app_name}-fe"
   staging_app_name   = "turbol-staging"
-  app_port           = 8050
+  be_app_port        = 8081
+  fe_app_port        = 9000
   // Hostnames
-  prod_hostname           = "app.${local.domain}"
-  staging_hostname        = "app-staging.${local.domain}"
+  prod_hostname      = "app.${local.domain}"
+  staging_hostname   = "app-staging.${local.domain}"
   // Postgres
   postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
@@ -45,22 +47,26 @@ module "infra" {
 }
 
 module "prod" {
-  source                                = "../shared-terraform/modules/app"
-  app_image_name                        = "turbol"
-  app_name                              = local.prod_app_name
-  app_port                              = local.app_port
-  app_version                           = var.prod_app_version
-  dockerhub_username                    = "gm2211"
-  dockerhub_password                    = var.docker_hub_password
-  domain                                = local.domain
-  k8s_cluster_ca                        = local.digital_ocean_k8s_cluster_ca
-  k8s_cluster_host                      = local.digital_ocean_k8s_host
-  k8s_cluster_token                     = local.digital_ocean_k8s_token
-  postgres_database_name                = "prod"
-  postgres_host                         = local.postgres_host
-  postgres_port                         = local.postgres_port
-  postgres_user                         = local.postgres_superuser
-  postgres_password                     = var.postgres_superuser_password
+  source                 = "../shared-terraform/modules/app"
+  fe_app_image_name      = local.fe_prod_app_name
+  fe_app_name            = local.fe_prod_app_name
+  fe_app_port            = local.fe_app_port
+  fe_app_version         = var.prod_app_version
+  be_app_image_name      = local.prod_app_name
+  be_app_name            = local.prod_app_name
+  be_app_port            = local.be_app_port
+  be_app_version         = var.prod_app_version
+  dockerhub_username     = "gm2211"
+  dockerhub_password     = var.docker_hub_password
+  domain                 = local.domain
+  k8s_cluster_ca         = local.digital_ocean_k8s_cluster_ca
+  k8s_cluster_host       = local.digital_ocean_k8s_host
+  k8s_cluster_token      = local.digital_ocean_k8s_token
+  postgres_database_name = "prod"
+  postgres_host          = local.postgres_host
+  postgres_port          = local.postgres_port
+  postgres_user          = local.postgres_superuser
+  postgres_password      = var.postgres_superuser_password
 }
 
 #module "staging" {
@@ -107,9 +113,9 @@ resource "kubernetes_ingress_v1" "main-ingress" {
         path {
           backend {
             service {
-              name = local.prod_app_name
+              name = local.fe_prod_app_name
               port {
-                number = local.app_port
+                number = local.fe_app_port
               }
             }
           }
@@ -124,7 +130,7 @@ resource "kubernetes_ingress_v1" "main-ingress" {
             service {
               name = local.staging_app_name
               port {
-                number = local.app_port
+                number = local.be_app_port
               }
             }
           }

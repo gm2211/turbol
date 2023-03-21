@@ -30,7 +30,7 @@ object AppServer {
   val server: Resource[IO, Server] = EmberServerBuilder
     .default[IO]
     .withHost(ipv4"0.0.0.0")
-    .withPort(port"8050")
+    .withPort(port"8081")
     .withHttpApp(httpApp)
     .build
 }

@@ -16,7 +16,7 @@ npm run build
 
 # 2. Generates the Caddyfile to serve the Vue.js app
 cat <<EOF >Caddyfile
-:80 {
+:9000 {
   root * /usr/share/caddy
   file_server
   encode gzip
@@ -37,12 +37,12 @@ COPY dist /usr/share/caddy
 # Add the Caddyfile to the image
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Expose port 80
-EXPOSE 80
+# Expose port 9000
+EXPOSE 9000
 EOF
 
 # 4. Creates a Docker image named turbol and sets the version using git tag
-tag=$(git describe --tag)
+tag=$(git describe --tag --abbrev=0)
 image_name="docker.io/gm2211/turbol-fe"
 docker buildx build --platform=linux/arm64,linux/amd64 --push -t "${image_name}":"${tag}" .
 docker buildx build --platform=linux/arm64,linux/amd64 --push -t "${image_name}:latest" .

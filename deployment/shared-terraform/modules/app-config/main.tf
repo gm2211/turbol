@@ -6,7 +6,7 @@ locals {
   }
   # Install
   install_config = {
-    http-port            = var.app_port
+    http-port            = var.be_app_port
     database-config      = {
       hostname              = var.postgres_host
       port                  = var.postgres_port

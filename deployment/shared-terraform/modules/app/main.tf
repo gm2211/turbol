@@ -7,7 +7,7 @@ provider "kubernetes" {
 
 module "app-config" {
   source                 = "../app-config"
-  app_port               = var.app_port
+  be_app_port            = var.be_app_port
   postgres_database_name = var.postgres_database_name
   postgres_host          = var.postgres_host
   postgres_port          = var.postgres_port
@@ -18,8 +18,6 @@ module "app-config" {
 ########## App ##############
 # Locals
 locals {
-  # Network
-  app_label                       = var.app_name
   # Docker
   dockerhub_username_pass         = "${var.dockerhub_username}:${var.dockerhub_password}"
   docker_image_pull_secret_name   = kubernetes_secret.docker-hub-login.metadata[0].name
@@ -60,19 +58,19 @@ EOF
 }
 resource "kubernetes_config_map" "app-server-config" {
   metadata {
-    name = "${var.app_name}-server-config"
+    name = "${var.be_app_name}-server-config"
   }
   data = local.server_config_map_data
 }
 resource "kubernetes_secret" "app-server-install-secrets" {
   metadata {
-    name = "${var.app_name}-install-secrets"
+    name = "${var.be_app_name}-install-secrets"
   }
   data = local.server_secrets_data
 }
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment" "be-app" {
   metadata {
-    name = var.app_name
+    name = var.be_app_name
   }
   spec {
     revision_history_limit = 1
@@ -86,14 +84,14 @@ resource "kubernetes_deployment" "app" {
     }
     selector {
       match_labels = {
-        app = local.app_label
+        app = var.be_app_name
       }
     }
     template {
       metadata {
-        name   = var.app_name
+        name   = var.be_app_name
         labels = {
-          app = local.app_label
+          app = var.be_app_name
         }
       }
       spec {
@@ -103,9 +101,9 @@ resource "kubernetes_deployment" "app" {
         }
         container {
           image_pull_policy = "Always"
-          image             = "${var.dockerhub_username}/${var.app_image_name}:${var.app_version}"
+          image             = "${var.dockerhub_username}/${var.be_app_image_name}:${var.be_app_version}"
           // This is reading the image from the local docker registry
-          name              = var.app_name
+          name              = var.be_app_name
           resources {
             requests = {
               cpu    = "0.1"
@@ -117,7 +115,7 @@ resource "kubernetes_deployment" "app" {
             }
           }
           port {
-            container_port = var.app_port
+            container_port = var.be_app_port
           }
           volume_mount {
             mount_path = local.server_configs_dir
@@ -162,18 +160,88 @@ resource "kubernetes_deployment" "app" {
     }
   }
 }
-resource "kubernetes_service" "app-service" {
-  depends_on = [kubernetes_deployment.app]
+resource "kubernetes_deployment" "fe-app" {
   metadata {
-    name = var.app_name
+    name = var.fe_app_name
+  }
+  spec {
+    revision_history_limit = 1
+    replicas               = 1
+    strategy {
+      type = "RollingUpdate"
+      rolling_update {
+        max_surge       = 1
+        max_unavailable = 0
+      }
+    }
+    selector {
+      match_labels = {
+        app = var.fe_app_name
+      }
+    }
+    template {
+      metadata {
+        name   = var.fe_app_name
+        labels = {
+          app = var.fe_app_name
+        }
+      }
+      spec {
+        termination_grace_period_seconds = 30
+        image_pull_secrets {
+          name = local.docker_image_pull_secret_name
+        }
+        container {
+          image_pull_policy = "Always"
+          image             = "${var.dockerhub_username}/${var.fe_app_image_name}:${var.fe_app_version}"
+          // This is reading the image from the local docker registry
+          name              = var.fe_app_name
+          resources {
+            requests = {
+              cpu    = "0.1"
+              memory = "500Mi"
+            }
+            limits = {
+              cpu    = "0.3"
+              memory = "1Gi"
+            }
+          }
+          port {
+            container_port = var.fe_app_port
+          }
+        }
+      }
+    }
+  }
+}
+resource "kubernetes_service" "fe-app-service" {
+  depends_on = [kubernetes_deployment.fe-app]
+  metadata {
+    name = var.fe_app_name
   }
   spec {
     selector = {
-      app = local.app_label
+      app = var.fe_app_name
     }
     port {
-      port        = var.app_port
-      target_port = var.app_port
+      port        = var.fe_app_port
+      target_port = var.fe_app_port
+    }
+    type = "ClusterIP"
+  }
+}
+resource "kubernetes_service" "be-app-service" {
+  depends_on = [kubernetes_deployment.be-app]
+  metadata {
+    name = var.be_app_name
+  }
+  spec {
+    selector = {
+      app = var.be_app_name
+    }
+    port {
+      port        = var.be_app_port
+      target_port = var.be_app_port
     }
     type = "ClusterIP"
   }

@@ -6,5 +6,5 @@ COPY dist /usr/share/caddy
 # Add the Caddyfile to the image
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Expose port 80
-EXPOSE 80
+# Expose port 9000
+EXPOSE 9000
