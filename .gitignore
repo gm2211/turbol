@@ -6,6 +6,7 @@
 
 # idea
 /.idea/
+*.iml
 
 # logs
 **/log/*

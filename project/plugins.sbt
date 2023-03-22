@@ -15,5 +15,4 @@ addSbtPlugin("com.timushev.sbt" % "sbt-updates" % "0.5.1")
 //addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.8.2")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.6")
 // Linting
-addSbtPlugin("org.scalastyle" %% "scalastyle-sbt-plugin" % "1.0.0")
 addSbtPlugin("de.heikoseeberger" % "sbt-header" % "5.4.0")

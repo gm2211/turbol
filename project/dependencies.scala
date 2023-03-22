@@ -1,6 +1,5 @@
 import sbt.{Def, _}
 
-//scalastyle:off
 object dependencies {
   val versionOfScala = "3.2.2"
 

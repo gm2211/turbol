@@ -18,20 +18,27 @@ module "app-config" {
 ########## App ##############
 # Locals
 locals {
+  # App
+  fe_app_label                    = "fe-app"
+  fe_app_name                     = "turbol-fe"
+
+  be_app_label                    = "be-app"
+  be_app_name                     = "turbol"
   # Docker
   dockerhub_username_pass         = "${var.dockerhub_username}:${var.dockerhub_password}"
   docker_image_pull_secret_name   = kubernetes_secret.docker-hub-login.metadata[0].name
   # Server config
+  server_configs_volume_name      = "server-configs"
+  server_configs_dir              = "/etc/conf/plain"
   install_config_filename         = "install.yml"
   runtime_config_filename         = "runtime.yml"
-  server_install_secrets_filename = "install-secrets.yml"
-  server_configs_dir              = "/etc/conf/plain"
   server_config_map_data          = {
     (local.install_config_filename) = yamlencode(module.app-config.install_config),
     (local.runtime_config_filename) = yamlencode(module.app-config.runtime_config)
   }
+  server_secrets_volume_name = "server-secrets"
   server_secrets_dir         = "/etc/conf/secrets"
-  server_secrets_volume_name = "server-install-secrets"
+  server_install_secrets_filename = "install-secrets.yml"
   server_secrets_data        = {
     (local.server_install_secrets_filename) = yamlencode(module.app-config.install_secrets)
   }
@@ -58,19 +65,19 @@ EOF
 }
 resource "kubernetes_config_map" "app-server-config" {
   metadata {
-    name = "${var.be_app_name}-server-config"
+    name = "server-config"
   }
   data = local.server_config_map_data
 }
 resource "kubernetes_secret" "app-server-install-secrets" {
   metadata {
-    name = "${var.be_app_name}-install-secrets"
+    name = "server-secrets"
   }
   data = local.server_secrets_data
 }
 resource "kubernetes_deployment" "be-app" {
   metadata {
-    name = var.be_app_name
+    name = local.be_app_name
   }
   spec {
     revision_history_limit = 1
@@ -84,14 +91,13 @@ resource "kubernetes_deployment" "be-app" {
     }
     selector {
       match_labels = {
-        app = var.be_app_name
+        app = local.be_app_label
       }
     }
     template {
       metadata {
-        name   = var.be_app_name
         labels = {
-          app = var.be_app_name
+          app = local.be_app_label
         }
       }
       spec {
@@ -101,9 +107,9 @@ resource "kubernetes_deployment" "be-app" {
         }
         container {
           image_pull_policy = "Always"
-          image             = "${var.dockerhub_username}/${var.be_app_image_name}:${var.be_app_version}"
+          image             = "${var.dockerhub_username}/${local.be_app_name}:${var.be_app_version}"
           // This is reading the image from the local docker registry
-          name              = var.be_app_name
+          name              = local.be_app_name
           resources {
             requests = {
               cpu    = "0.1"
@@ -119,7 +125,7 @@ resource "kubernetes_deployment" "be-app" {
           }
           volume_mount {
             mount_path = local.server_configs_dir
-            name       = "server-config"
+            name       = local.server_configs_volume_name
             read_only  = true
           }
           volume_mount {
@@ -141,18 +147,16 @@ resource "kubernetes_deployment" "be-app" {
           }
         }
         volume {
-          name = "server-config"
+          name = local.server_configs_volume_name
           config_map {
-            default_mode = "0444"
-            // readonly
+            default_mode = "0444" # 0444 is read only
             name         = kubernetes_config_map.app-server-config.metadata[0].name
           }
         }
         volume {
           name = local.server_secrets_volume_name
           secret {
-            default_mode = "0444"
-            // readonly
+            default_mode = "0444" # 0444 is read only
             secret_name  = kubernetes_secret.app-server-install-secrets.metadata[0].name
           }
         }
@@ -162,7 +166,7 @@ resource "kubernetes_deployment" "be-app" {
 }
 resource "kubernetes_deployment" "fe-app" {
   metadata {
-    name = var.fe_app_name
+    name = local.fe_app_name
   }
   spec {
     revision_history_limit = 1
@@ -176,14 +180,13 @@ resource "kubernetes_deployment" "fe-app" {
     }
     selector {
       match_labels = {
-        app = var.fe_app_name
+        app = local.fe_app_label
       }
     }
     template {
       metadata {
-        name   = var.fe_app_name
         labels = {
-          app = var.fe_app_name
+          app = local.fe_app_label
         }
       }
       spec {
@@ -193,9 +196,9 @@ resource "kubernetes_deployment" "fe-app" {
         }
         container {
           image_pull_policy = "Always"
-          image             = "${var.dockerhub_username}/${var.fe_app_image_name}:${var.fe_app_version}"
+          image             = "${var.dockerhub_username}/${local.fe_app_name}:${var.fe_app_version}"
           // This is reading the image from the local docker registry
-          name              = var.fe_app_name
+          name              = local.fe_app_name
           resources {
             requests = {
               cpu    = "0.1"
@@ -217,11 +220,11 @@ resource "kubernetes_deployment" "fe-app" {
 resource "kubernetes_service" "fe-app-service" {
   depends_on = [kubernetes_deployment.fe-app]
   metadata {
-    name = var.fe_app_name
+    name = local.fe_app_name
   }
   spec {
     selector = {
-      app = var.fe_app_name
+      app = local.fe_app_label
     }
     port {
       port        = var.fe_app_port
@@ -233,11 +236,11 @@ resource "kubernetes_service" "fe-app-service" {
 resource "kubernetes_service" "be-app-service" {
   depends_on = [kubernetes_deployment.be-app]
   metadata {
-    name = var.be_app_name
+    name = local.be_app_name
   }
   spec {
     selector = {
-      app = var.be_app_name
+      app = local.be_app_label
     }
     port {
       port        = var.be_app_port

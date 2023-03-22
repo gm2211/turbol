@@ -53,8 +53,7 @@ trait BackendLogger {
   ): Unit
 }
 
-final class BackendLoggerImpl(private val delegate: Logger)
-    extends BackendLogger {
+final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogger {
   override def debug(message: String, args: Arg[_]*)(implicit
       line: sourcecode.Line,
       file: sourcecode.File
@@ -156,8 +155,8 @@ trait BackendLogging { self =>
     Logger(LoggerFactory.getLogger(clazz))
   )
 
-  protected def clazz: Class[_] = self.getClass
-  def safe[T](name: String, value: T): SafeArg[T] = SafeArg(name, value)
+  protected def clazz: Class[_]                       = self.getClass
+  def safe[T](name: String, value: T): SafeArg[T]     = SafeArg(name, value)
   def unsafe[T](name: String, value: T): UnsafeArg[T] = UnsafeArg(name, value)
 }
 object BackendLogging {
@@ -165,7 +164,7 @@ object BackendLogging {
       file: sourcecode.File,
       line: sourcecode.Line
   ): String = {
-    val filename = file.value.split("/").last
+    val filename               = file.value.split("/").last
     val fileAndLineNum: String = s"[file: $filename, line: ${line.value}]"
     fileAndLineNum
   }

@@ -10,30 +10,14 @@ import scala.sys.process.Process
 
 import java.nio.charset.StandardCharsets
 
-name := "turbol"
+name         := "turbol"
 scalaVersion := dependencies.versionOfScala
-Compile / scalacOptions ++= Seq(
-  "-Ypartial-unification",
-  "-new-syntax",
-  "-rewrite",
-  "-deprecation"
-)
-Compile / javacOptions ++= Seq(
-  "-source",
-  "19",
-  "-target",
-  "19",
-  "-Xlint:unchecked",
-  "-Xlint:deprecation",
-  "-Xmx3500m",
-  "-Xss4M"
-)
 
 enablePlugins(GitVersioning)
 enablePlugins(UniversalPlugin)
 
 val versionRegex = "[v]?([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
-git.baseVersion := "0.0.0"
+git.baseVersion    := "0.0.0"
 git.useGitDescribe := true
 git.gitTagToVersionNumber := {
   case versionRegex(version, "")     => Some(version)
@@ -45,18 +29,33 @@ inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
     organization := "com.gm2211.turbol",
-    envFileName := "run.env",
+    envFileName  := "run.env",
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
     publishArtifact := false,
-    publish / skip := true,
-    versionScheme := Some("semver-spec")
+    publish / skip  := true,
+    versionScheme   := Some("semver-spec"),
+    Compile / scalacOptions ++= Seq(
+      "-new-syntax",
+      "-rewrite",
+      "-deprecation",
+      "-feature"
+    ),
+    Compile / javacOptions ++= Seq(
+      "-source",
+      "19",
+      "-target",
+      "19",
+      "-Xlint:unchecked",
+      "-Xlint:deprecation",
+      "-Xmx3500m",
+      "-Xss4M"
+    )
   )
 )
 
 // Reusable settings for all modules
-lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
 lazy val ensureDockerBuildx =
   taskKey[Unit]("Ensure that docker buildx configuration exists")
 lazy val dockerBuildWithBuildx =
@@ -133,25 +132,19 @@ lazy val backend = project
   )
   .settings(
     moduleName := "turbol-backend",
-    Compile / ideOutputDirectory := Some(
-      target.value.getParentFile / "out/production"
-    ),
     // Linting and formatting
-    scalastyleFailOnWarning := true,
-    compileScalastyle := (Compile / scalastyle).toTask("").value,
     compile := (
-      (Compile / compile) dependsOn (compileScalastyle, Compile / scalafmtAll, Compile / scalafmtCheck)
+      (Compile / compile) dependsOn (Compile / scalafmtAll, Compile / scalafmtCheck)
     ).value,
     // Deps
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
     // Docker
-    dockerRepository := Some("docker.io"),
-    dockerUsername := Some("gm2211"),
-    dockerBaseImage := "openjdk:19-jdk-bullseye",
+    dockerRepository     := Some("docker.io"),
+    dockerUsername       := Some("gm2211"),
+    dockerBaseImage      := "openjdk:19-jdk-bullseye",
     Docker / packageName := "turbol",
-    version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
-    dockerUpdateLatest := true,
+    version              := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerAliases := Seq(
       DockerAlias(
         dockerRepository.value,
@@ -169,10 +162,9 @@ lazy val backend = project
     // Run
     Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
     // Test
-    Test / ideOutputDirectory := Some(target.value.getParentFile / "out/test"),
-    Test / fork := true,
+    Test / fork        := true,
     Test / envFileName := "backend/var/conf/test.env",
-    Test / envVars := (Test / envFromFile).value,
+    Test / envVars     := (Test / envFromFile).value,
     // Copyright
     headerLicense := Some(
       HeaderLicense.Custom(
@@ -208,9 +200,9 @@ lazy val initialVcsChecks = {
         )
     }
 
-    val extracted = Project.extract(st)
+    val extracted         = Project.extract(st)
     val hasUntrackedFiles = vcs(st).hasUntrackedFiles
-    val hasModifiedFiles = vcs(st).hasModifiedFiles
+    val hasModifiedFiles  = vcs(st).hasModifiedFiles
     if (hasModifiedFiles) {
       sys.error(s"""Aborting release: unstaged modified files
          |
@@ -283,7 +275,7 @@ updateVersionToDeploy := {
   )(file("."), Logger.Null)
 }
 
-releaseTagName := { releaseVersionTask.value }
+releaseTagName          := { releaseVersionTask.value }
 releaseUseGlobalVersion := false
 releaseProcess := Seq(
   ReleaseStep((x: State) => x, initialVcsChecks),

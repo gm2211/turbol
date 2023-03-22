@@ -18,14 +18,10 @@ locals {
     data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
   )
   // App
-  prod_app_name      = "turbol"
-  fe_prod_app_name   = "${local.prod_app_name}-fe"
-  staging_app_name   = "turbol-staging"
   be_app_port        = 8081
   fe_app_port        = 9000
   // Hostnames
   prod_hostname      = "app.${local.domain}"
-  staging_hostname   = "app-staging.${local.domain}"
   // Postgres
   postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
@@ -48,12 +44,8 @@ module "infra" {
 
 module "prod" {
   source                 = "../shared-terraform/modules/app"
-  fe_app_image_name      = local.fe_prod_app_name
-  fe_app_name            = local.fe_prod_app_name
   fe_app_port            = local.fe_app_port
   fe_app_version         = var.prod_app_version
-  be_app_image_name      = local.prod_app_name
-  be_app_name            = local.prod_app_name
   be_app_port            = local.be_app_port
   be_app_version         = var.prod_app_version
   dockerhub_username     = "gm2211"
@@ -69,41 +61,23 @@ module "prod" {
   postgres_password      = var.postgres_superuser_password
 }
 
-#module "staging" {
-#  source                      = "./modules/app-and-db"
-#  environment_name            = "staging"
-#  app_name                    = local.staging_app_name
-#  app_version                 = var.staging_app_version
-#  dockerhub_password          = var.docker_hub_password
-#  domain                      = local.domain
-#  k8s_cluster_ca              = local.digital_ocean_k8s_cluster_ca
-#  k8s_host                    = local.digital_ocean_k8s_host
-#  k8s_token                   = local.digital_ocean_k8s_token
-#  postgres_host               = local.postgres_host
-#  postgres_port               = local.postgres_port
-#  postgres_superuser          = local.postgres_superuser
-#  postgres_superuser_password = var.postgres_superuser_password
-#}
-
 resource "kubernetes_ingress_v1" "main-ingress" {
   metadata {
     name        = "main-ingress"
     annotations = {
-      "kubernetes.io/ingress.class"            = "nginx"
-      "certmanager.k8s.io/issuer"              = module.infra.cert_issuer_name
-      "certmanager.k8s.io/acme-challenge-type" = "dns01"
-      "certmanager.k8s.io/acme-dns01-provider" = "digitalocean"
-      "kubernetes.io/ingress.allow-http"       = false
-      "kubernetes.io/tls-acme"                 = true
+      "kubernetes.io/ingress.class"                = "nginx"
+      "certmanager.k8s.io/issuer"                  = module.infra.cert_issuer_name
+      "certmanager.k8s.io/acme-challenge-type"     = "dns01"
+      "certmanager.k8s.io/acme-dns01-provider"     = "digitalocean"
+      "kubernetes.io/ingress.allow-http"           = false
+      "kubernetes.io/tls-acme"                     = true
+#      "nginx.ingress.kubernetes.io/configuration-snippet" = "rewrite ^/api(/|$)(.*)$ /$2 break;"
     }
   }
 
   spec {
     tls {
-      hosts = [
-        local.prod_hostname,
-        local.staging_hostname
-      ]
+      hosts       = [local.prod_hostname]
       // Needs to be different than "local.certIssuerSecretName"
       secret_name = "main-ingress-auth-tls"
     }
@@ -111,26 +85,25 @@ resource "kubernetes_ingress_v1" "main-ingress" {
       host = local.prod_hostname
       http {
         path {
+          path      = "/api"
+          path_type = "Prefix"
           backend {
             service {
-              name = local.fe_prod_app_name
+              name = module.prod.be_service_name
               port {
-                number = local.fe_app_port
+                number = local.be_app_port
               }
             }
           }
         }
-      }
-    }
-    rule {
-      host = local.staging_hostname
-      http {
         path {
+          path      = "/"
+          path_type = "Prefix"
           backend {
             service {
-              name = local.staging_app_name
+              name = module.prod.fe_service_name
               port {
-                number = local.be_app_port
+                number = local.fe_app_port
               }
             }
           }

@@ -1,11 +1,7 @@
-variable fe_app_name {}
-variable fe_app_image_name {}
-variable fe_app_port {}
 variable fe_app_version {}
-variable be_app_image_name {}
-variable be_app_name {}
-variable be_app_port {}
+variable fe_app_port {}
 variable be_app_version {}
+variable be_app_port {}
 variable dockerhub_password {}
 variable dockerhub_username {}
 variable domain {}
