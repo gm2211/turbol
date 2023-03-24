@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { FlightNumber, FlightPlan } from '@/objects/flights/flights'
 import axios from 'axios'
 
 interface FlightsState {
@@ -27,15 +28,3 @@ export const useFlightsStore = defineStore('flights', {
     }
   }
 })
-
-type FlightNumber = string
-
-interface FlightPlan {
-  flightNumber: FlightNumber
-  waypoints: Waypoint[]
-}
-
-interface Waypoint {
-  lat: number
-  lon: string
-}
