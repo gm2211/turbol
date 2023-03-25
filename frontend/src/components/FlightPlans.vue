@@ -12,7 +12,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useFlightsStore } from '../stores/flights-store'
+import { useFlightsStore } from '@/stores/flights-store'
 
 const flightsStore = useFlightsStore()
 const flight123 = computed(() => {
