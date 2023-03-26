@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import FlightsView from '../views/FlightsView.vue'
+import FlightsView from '../views/TurbulenceView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

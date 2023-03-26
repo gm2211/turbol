@@ -2,5 +2,7 @@
 import FlightPlans from '../components/FlightPlans.vue'</script>
 
 <template>
-  <FlightPlans/>
+  <v-row class="fill-height">
+    <FlightPlans/>
+  </v-row>
 </template>

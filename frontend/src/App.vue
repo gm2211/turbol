@@ -8,8 +8,8 @@ import NavBar from "@/components/layout/NavBar.vue";</script>
     <v-app>
       <AppBar/>
       <NavBar/>
-      <v-main>
-        <v-container fluid>
+      <v-main class="bg">
+        <v-container fluid class="fill-height">
           <RouterView/>
         </v-container>
       </v-main>

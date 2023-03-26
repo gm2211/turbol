@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import "../../assets/style/main.css"</script>
+import "../../assets/style/base.css"</script>
 <template>
-  <v-app-bar
-      style="box-shadow: 0px 1px 3px #000000;"
-      color="var(--my-grey)">
+  <v-app-bar color="var(--my-blue)">
     <v-row no-gutters>
-      <v-col></v-col>
+      <v-col/>
       <v-col class="v-col-md-auto mx-auto">
         <v-avatar style="min-height: 64px;width: 200px">
           <v-img :src="image" cover alt="Turbol"/>
         </v-avatar>
       </v-col>
-      <v-col></v-col>
+      <v-col/>
     </v-row>
   </v-app-bar>
 </template>
