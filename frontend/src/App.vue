@@ -9,7 +9,7 @@ import NavBar from "@/components/layout/NavBar.vue";</script>
       <AppBar/>
       <NavBar/>
       <v-main class="bg">
-        <v-container fluid class="fill-height">
+        <v-container fluid class="fill-height pt-1 pb-1">
           <RouterView/>
         </v-container>
       </v-main>

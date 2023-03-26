@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import FlightPlans from '../components/FlightPlans.vue'</script>
+import FlightSearch from '../components/FlightSearch.vue'</script>
 
 <template>
   <v-row class="fill-height">
-    <FlightPlans/>
+    <FlightSearch/>
   </v-row>
 </template>

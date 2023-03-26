@@ -10,6 +10,7 @@ import {createVuetify} from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
+import '@mdi/font/css/materialdesignicons.css';
 import './assets/style/base.css'
 
 const vuetify = createVuetify({
@@ -34,4 +35,4 @@ app.mount('#app')
 
 // Uncomment when local dev
 import axios from "axios";
-axios.defaults.baseURL = "localhost:8080"
+axios.defaults.baseURL = "http://localhost:8081"

@@ -6,7 +6,7 @@ import "../../assets/style/base.css"</script>
       <v-col/>
       <v-col class="v-col-md-auto mx-auto">
         <v-avatar style="min-height: 64px;width: 200px">
-          <v-img :src="image" cover alt="Turbol"/>
+          <v-img :src="logo" cover alt="Turbol"/>
         </v-avatar>
       </v-col>
       <v-col/>
@@ -15,12 +15,12 @@ import "../../assets/style/base.css"</script>
 </template>
 
 <script lang="ts">
-import image from "../../assets/icons/logo.png"
+import logo from "../../assets/icons/logo.png"
 
 export default {
   data() {
     return {
-      image: image
+      logo: logo
     }
   }
 }
