@@ -26,6 +26,7 @@ trait BackendSerialization:
       decodeJson(string)(decoder)
     }.flatMap(_.toTry)
   }
+
   extension (json: Json) {
     def parse[T](implicit d: Decoder[T]): Try[T] =
       Try { json.as[T] }.flatMap(_.toTry)

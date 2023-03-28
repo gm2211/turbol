@@ -10,125 +10,173 @@ import com.gm2211.turbol.backend.logging.{Arg, SafeArg, UnsafeArg}
 import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
 
-trait BackendLogger {
-  def debug(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+trait BackendLogger extends Args {
+  def debug(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
-  def debug(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
-  ): Unit
-  def info(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
-  ): Unit
-  def info(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  def debug(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
   def info(
-      message: String,
-      cause: Throwable,
-      args: Arg[_]*
+    message: String,
+    args: Arg[_]*
   )(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
-  def warn(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  def info(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
-  def warn(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  def info(
+    message: String,
+    cause: Throwable,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
-  def error(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  def warn(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
-  def error(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  def warn(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
+  ): Unit
+  def error(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
+  ): Unit
+  def error(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit
 }
 
 final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogger {
-  override def debug(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def debug(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenDebugEnabled {
       logWithArgs(delegate.debug(_), message, args)
     }
-  override def debug(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def debug(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenDebugEnabled {
       delegate.debug(message, cause)
     }
-  override def info(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def info(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenInfoEnabled {
       logWithArgs(delegate.info(_), message, args)
     }
-  override def info(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def info(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenInfoEnabled {
       delegate.info(message, cause)
     }
   override def info(
-      message: String,
-      cause: Throwable,
-      args: Arg[_]*
+    message: String,
+    cause: Throwable,
+    args: Arg[_]*
   )(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenInfoEnabled {
       logWithArgs(delegate.info(_), message, args)
     }
-  override def warn(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def warn(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenWarnEnabled {
       logWithArgs(delegate.warn(_), message, args)
     }
-  override def warn(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def warn(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenWarnEnabled {
       delegate.warn(message, cause)
     }
-  override def error(message: String, args: Arg[_]*)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def error(
+    message: String,
+    args: Arg[_]*
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenErrorEnabled {
       logWithArgs(delegate.error(_), message, args)
     }
-  override def error(message: String, cause: Throwable)(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+  override def error(
+    message: String,
+    cause: Throwable
+  )(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit =
     delegate.whenErrorEnabled {
       delegate.error(message, cause)
     }
 
   private def logWithArgs(
-      loggerMethod: String => Unit,
-      message: => String,
-      args: => Seq[Arg[_]]
+    loggerMethod: String => Unit,
+    message: => String,
+    args: => Seq[Arg[_]]
   )(implicit
-      line: sourcecode.Line,
-      file: sourcecode.File
+    line: sourcecode.Line,
+    file: sourcecode.File
   ): Unit = {
     val safeArgs: Seq[SafeArg[_]] = args.collect { case arg: SafeArg[_] => arg }
     val unsafeArgs: Seq[UnsafeArg[_]] = args.collect { case arg: UnsafeArg[_] =>
@@ -151,20 +199,19 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
 }
 
 trait BackendLogging { self =>
-  protected val log: BackendLogger = new BackendLoggerImpl(
-    Logger(LoggerFactory.getLogger(clazz))
-  )
+  protected val rawLogger: Logger = Logger(LoggerFactory.getLogger(clazz))
+  protected val log: BackendLogger = new BackendLoggerImpl(rawLogger)
 
-  protected def clazz: Class[_]                       = self.getClass
-  def safe[T](name: String, value: T): SafeArg[T]     = SafeArg(name, value)
+  protected def clazz: Class[_] = self.getClass
+  def safe[T](name: String, value: T): SafeArg[T] = SafeArg(name, value)
   def unsafe[T](name: String, value: T): UnsafeArg[T] = UnsafeArg(name, value)
 }
 object BackendLogging {
   def getFileNameAndLineNumString(
-      file: sourcecode.File,
-      line: sourcecode.Line
+    file: sourcecode.File,
+    line: sourcecode.Line
   ): String = {
-    val filename               = file.value.split("/").last
+    val filename = file.value.split("/").last
     val fileAndLineNum: String = s"[file: $filename, line: ${line.value}]"
     fileAndLineNum
   }

@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-package com.gm2211.turbol.backend.objects.flights
+package com.gm2211.turbol.backend.objects.api.flights
 
 import io.circe.{Encoder, Json}
 
