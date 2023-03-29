@@ -15,7 +15,9 @@ import scala.util.Try
 
 trait BackendSerialization:
 
-  implicit val customConfig: Configuration = Configuration.default.withDefaults
+  implicit val customConfig: Configuration = Configuration
+    .default
+    .withDefaults
     .withDiscriminator("@type") // same as @JsonTypeInfo(property = "@type")
 
   extension [T](value: T) {

@@ -5,11 +5,11 @@ object dependencies {
 
   // Functional
   val fs2Version            = "3.6.1"
-  val zioVersion            = "2.0.9"
+  val zioVersion            = "2.0.10"
   val zioInteropCatsVersion = "23.0.0.0"
 
   // Logging
-  val logbackVersion      = "1.4.5"
+  val logbackVersion      = "1.4.6"
   val scalaLoggingVersion = "3.9.5"
 
   // Reflection / macros
@@ -46,6 +46,7 @@ object dependencies {
       "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
       // Logging
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
+      "ch.qos.logback" % "logback-classic" % logbackVersion,
       // Reflection / macros
       "com.lihaoyi" %% "sourcecode" % lihaoyiSourcecodeVersion,
       // Serialization

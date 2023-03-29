@@ -25,9 +25,9 @@ object MoreSchedulers extends BackendLogging {
     *      reached and no available thread
     */
   def boundedCached(
-      name: String,
-      maxThreads: Int,
-      keepAliveTime: FiniteDuration = FiniteDuration(60, TimeUnit.SECONDS)
+    name: String,
+    maxThreads: Int,
+    keepAliveTime: FiniteDuration = FiniteDuration(60, TimeUnit.SECONDS)
   ): ExecutorService = {
 
     require(maxThreads > 0, "maxThreads > 0")
@@ -77,9 +77,9 @@ object MoreSchedulers extends BackendLogging {
       *   exit).
       */
     def apply(
-        name: String,
-        reporter: Throwable => Unit,
-        daemonic: Boolean
+      name: String,
+      reporter: Throwable => Unit,
+      daemonic: Boolean
     ): ThreadFactory = { (r: Runnable) =>
       {
         val thread = new Thread(r)

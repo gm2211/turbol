@@ -11,5 +11,5 @@ import io.circe.{Encoder, Json}
 opaque type FlightNumber <: String = String
 object FlightNumber {
   def apply(value: String): FlightNumber = value
-  given Encoder[FlightNumber]            = (a: FlightNumber) => Json.fromString(a)
+  given Encoder[FlightNumber] = (a: FlightNumber) => Json.fromString(a)
 }

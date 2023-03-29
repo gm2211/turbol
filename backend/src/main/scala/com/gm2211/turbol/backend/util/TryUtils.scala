@@ -39,7 +39,7 @@ trait TryUtils {
     def toFuture: Future[T] =
       tr match {
         case Failure(exception) => Future.failed(exception)
-        case Success(value)     => Future.successful(value)
+        case Success(value) => Future.successful(value)
       }
   }
 }

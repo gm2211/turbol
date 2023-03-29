@@ -1,3 +1,9 @@
+/*
+ * Copyright 2020 Giulio Mecocci
+ *
+ * All rights reserved.
+ */
+
 package com.gm2211.turbol.backend.config
 
 import com.gm2211.turbol.backend.logging.BackendLogging
@@ -22,7 +28,7 @@ class ConfigWatcher[T: Decoder] extends BackendLogging with ConfigSerialization 
 
     val createWatcher: ZIO[Any, Throwable, WatchService] = for
       watcher <- ZIO.attempt(FileSystems.getDefault.newWatchService())
-      _       <- ZIO.log(s"Registering path with watcher $configDirPath")
+      _ <- ZIO.log(s"Registering path with watcher $configDirPath")
       _ <- ZIO.attempt(
         configDirPath.register(
           watcher,
@@ -34,21 +40,21 @@ class ConfigWatcher[T: Decoder] extends BackendLogging with ConfigSerialization 
     val configRef: Ref[T] =
       Unsafe.unsafe { implicit unsafe =>
         val ref: UIO[Ref[T]] = for
-          initialConfig: T <- readConfig(configDirPath).orElse(ZIO.succeed(orDefault))
-          configRef        <- Ref.make(initialConfig)
+          initialConfig: T <- readConfig(path).orElse(ZIO.succeed(orDefault))
+          configRef <- Ref.make(initialConfig)
         yield configRef
 
         Runtime.default.unsafe.run(ref).getOrThrowFiberFailure()
       }
 
     val watcherLoop: Task[Unit] = for
-      watcher  <- createWatcher.retry(Schedule.forever).memoize.flatten
+      watcher <- createWatcher.retry(Schedule.forever).memoize.flatten
       watchKey <- ZIO.attempt(watcher.take())
-      _        <- ZIO.attempt(watchKey.pollEvents())
-      _        <- ZIO.attempt(watchKey.reset())
-      _        <- ZIO.log("Detected change in config dir")
-      config   <- readConfig(path)
-      _        <- configRef.set(config)
+      _ <- ZIO.attempt(watchKey.pollEvents())
+      _ <- ZIO.attempt(watchKey.reset())
+      _ <- ZIO.log("Detected change in config dir")
+      config <- readConfig(path)
+      _ <- configRef.set(config)
     yield ()
 
     watcherLoop
@@ -58,11 +64,13 @@ class ConfigWatcher[T: Decoder] extends BackendLogging with ConfigSerialization 
     configRef
   }
 
-  private def readConfig(configPath: Path): Task[T] = {
+  private def readConfig(path: Path): Task[T] = {
     ZIO.fromTry(
-      configPath.toFile.fromYaml
-        .ifSuccess(_ => log.info("Successfully read config", safe("configPath", configPath)))
-        .ifFailure(error => log.info("Failed to read config", error, safe("configPath", configPath)))
+      path
+        .toFile
+        .fromYaml
+        .ifSuccess(_ => log.info("Successfully read config", safe("configPath", path)))
+        .ifFailure(error => log.info(s"Failed to read config", error, safe("configPath", path)))
     )
   }
 }
