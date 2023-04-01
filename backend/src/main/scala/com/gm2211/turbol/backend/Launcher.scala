@@ -7,77 +7,65 @@
 package com.gm2211.turbol.backend
 
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{Async, ExitCode, IO, IOApp}
+import cats.implicits.*
+import com.comcast.ip4s.Port
 import com.gm2211.turbol.backend.config.{ConfigWatcher, InstallConfig, RuntimeConfig}
 import com.gm2211.turbol.backend.logging.BackendLogging
-import com.gm2211.turbol.backend.util.MoreSchedulers
-import io.circe.Decoder
+import com.gm2211.turbol.backend.server.RuntimeEnvTypes.RuntimeEnv
+import com.gm2211.turbol.backend.util.{ConfigSerialization, MoreSchedulers}
 import io.circe.derivation.Configuration
+import io.circe.{Decoder, Encoder}
+import org.http4s.circe.{jsonEncoderOf, jsonOf}
+import org.http4s.{EntityDecoder, EntityEncoder}
+import zio.interop.catz.*
+import zio.logging.LogFormat
+import zio.logging.backend.SLF4J
 import zio.stream.ZStream
-import zio.{Queue, Ref, Unsafe, ZIO}
+import zio.{Queue, Ref, Runtime, Scope, ULayer, Unsafe, ZEnvironment, ZIO, ZIOAppArgs, ZLayer}
 
 import java.nio.file.Paths
 import java.util.concurrent.{Executors, ScheduledExecutorService}
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.*
+import scala.io.Source
 import scala.util.Success
+import zio.interop.catz.*
 
-object Launcher extends IOApp with BackendLogging {
-  override protected def runtime: IORuntime = createIORuntime()
+object Launcher extends CatsApp with ConfigSerialization {
 
-  override def run(args: List[String]): IO[ExitCode] = {
-    import com.gm2211.turbol.backend.util.ConfigSerialization.*
-    import io.circe.generic.auto.*
+  override val runtime: zio.Runtime[Any] = Runtime.default.withEnvironment(ZEnvironment())
 
-    val configuration: Decoder[RuntimeConfig] = summon[Decoder[RuntimeConfig]]
+  override val bootstrap: ZLayer[Any, Any, Unit] =
+    zio.Runtime.removeDefaultLoggers >>> SLF4J.slf4j(LogFormat.line + LogFormat.cause)
 
-    val installConfig = InstallConfig(devMode = true)
-    val configWatcher = new ConfigWatcher[RuntimeConfig](using Decoder.derivedConfigured)
+  private val appLayer: ULayer[RuntimeEnv] = ZLayer.make[RuntimeEnv](
+    Scope.default,
+    installConfig
+  )
 
-    println("HHHHHH")
-    println(configWatcher.watchConfig(Paths.get("/tmp/runtime.yml"), RuntimeConfig()).get)
-    println("GGGGG")
+  override def run: ZIO[ZIOAppArgs with Scope, Any, Any] = {
+    def appServer: ZIO[RuntimeEnv, Serializable, Nothing] =
+      for
+        install <- ZIO.service[InstallConfig]
+        server <- AppServer.createServer(install)
+      yield server
 
-    AppServer(installConfig)
-      .createServer
-      .use(_server => IO.never /* never release server */ )
-      .as(ExitCode.Success)
+    ZIO.logInfo("DontLetIgnore app start") *> appServer
+      .provideLayer(appLayer)
+      .tapError(error => ZIO.logError(s"Error $error"))
+      .tapDefect(throwable => ZIO.logError(s"Defect: $throwable"))
+      .exitCode
   }
 
-  private def createIORuntime(
-  ): IORuntime = {
-    IORuntime
-      .builder()
-      .setScheduler(
-        Scheduler.fromScheduledExecutor(
-          Executors.newScheduledThreadPool(
-            4,
-            MoreSchedulers.threadFactory("main-scheduler")
-          )
-        ),
-        (
-        ) => log.info("Shutting down scheduler")
-      )
-      .setBlocking(
-        ExecutionContext.fromExecutorService(
-          MoreSchedulers.boundedCached("blocking", 100, 1.minute)
-        ),
-        (
-        ) => log.info("Shutting down blocking scheduler")
-      )
-      .setCompute(
-        ExecutionContext.fromExecutorService(
-          MoreSchedulers.boundedCached("compute", 100, 1.minute)
-        ),
-        (
-        ) => log.info("Shutting down compute")
-      )
-      .setFailureReporter(throwable => log.info("Unhandled error ", throwable))
-      .addShutdownHook(
-        (
-        ) => log.info("Shutting down IO runtime")
-      )
-      .build()
+  private def installConfig: ULayer[InstallConfig] = ZLayer.fromZIO {
+    (
+      for
+        _ <- ZIO.logDebug("Constructing config layer")
+        loaded <- ZIO
+          .fromTry(Source.fromFile("/tmp/install.yml").fromYaml[InstallConfig])
+          .mapError(e => new IllegalArgumentException("Cannot read install config", e))
+      yield loaded
+    ).catchAll(e => ZIO.die(e))
   }
-
 }

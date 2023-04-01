@@ -40,7 +40,8 @@ inThisBuild(
       "-new-syntax",
       "-rewrite",
       "-deprecation",
-      "-feature"
+      "-feature",
+      "-Yretain-trees"
     ),
     Compile / javacOptions ++= Seq(
       "-source",

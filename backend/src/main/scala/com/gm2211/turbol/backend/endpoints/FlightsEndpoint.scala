@@ -9,16 +9,20 @@ package com.gm2211.turbol.backend.endpoints
 import cats.effect.IO
 import com.gm2211.turbol.backend.objects.api.flights.{FlightNumber, FlightPlan}
 import com.gm2211.turbol.backend.objects.api.location.GPSLocation
+import com.gm2211.turbol.backend.server.RuntimeEnvTypes.AppTask
 import com.gm2211.turbol.backend.util.BackendSerialization
 import io.circe.generic.auto.*
 import org.http4s.HttpRoutes
 import org.http4s.dsl.io.*
+import zio.interop.catz.*
+import zio.interop.catz.implicits.*
 
 import scala.language.implicitConversions
 
 object FlightsEndpoint extends Endpoint with BackendSerialization {
+  import com.gm2211.turbol.backend.server.RuntimeEnvTypes.Http4sZioDsl.*
   override val basePath: String = "/flights"
-  override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] { case GET -> Root / flightNumber / "plan" =>
+  override val routes: HttpRoutes[AppTask] = HttpRoutes.of[AppTask] { case GET -> Root / flightNumber / "plan" =>
     // List of tuples representing the flight path for nyc to london
     val flightPath: List[GPSLocation] = List(
       (40.71, -74.00),

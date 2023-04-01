@@ -14,7 +14,12 @@ import java.nio.file.{Path, Paths}
 import scala.io.Source
 import scala.util.{Failure, Success, Try, Using}
 
-object ConfigSerialization {
+trait ConfigSerialization extends BackendLogging {
+  import io.circe.parser.decode as decodeJson
+  import io.circe.syntax.*
+  import io.circe.yaml.parser.parse as decodeYaml
+  import io.circe.yaml.syntax.*
+
   given customConfig: Configuration =
     Configuration
       .default
@@ -23,16 +28,8 @@ object ConfigSerialization {
       .withStrictDecoding // like FailOnUnknown in Jackson
       .withDiscriminator("case-class-type")
 
-}
-
-trait ConfigSerialization extends BackendLogging {
-  import io.circe.parser.decode as decodeJson
-  import io.circe.syntax.*
-  import io.circe.yaml.parser.parse as decodeYaml
-  import io.circe.yaml.syntax.*
-
   extension (file: File) {
-    def fromYaml[T](implicit d: Decoder[T]): Try[T] = {
+    def fromYaml[T: Decoder]: Try[T] = {
       import FileUtils.*
       file.usingStreamReader { inputStreamReader =>
         for
@@ -45,7 +42,7 @@ trait ConfigSerialization extends BackendLogging {
   }
 
   extension (source: Source) {
-    def fromYaml[T](implicit d: Decoder[T]): Try[T] = {
+    def fromYaml[T: Decoder]: Try[T] = {
       def logFailureAndConvertToScala(message: String, failureMessage: String): Failure[T] = {
         log.info(message, unsafe("failure", failureMessage))
         Failure(new RuntimeException(failureMessage))
