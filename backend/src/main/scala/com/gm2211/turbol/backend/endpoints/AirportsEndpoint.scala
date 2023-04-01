@@ -27,31 +27,26 @@ import zio.interop.catz.implicits.*
 
 import scala.language.implicitConversions
 
-
 object AirportsEndpoint extends Endpoint with BackendSerialization {
-  import com.gm2211.turbol.backend.server.RuntimeEnvTypes.Http4sZioDsl.*
-  
   override val basePath: String = "/airports"
   override val routes: HttpRoutes[AppTask] = HttpRoutes.of[AppTask] { case req @ POST -> Root / "search" =>
-    val foo: AppTask[Response[AppTask]] =
-      for
-        // Decode a User request
-//      searchRequest: AirportSearchRequest <- req.as[AirportSearchRequest]
-        resp <- Ok(
-          AirportSearchResponse(
-            List(
-              Airport(
-                name = "Fiumicino",
-                city = "Rome",
-                country = "Italy",
-                iata = IATACode("LIRF"),
-                icao = ICAOCode("LIRF"),
-                location = (41.8002778, 12.2388889)
-              )
+    for
+      // Decode a User request
+      searchRequest: AirportSearchRequest <- req.as[AirportSearchRequest]
+      resp <- Ok(
+        AirportSearchResponse(
+          List(
+            Airport(
+              name = "Fiumicino",
+              city = "Rome",
+              country = "Italy",
+              iata = IATACode("LIRF"),
+              icao = ICAOCode("LIRF"),
+              location = (41.8002778, 12.2388889)
             )
-          ).toJson
-        )
-      yield resp
-    foo
+          )
+        ).toJson
+      )
+    yield resp
   }
 }

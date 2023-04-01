@@ -88,11 +88,11 @@ const flights = computed(() => {
 const filterCompletions = (value: string, query: string, item?: any) => {
   const airport: Airport | undefined = item?.raw as (Airport | undefined)
   if (airport) {
-    return StringsUtils.editDistance(query.toLowerCase(), airport.icao.toLowerCase()) < 3
-        || StringsUtils.editDistance(query.toLowerCase(), airport.iata.toLowerCase()) < 3
-        || StringsUtils.editDistance(query.toLowerCase(), airport.name.toLowerCase()) < airport.name.length / 2
-        || StringsUtils.editDistance(query.toLowerCase(), airport.city.toLowerCase()) < airport.city.length / 2
-        || StringsUtils.editDistance(query.toLowerCase(), airport.country.toLowerCase()) < 3
+    return StringsUtils.similar(query, airport.icao)
+        || StringsUtils.similar(query, airport.iata)
+        || StringsUtils.similar(query, airport.name)
+        || StringsUtils.similar(query, airport.city)
+        || StringsUtils.similar(query, airport.country)
   }
   return StringsUtils.editDistance(query, value) < 3
 }

@@ -8,6 +8,4 @@ import zio.RIO
 object RuntimeEnvTypes {
   type RuntimeEnv = InstallConfig
   type AppTask[T] = RIO[RuntimeEnv, T]
-  
-  object Http4sZioDsl extends Http4sDsl[AppTask]
 }

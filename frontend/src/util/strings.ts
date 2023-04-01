@@ -33,4 +33,14 @@ export default class StringsUtils {
 
         return distances[str1Len][str2Len];
     }
+
+    static similar(query: string, target: string): boolean {
+        const lowerQuery: string = query.toLowerCase();
+        const lowerTarget: string = target.toLowerCase();
+        const editDistanceThreshold: number = Math.max(3, lowerTarget.length / lowerQuery.length);
+
+        return lowerTarget.includes(lowerQuery)
+            || lowerQuery.includes(lowerTarget)
+            || StringsUtils.editDistance(lowerQuery, lowerTarget) <= editDistanceThreshold;
+    }
 }

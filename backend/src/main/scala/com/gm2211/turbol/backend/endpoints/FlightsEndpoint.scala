@@ -20,7 +20,6 @@ import zio.interop.catz.implicits.*
 import scala.language.implicitConversions
 
 object FlightsEndpoint extends Endpoint with BackendSerialization {
-  import com.gm2211.turbol.backend.server.RuntimeEnvTypes.Http4sZioDsl.*
   override val basePath: String = "/flights"
   override val routes: HttpRoutes[AppTask] = HttpRoutes.of[AppTask] { case GET -> Root / flightNumber / "plan" =>
     // List of tuples representing the flight path for nyc to london

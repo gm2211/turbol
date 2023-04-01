@@ -36,8 +36,8 @@ object Launcher extends CatsApp with ConfigSerialization {
 
   override val runtime: zio.Runtime[Any] = Runtime.default.withEnvironment(ZEnvironment())
 
-  override val bootstrap: ZLayer[Any, Any, Unit] =
-    zio.Runtime.removeDefaultLoggers >>> SLF4J.slf4j(LogFormat.line + LogFormat.cause)
+//  override val bootstrap: zlayer[any, any, unit] =
+//    zio.runtime.removedefaultloggers >>> slf4j.slf4j(logformat.line + logformat.cause)
 
   private val appLayer: ULayer[RuntimeEnv] = ZLayer.make[RuntimeEnv](
     Scope.default,
@@ -51,10 +51,10 @@ object Launcher extends CatsApp with ConfigSerialization {
         server <- AppServer.createServer(install)
       yield server
 
-    ZIO.logInfo("DontLetIgnore app start") *> appServer
+    ZIO.logInfo("Turbol server starting up..") *> appServer
       .provideLayer(appLayer)
-      .tapError(error => ZIO.logError(s"Error $error"))
-      .tapDefect(throwable => ZIO.logError(s"Defect: $throwable"))
+      .catchAll(error => ZIO.logError(s"Unhandled error $error"))
+      .tapDefect(throwable => ZIO.logError(s"Fatal error, app will crash: $throwable"))
       .exitCode
   }
 
