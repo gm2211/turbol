@@ -21,7 +21,7 @@ locals {
   be_app_port        = 8081
   fe_app_port        = 9000
   // Hostnames
-  prod_hostname      = "app.${local.domain}"
+  prod_hostname      = local.domain
   // Postgres
   postgres_port      = 25060
   // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
