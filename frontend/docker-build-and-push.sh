@@ -44,10 +44,12 @@ EOF
 # 4. Creates a Docker image named turbol and sets the version using git tag
 tag=$(git describe --tag)
 image_name="docker.io/gm2211/turbol-fe"
+echo "Building image ${image_name}:${tag} and ${image_name}:latest and pushing them to Docker Hub..."
 docker buildx build --platform=linux/arm64,linux/amd64 --push -t "${image_name}":"${tag}" .
 docker buildx build --platform=linux/arm64,linux/amd64 --push -t "${image_name}:latest" .
-docker push "${image_name}":"${tag}"
-docker push "${image_name}:latest"
+echo "Building image ${image_name}:${tag} and ${image_name}:latest locally..."
+docker build -t "${image_name}":"${tag}" .
+docker build -t "${image_name}:latest" .
 
 # 5. Go back to the original directory
 cd "${orig_dir}" || exit

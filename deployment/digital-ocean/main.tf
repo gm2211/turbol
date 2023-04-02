@@ -61,17 +61,19 @@ module "prod" {
   postgres_password      = var.postgres_superuser_password
 }
 
+// I really wish I could use the same ingress for both frontend and backend to save money, but, because we need 2
+// different rewrite targets, we need 2 different ingresses.
 resource "kubernetes_ingress_v1" "main-ingress" {
   metadata {
     name        = "main-ingress"
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
-      "certmanager.k8s.io/issuer"                  = module.infra.cert_issuer_name
-      "certmanager.k8s.io/acme-challenge-type"     = "dns01"
-      "certmanager.k8s.io/acme-dns01-provider"     = "digitalocean"
-      "kubernetes.io/ingress.allow-http"           = false
-      "kubernetes.io/tls-acme"                     = true
-#      "nginx.ingress.kubernetes.io/configuration-snippet" = "rewrite ^/api(/|$)(.*)$ /$2 break;"
+      "kubernetes.io/ingress.class"                       = "nginx"
+      "certmanager.k8s.io/issuer"                         = module.infra.cert_issuer_name
+      "certmanager.k8s.io/acme-challenge-type"            = "dns01"
+      "certmanager.k8s.io/acme-dns01-provider"            = "digitalocean"
+      "kubernetes.io/ingress.allow-http"                  = false
+      "kubernetes.io/tls-acme"                            = true
+      "nginx.ingress.kubernetes.io/configuration-snippet" = "if ($request_uri !~* ^/(api|assets)) { rewrite ^/.*$ / break; }"
     }
   }
 
