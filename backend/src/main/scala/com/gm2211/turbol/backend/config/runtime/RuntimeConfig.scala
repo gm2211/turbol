@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-package com.gm2211.turbol.backend.config
+package com.gm2211.turbol.backend.config.runtime
 
 import com.gm2211.turbol.backend.util.ConfigSerialization
 import io.circe.Decoder

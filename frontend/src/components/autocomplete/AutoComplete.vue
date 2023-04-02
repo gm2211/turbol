@@ -15,7 +15,7 @@
     hide-no-data
     hide-details
     clearable
-    style="max-width: 300px"
+    style="max-width: 300px; min-width: 300px;"
   >
     <template v-slot:item="{ props, item }">
       <v-list-item

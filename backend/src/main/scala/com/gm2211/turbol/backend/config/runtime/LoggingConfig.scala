@@ -4,15 +4,16 @@
  * All rights reserved.
  */
 
-package com.gm2211.turbol.backend.config
+package com.gm2211.turbol.backend.config.runtime
 
 import ch.qos.logback.classic.Level
-import com.gm2211.turbol.backend.config.Debug.level
+import com.gm2211.turbol.backend.config.runtime.Debug.level
 import com.gm2211.turbol.backend.util.ConfigSerialization
 import io.circe.derivation.ConfiguredDecoder
 import io.circe.{Decoder, HCursor}
 
 import java.util.Locale
+import scala.annotation.unused
 
 final case class LoggingConfig(
   rootLoggerLevel: LogLevel = Info,
@@ -21,21 +22,19 @@ final case class LoggingConfig(
 
 sealed trait LogLevel {
   private[config] lazy val strRepr = level.levelStr
-
   val level: Level
   override def toString: String = strRepr
 }
-object Info extends LogLevel {
-  override val level: Level = Level.INFO
-}
-object Debug extends LogLevel {
-  override val level: Level = Level.DEBUG
-}
+case object Info extends LogLevel { override val level: Level = Level.INFO }
+case object Debug extends LogLevel { override val level: Level = Level.DEBUG }
+
 object LoggingConfig extends ConfigSerialization {
   given decoder: Decoder[LoggingConfig] = ConfiguredDecoder.derived[LoggingConfig]
 }
+
+@unused // Used by circe
 object LogLevel {
-  implicit val decodeLogLevel: Decoder[LogLevel] = (cursor: HCursor) => {
+  given decoder: Decoder[LogLevel] = (cursor: HCursor) => {
     cursor.value.asString.getOrElse("").toUpperCase(Locale.ROOT) match {
       case Info.strRepr => Right(Info)
       case Debug.strRepr => Right(Debug)

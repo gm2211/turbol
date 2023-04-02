@@ -11,7 +11,7 @@ import cats.data.Kleisli
 import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
-import com.gm2211.turbol.backend.config.{InstallConfig, ServerConfig}
+import com.gm2211.turbol.backend.config.install.{InstallConfig, ServerConfig}
 import com.gm2211.turbol.backend.endpoints.*
 import com.gm2211.turbol.backend.logging.{BackendLogger, BackendLogging}
 import com.gm2211.turbol.backend.server.RuntimeEnvTypes.AppTask

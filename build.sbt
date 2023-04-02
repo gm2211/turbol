@@ -17,7 +17,7 @@ scalaVersion := dependencies.versionOfScala
 enablePlugins(GitVersioning)
 enablePlugins(UniversalPlugin)
 
-val versionRegex = "[v]?([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
+val versionRegex = "v?([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
 git.baseVersion := "0.0.0"
 git.useGitDescribe := true
 git.gitTagToVersionNumber := {
@@ -30,7 +30,7 @@ inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
     organization := "com.gm2211.turbol",
-    envFileName := "run.env",
+    envFileName := "backend/var/conf/run.env",
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
@@ -95,14 +95,14 @@ lazy val dockerBuildxSettings = Seq(
 )
 
 // Build tasks
-lazy val buildFrontedDocker =
+lazy val publishFrontendDocker =
   taskKey[Unit]("Runs build script for frontend docker image")
 
 // Modules
 lazy val frontend = project
   .in(file("frontend"))
   .settings(
-    buildFrontedDocker := {
+    publishFrontendDocker := {
       val exitCode =
         Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
       if (exitCode != 0) {
@@ -133,7 +133,7 @@ lazy val backend = project
   .settings(dockerBuildxSettings)
   .settings(
     (Docker / publish) := (Docker / publish)
-      .dependsOn(frontend / buildFrontedDocker)
+      .dependsOn(frontend / publishFrontendDocker)
       .value
   )
   .settings(
@@ -165,6 +165,8 @@ lazy val backend = project
         Some("latest")
       )
     ),
+    // Trick to get sbt-native-packager to create these directories without having to write my own dockerfile
+    // we don't actually need to expose these volumes, but it doesn't matter since we deploy with k8s
     dockerExposedVolumes := Seq("/opt/docker/var/log", "/opt/docker/var/conf"),
     // Run
     Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),

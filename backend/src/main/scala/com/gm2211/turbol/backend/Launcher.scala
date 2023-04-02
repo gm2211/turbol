@@ -10,7 +10,9 @@ import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
 import cats.effect.{Async, ExitCode, IO, IOApp}
 import cats.implicits.*
 import com.comcast.ip4s.Port
-import com.gm2211.turbol.backend.config.{ConfigWatcher, InstallConfig, RuntimeConfig}
+import com.gm2211.turbol.backend.config.ConfigWatcher
+import com.gm2211.turbol.backend.config.install.InstallConfig
+import com.gm2211.turbol.backend.config.runtime.RuntimeConfig
 import com.gm2211.turbol.backend.logging.BackendLogging
 import com.gm2211.turbol.backend.server.RuntimeEnvTypes.RuntimeEnv
 import com.gm2211.turbol.backend.util.{ConfigSerialization, MoreSchedulers}
@@ -18,11 +20,11 @@ import io.circe.derivation.Configuration
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.{EntityDecoder, EntityEncoder}
+import zio.*
 import zio.interop.catz.*
 import zio.logging.LogFormat
 import zio.logging.backend.SLF4J
 import zio.stream.ZStream
-import zio.{Queue, Ref, Runtime, Scope, ULayer, Unsafe, ZEnvironment, ZIO, ZIOAppArgs, ZLayer}
 
 import java.nio.file.Paths
 import java.util.concurrent.{Executors, ScheduledExecutorService}
@@ -30,7 +32,6 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.*
 import scala.io.Source
 import scala.util.Success
-import zio.interop.catz.*
 
 object Launcher extends CatsApp with ConfigSerialization {
 
@@ -61,9 +62,10 @@ object Launcher extends CatsApp with ConfigSerialization {
     (
       for
         _ <- ZIO.logDebug("Constructing config layer")
+        installConfigPath <- System.env("INSTALL_CONFIG_OVERRIDES_PATH").mapAttempt(_.get)
         loaded <- ZIO
-          .fromTry(Source.fromFile("/tmp/install.yml").fromYaml[InstallConfig])
-          .mapError(e => new IllegalArgumentException("Cannot read install config", e))
+          .fromTry[InstallConfig](Source.fromFile(installConfigPath).fromYaml[InstallConfig])
+          .mapError(e => new IllegalArgumentException(s"Cannot read install config at $installConfigPath\n", e))
       yield loaded
     ).catchAll(e => ZIO.die(e))
   }

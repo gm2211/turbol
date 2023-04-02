@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.backend.server
 
-import com.gm2211.turbol.backend.config.InstallConfig
+import com.gm2211.turbol.backend.config.install.InstallConfig
 import com.gm2211.turbol.backend.server.RuntimeEnvTypes.AppTask
 import org.http4s.dsl.Http4sDsl
 import zio.RIO
