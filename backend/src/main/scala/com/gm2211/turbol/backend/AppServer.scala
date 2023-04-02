@@ -28,7 +28,7 @@ import zio.interop.catz.*
 import scala.concurrent.duration.*
 
 object AppServer extends BackendLogging {
-  type MyHttpApp = Kleisli[AppTask, Request[AppTask], Response[AppTask]]
+  private type MyHttpApp = Kleisli[AppTask, Request[AppTask], Response[AppTask]]
 
   def createServer(
     install: InstallConfig

@@ -36,11 +36,10 @@ object Launcher extends CatsApp with ConfigSerialization {
 
   override val runtime: zio.Runtime[Any] = Runtime.default.withEnvironment(ZEnvironment())
 
-//  override val bootstrap: zlayer[any, any, unit] =
-//    zio.runtime.removedefaultloggers >>> slf4j.slf4j(logformat.line + logformat.cause)
+  override val bootstrap: ZLayer[Any, Any, Unit] =
+    zio.Runtime.removeDefaultLoggers >>> SLF4J.slf4j(LogFormat.line + LogFormat.cause)
 
   private val appLayer: ULayer[RuntimeEnv] = ZLayer.make[RuntimeEnv](
-    Scope.default,
     installConfig
   )
 

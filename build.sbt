@@ -1,41 +1,42 @@
 import au.com.onegeek.sbtdotenv.SbtDotenv.autoImport.{envFileName, envFromFile}
-import scala.sys.process._
+import scala.sys.process.*
 import com.typesafe.sbt.SbtGit
 import sbt.Keys.{libraryDependencies, resolvers}
 import sbt.{Compile, Def, Resolver}
-import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
+import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations.*
 import sbtrelease.Vcs
 import org.apache.commons.io.FileUtils
 import scala.sys.process.Process
+import com.typesafe.sbt.packager.docker.Cmd
 
 import java.nio.charset.StandardCharsets
 
-name         := "turbol"
+name := "turbol"
 scalaVersion := dependencies.versionOfScala
 
 enablePlugins(GitVersioning)
 enablePlugins(UniversalPlugin)
 
 val versionRegex = "[v]?([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
-git.baseVersion    := "0.0.0"
+git.baseVersion := "0.0.0"
 git.useGitDescribe := true
 git.gitTagToVersionNumber := {
-  case versionRegex(version, "")     => Some(version)
+  case versionRegex(version, "") => Some(version)
   case versionRegex(version, commit) => Some(s"$version-$commit")
-  case _                             => None
+  case _ => None
 }
 
 inThisBuild(
   Seq(
     scalaVersion := dependencies.versionOfScala,
     organization := "com.gm2211.turbol",
-    envFileName  := "run.env",
+    envFileName := "run.env",
     resolvers += Resolver.sbtPluginRepo("releases"),
     resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
     resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
     publishArtifact := false,
-    publish / skip  := true,
-    versionScheme   := Some("semver-spec"),
+    publish / skip := true,
+    versionScheme := Some("semver-spec"),
     Compile / scalacOptions ++= Seq(
       "-new-syntax",
       "-rewrite",
@@ -59,8 +60,9 @@ inThisBuild(
 // Reusable settings for all modules
 lazy val ensureDockerBuildx =
   taskKey[Unit]("Ensure that docker buildx configuration exists")
-lazy val dockerBuildWithBuildx =
+lazy val dockerBuildAndPushWithBuildx =
   taskKey[Unit]("Build docker images using buildx")
+val publishDocker = taskKey[Unit]("Publish Docker images")
 lazy val dockerBuildxSettings = Seq(
   ensureDockerBuildx := {
     if (Process("docker buildx inspect multi-arch-builder").! == 1) {
@@ -70,23 +72,26 @@ lazy val dockerBuildxSettings = Seq(
       ).!
     }
   },
-  dockerBuildWithBuildx := {
-    streams.value.log("Building and pushing image with Buildx")
-    dockerAliases.value.foreach(alias =>
-      Process(
-        "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
-          alias + " .",
-        baseDirectory.value / "target" / "docker" / "stage"
-      ).!
-    )
+  dockerBuildAndPushWithBuildx := {
+    println(s"Building and pushing image with Buildx ${dockerCommands.value}")
+    dockerAliases
+      .value
+      .foreach(alias =>
+        Process(
+          "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+            alias + " .",
+          baseDirectory.value / "target" / "docker" / "stage"
+        ).!
+      )
   },
   Docker / publish := Def
     .sequential(
       Docker / publishLocal,
       ensureDockerBuildx,
-      dockerBuildWithBuildx
+      dockerBuildAndPushWithBuildx
     )
-    .value
+    .value,
+  publishDocker := (Docker / publish).value
 )
 
 // Build tasks
@@ -141,11 +146,11 @@ lazy val backend = project
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
     // Docker
-    dockerRepository     := Some("docker.io"),
-    dockerUsername       := Some("gm2211"),
-    dockerBaseImage      := "openjdk:19-jdk-bullseye",
+    dockerRepository := Some("docker.io"),
+    dockerUsername := Some("gm2211"),
+    dockerBaseImage := "openjdk:19-jdk-bullseye",
     Docker / packageName := "turbol",
-    version              := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
+    version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerAliases := Seq(
       DockerAlias(
         dockerRepository.value,
@@ -160,12 +165,13 @@ lazy val backend = project
         Some("latest")
       )
     ),
+    dockerExposedVolumes := Seq("/opt/docker/var/log", "/opt/docker/var/conf"),
     // Run
     Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
     // Test
-    Test / fork        := true,
+    Test / fork := true,
     Test / envFileName := "backend/var/conf/test.env",
-    Test / envVars     := (Test / envFromFile).value,
+    Test / envVars := (Test / envFromFile).value,
     // Copyright
     headerLicense := Some(
       HeaderLicense.Custom(
@@ -201,9 +207,9 @@ lazy val initialVcsChecks = {
         )
     }
 
-    val extracted         = Project.extract(st)
+    val extracted = Project.extract(st)
     val hasUntrackedFiles = vcs(st).hasUntrackedFiles
-    val hasModifiedFiles  = vcs(st).hasModifiedFiles
+    val hasModifiedFiles = vcs(st).hasModifiedFiles
     if (hasModifiedFiles) {
       sys.error(s"""Aborting release: unstaged modified files
          |
@@ -267,16 +273,23 @@ updateVersionToDeploy := {
     StandardCharsets.UTF_8
   )
 
-  SbtGit.GitKeys.gitRunner.value
+  SbtGit
+    .GitKeys
+    .gitRunner
+    .value
     .apply("add", deploymentVariablesFilename)(file("."), Logger.Null)
-  SbtGit.GitKeys.gitRunner.value.apply(
-    "commit",
-    "-m",
-    "Updated app version to be deployed."
-  )(file("."), Logger.Null)
+  SbtGit
+    .GitKeys
+    .gitRunner
+    .value
+    .apply(
+      "commit",
+      "-m",
+      "Updated app version to be deployed."
+    )(file("."), Logger.Null)
 }
 
-releaseTagName          := { releaseVersionTask.value }
+releaseTagName := { releaseVersionTask.value }
 releaseUseGlobalVersion := false
 releaseProcess := Seq(
   ReleaseStep((x: State) => x, initialVcsChecks),

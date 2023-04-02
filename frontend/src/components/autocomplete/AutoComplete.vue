@@ -47,8 +47,8 @@ defineProps<{
 }>()
 
 const loadingCompletions = ref(false)
-const selectedValue = ref(null)
-const selectedValueBeingEntered = ref(null)
+const selectedValue = ref(undefined)
+const selectedValueBeingEntered = ref(undefined)
 
 watch(selectedValueBeingEntered, async (query) => {
   loadingCompletions.value = true

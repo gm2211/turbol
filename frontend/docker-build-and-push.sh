@@ -12,7 +12,7 @@ fi
 cd "${script_dir}" || exit
 
 # 1. Compiles the Vue.js app for production
-npm run build
+npm run build || exit
 
 # 2. Generates the Caddyfile to serve the Vue.js app
 cat <<EOF >Caddyfile
