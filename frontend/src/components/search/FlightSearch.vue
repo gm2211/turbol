@@ -4,31 +4,9 @@
             <v-row class="justify-center ma-lg-16">
                 <h1>Turbulence Analysis</h1>
             </v-row>
-            <v-row class="justify-center ma-lg-16">
-                <v-autocomplete
-                        v-model="selectedSourceAirport"
-                        v-model:search="sourceAirportBeingEntered"
-                        :loading="loadingSourceAirportCompletions"
-                        :items="sourceAirportCompletions"
-                        item-title="icao"
-                        item-value="icao"
-                        item-props="['icao', 'name']"
-                        :custom-filter="filterCompletions"
-                        class="mx-4"
-                        density="comfortable"
-                        hide-no-data
-                        hide-details
-                        label="Source Airport:"
-                        style="max-width: 300px;"
-                >
-                    <template v-slot:item="{ props, item }">
-                        <v-list-item
-                                v-bind="props"
-                                :title="item?.raw?.city + ' - ' + item?.raw?.name"
-                                :subtitle="item?.raw?.icao + ', ' + item?.raw?.iata"
-                        ></v-list-item>
-                    </template>
-                </v-autocomplete>
+            <v-row class="justify-center">
+                <AirportAutocomplete ref="departure" :css-class="autoCompleteCss" label="Departure Airport"/>
+                <AirportAutocomplete ref="arrival" :css-class="autoCompleteCss" label="Arrival Airport"/>
             </v-row>
             <v-row class="justify-center">
                 <v-col>
@@ -45,56 +23,22 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue'
-import {useFlightsStore} from '@/stores/flights-store'
+import {computed, ref} from "vue";
+import AirportAutocomplete from "@/components/search/AirportAutocomplete.vue";
+import {useFlightsStore} from "@/stores/flights-store";
 import type {Airport} from "@/objects/airports/airports";
-import StringsUtils from "@/util/strings";
 
-
+const autoCompleteCss = "justify-center v-col-2 font-weight-bold"
 const flightsStore = useFlightsStore()
-const selectedSourceAirport = ref("")
-const sourceAirportBeingEntered = ref("")
-const sourceAirportCompletions = ref([] as Array<Airport>)
-const loadingSourceAirportCompletions = ref(false)
-const selectedDestAirport = ref("")
-const destAirportBeingEntered = ref("")
-const destAirportCompletions = ref([] as Array<Airport>)
-const loadingDestAirportCompletions = ref(false)
+const departure = ref(undefined as any)
+const destination = ref(undefined as any)
 const selectedRoute = computed(() => {
     return {
-        sourceAirport: selectedSourceAirport.value,
-        destinationAirport: selectedDestAirport.value
+        sourceAirport: departure.value?.selectedAirport.value || {} as Airport,
+        destinationAirport: destination.value?.selectedAirport.value || {} as Airport
     }
 })
-
-watch(sourceAirportBeingEntered, async (partialSourceAirport) => {
-    loadingSourceAirportCompletions.value = true
-    await flightsStore.fetchAirports(partialSourceAirport)
-    sourceAirportCompletions.value = flightsStore.getAirports(partialSourceAirport)
-    loadingSourceAirportCompletions.value = false
-})
-watch(destAirportBeingEntered, async (partialDestAirport) => {
-    loadingDestAirportCompletions.value = true
-    await flightsStore.fetchAirports(partialDestAirport)
-    destAirportCompletions.value = flightsStore.getAirports(partialDestAirport)
-    loadingDestAirportCompletions.value = false
-})
-
 const flights = computed(() => {
     return flightsStore.getFlightsByRoute(selectedRoute.value)
 })
-// TODO(gm2211): Instead of returning bool here, return a list of [start, end] tuples for each matched chunk so that we
-//               can get highlighting - this will require modifying the editDistance function to return a list of
-//               [start, end] tuples
-const filterCompletions = (value: string, query: string, item?: any) => {
-    const airport: Airport | undefined = item?.raw as (Airport | undefined)
-    if (airport) {
-        return StringsUtils.similar(query, airport.icao)
-            || StringsUtils.similar(query, airport.iata)
-            || StringsUtils.similar(query, airport.name)
-            || StringsUtils.similar(query, airport.city)
-            || StringsUtils.similar(query, airport.country)
-    }
-    return StringsUtils.similar(query, value)
-}
 </script>
