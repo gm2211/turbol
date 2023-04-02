@@ -1,28 +1,30 @@
-import {createApp} from 'vue'
-import {createPinia} from 'pinia'
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
 
 // Vuetify
 import 'vuetify/styles'
-import {createVuetify} from 'vuetify'
+import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
-import '@mdi/font/css/materialdesignicons.css';
+import '@mdi/font/css/materialdesignicons.css'
 import './assets/style/base.css'
+// Uncomment when local dev
+import axios from 'axios'
 
 const vuetify = createVuetify({
-    components,
-    directives,
-    icons: {
-        defaultSet: 'mdi',
-        aliases,
-        sets: {
-            mdi,
-        }
+  components,
+  directives,
+  icons: {
+    defaultSet: 'mdi',
+    aliases,
+    sets: {
+      mdi
     }
+  }
 })
 
 const app = createApp(App)
@@ -33,6 +35,6 @@ app.use(vuetify)
 
 app.mount('#app')
 
-// Uncomment when local dev
-import axios from "axios";
-axios.defaults.baseURL = "http://localhost:8081"
+if (import.meta.env.DEV) {
+  axios.defaults.baseURL = 'http://localhost:8081'
+}

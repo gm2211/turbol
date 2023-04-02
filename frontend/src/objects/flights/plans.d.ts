@@ -1,15 +1,15 @@
-import type {FlightNumber} from "@/objects/flights/shared";
+import type { FlightNumber } from '@/objects/flights/shared'
 
 export interface FlightPlanResponse {
-    flightPlan: FlightPlan
+  flightPlan: FlightPlan
 }
 export interface FlightPlan {
-    flightNumber: FlightNumber
-    // flightRoute: FlightRoute
-    waypoints: Waypoint[]
+  flightNumber: FlightNumber
+  // flightRoute: FlightRoute
+  waypoints: Waypoint[]
 }
 
 export interface Waypoint {
-    lat: number
-    lon: string
+  lat: number
+  lon: string
 }

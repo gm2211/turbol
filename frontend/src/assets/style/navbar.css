@@ -1,14 +1,14 @@
 @import './base.css';
 
 .v-navigation-drawer.navbar-collapsed {
-    background: var(--my-blue-transparent)
+  background: var(--my-blue-transparent);
 }
 .v-navigation-drawer.navbar-expanded {
-    opacity: 0.4;
+  opacity: 0.4;
 }
 .v-navigation-drawer.navbar-transition {
-    transition: width 0.5s ease, background 0.5s ease-in;
+  transition: width 0.5s ease, background 0.5s ease-in;
 }
 .v-navigation-drawer.my-shadow {
-    box-shadow: 0px 1px 3px #000000;
+  box-shadow: 0px 1px 3px #000000;
 }
