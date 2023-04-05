@@ -15,7 +15,7 @@ import com.gm2211.turbol.backend.config.install.InstallConfig
 import com.gm2211.turbol.backend.config.runtime.RuntimeConfig
 import com.gm2211.turbol.backend.logging.BackendLogging
 import com.gm2211.turbol.backend.server.RuntimeEnvTypes.RuntimeEnv
-import com.gm2211.turbol.backend.util.{ConfigSerialization, MoreSchedulers}
+import com.gm2211.turbol.backend.util.{ConfigSerialization, MoreExecutors}
 import io.circe.derivation.Configuration
 import io.circe.{Decoder, Encoder}
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
@@ -61,7 +61,7 @@ object Launcher extends CatsApp with ConfigSerialization {
   private def installConfig: ULayer[InstallConfig] = ZLayer.fromZIO {
     (
       for
-        _ <- ZIO.logDebug("Constructing config layer")
+        _ <- ZIO.logDebug("Reading install config")
         installConfigPath <- System.env("INSTALL_CONFIG_OVERRIDES_PATH").mapAttempt(_.get)
         loaded <- ZIO
           .fromTry[InstallConfig](Source.fromFile(installConfigPath).fromYaml[InstallConfig])

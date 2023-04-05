@@ -19,7 +19,7 @@ import org.http4s.client.Client
 import org.http4s.dsl.io.*
 import org.http4s.ember.server.*
 import org.http4s.implicits.*
-import org.http4s.server.middleware.{CORS, ErrorHandling, Logger, RequestLogger, ResponseLogger}
+import org.http4s.server.middleware.*
 import org.http4s.server.{DefaultServiceErrorHandler, Router, Server}
 import org.http4s.{Http, HttpApp, HttpRoutes, Request, Response}
 import zio.*
@@ -69,5 +69,4 @@ object AppServer extends BackendLogging {
       .build
       .useForever
   }
-  end createServer
 }

@@ -38,8 +38,6 @@ inThisBuild(
     publish / skip := true,
     versionScheme := Some("semver-spec"),
     Compile / scalacOptions ++= Seq(
-      "-new-syntax",
-      "-rewrite",
       "-deprecation",
       "-feature",
       "-Yretain-trees"

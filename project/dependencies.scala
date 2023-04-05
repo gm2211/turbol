@@ -6,6 +6,7 @@ object dependencies {
   // Functional
   val fs2Version = "3.6.1"
   val zioVersion = "2.0.10"
+  val zioNioVersion = "2.0.1"
   val zioLoggingVersion = "2.1.11"
   val zioInteropCatsVersion = "23.0.0.0"
 
@@ -31,6 +32,9 @@ object dependencies {
   // Utils
   val apacheCommonsVersion = "2.11.0"
 
+  // Test
+  val scalatestVersion = "3.2.15"
+
   // Dependencies for JVM part of code
   val backendDeps = Def.setting(
     Seq(
@@ -44,6 +48,7 @@ object dependencies {
       // Functional
       "co.fs2" %% "fs2-core" % fs2Version,
       "dev.zio" %% "zio" % zioVersion,
+      "dev.zio" %% "zio-nio" % zioNioVersion,
       "dev.zio" %% "zio-logging" % zioLoggingVersion,
       "dev.zio" %% "zio-logging-slf4j" % zioLoggingVersion,
       "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
@@ -69,7 +74,11 @@ object dependencies {
   // Test dependencies
   val backendTestDeps = Def.setting(
     Seq(
-      "com.h2database" % "h2" % h2Version
+      "com.h2database" % "h2" % h2Version,
+      "org.scalatest" %% "scalatest" % scalatestVersion,
+      "org.scalatest" %% "scalatest-flatspec" % scalatestVersion,
+      "org.scalatest" %% "scalatest-matchers-core" % scalatestVersion,
+      "org.scalatest" %% "scalatest-shouldmatchers" % scalatestVersion
     ).map(_ % Test)
   )
 }
