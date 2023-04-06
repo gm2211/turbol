@@ -5,7 +5,8 @@
  */
 
 package com.gm2211.turbol.backend.util
-import com.gm2211.turbol.backend.logging.BackendLogging
+
+import com.gm2211.logging.BackendLogging
 import io.circe.derivation.Configuration
 import io.circe.{Decoder, Encoder, Json}
 

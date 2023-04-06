@@ -14,7 +14,6 @@ import io.circe.{Decoder, Encoder, Json}
 import scala.util.Try
 
 trait BackendSerialization:
-
   implicit val customConfig: Configuration = Configuration
     .default
     .withDefaults

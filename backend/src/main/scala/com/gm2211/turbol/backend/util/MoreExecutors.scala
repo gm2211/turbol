@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.backend.util
 
-import com.gm2211.turbol.backend.logging.{BackendLogger, BackendLogging}
+import com.gm2211.logging.{BackendLogger, BackendLogging}
 
 import java.util
 import java.util.concurrent.*
@@ -16,13 +16,6 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 object MoreExecutors extends BackendLogging {
-
-  extension (executorService: ExecutorService) {
-    def toExecutionContext: ExecutionContext = ExecutionContext.fromExecutor(executorService)
-  }
-
-  given Conversion[ExecutorService, ExecutionContext] = _.toExecutionContext
-
   def sameThread: ExecutorService = new ExecutorService {
     override def shutdown(): Unit = ()
     override def shutdownNow(): util.List[Runnable] = List().asJava
@@ -50,52 +43,34 @@ object MoreExecutors extends BackendLogging {
     override def execute(command: Runnable): Unit = command.run()
   }
 
-  /** Builds a SchedulerService backed by an internal `java.util.concurrent.ThreadPoolExecutor`, that executes each
-    * submitted task using one of possibly several pooled threads.
-    *
-    * The default implementations either does not scale neither up nor down (fixedThreadPool) or it reject tasks if it
-    * cannot scale past maximum (because of the way ThreadPool is implemented: it only creates a new thread if the
-    * number of threads < core size or the provided queue rejects a task)
-    *
-    * This one instead has the best of both worlds:
-    *   1. Reclaims unused threads 2. Creates new threads up to maximum when necessary 3. Queue tasks when maximum is
-    *      reached and no available thread
-    */
-  def boundedCached(
-    name: String,
-    maxThreads: Int,
-    keepAliveTime: FiniteDuration = FiniteDuration(60, TimeUnit.SECONDS)
-  ): ExecutorService = {
+  /**
+   * Creates a new executor service that reuses pooled threads if possible, otherwise creates new threads.
+   * Should be used for blocking operations.
+   */
+  def io(namePrefix: String): ExecutorService = {
+    val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic = true)
+    Executors.newCachedThreadPool(threadFactory)
+  }
 
-    require(maxThreads > 0, "maxThreads > 0")
-    require(keepAliveTime >= Duration.Zero, "keepAliveTime >= 0")
-
-    val threadFactory =
-      ThreadFactoryBuilder(name, daemonic = true)
-    val executor = new ThreadPoolExecutor(
-      maxThreads, // core size, but we allow core threads to expire
-      maxThreads, // max size
-      keepAliveTime.toMillis,
-      TimeUnit.MILLISECONDS,
-      new LinkedBlockingQueue[Runnable](),
-      threadFactory
-    )
-
-    // Allow core threads to timeout so we can reclaim resources
-    executor.allowCoreThreadTimeOut(true)
-
-    executor
+  /**
+   * Creates a threadpool executor with a fixed number of threads = number of cores.
+   * Should be used for non-blocking operations.
+   */
+  def fixed(namePrefix: String, daemonic: Boolean = true): ExecutorService = {
+    val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic)
+    Executors.newFixedThreadPool(4, threadFactory)
   }
 
   private object ThreadFactoryBuilder extends BackendLogging {
 
-    /** Constructs a ThreadFactory using the provided name prefix and appending with a unique incrementing thread
-      * identifier.
-      */
-    def apply(name: String, daemonic: Boolean): ThreadFactory = { (r: Runnable) =>
+    /**
+     * Constructs a ThreadFactory using the provided name prefix and appending with a unique incrementing thread
+     * identifier.
+     */
+    def apply(namePrefix: String, daemonic: Boolean): ThreadFactory = { (r: Runnable) =>
       val thread = new Thread(r)
 
-      thread.setName(s"$name-${thread.getName}")
+      thread.setName(s"$namePrefix-${thread.getName}")
       thread.setDaemon(daemonic)
       thread.setUncaughtExceptionHandler((_: Thread, e: Throwable) => log.warn("Unhandled exception", e))
 

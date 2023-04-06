@@ -4,7 +4,7 @@
  * All rights reserved.
  */
 
-package com.gm2211.turbol.backend.logging
+package com.gm2211.logging
 
 sealed trait Arg[T] {
   val name: String

@@ -4,9 +4,8 @@
  * All rights reserved.
  */
 
-package com.gm2211.turbol.backend.logging
+package com.gm2211.logging
 
-import com.gm2211.turbol.backend.logging.{Arg, SafeArg, UnsafeArg}
 import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
 

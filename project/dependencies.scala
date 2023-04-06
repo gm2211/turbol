@@ -5,14 +5,13 @@ object dependencies {
 
   // Functional
   val fs2Version = "3.6.1"
-  val zioVersion = "2.0.10"
-  val zioNioVersion = "2.0.1"
-  val zioLoggingVersion = "2.1.11"
-  val zioInteropCatsVersion = "23.0.0.0"
 
   // Logging
   val logbackVersion = "1.4.6"
   val scalaLoggingVersion = "3.9.5"
+
+  // Retry logic
+  val failSafeVersion = "3.3.1"
 
   // Reflection / macros
   val lihaoyiSourcecodeVersion = "0.3.0"
@@ -47,11 +46,8 @@ object dependencies {
       "org.tpolecat" %% "doobie-postgres" % doobieVersion,
       // Functional
       "co.fs2" %% "fs2-core" % fs2Version,
-      "dev.zio" %% "zio" % zioVersion,
-      "dev.zio" %% "zio-nio" % zioNioVersion,
-      "dev.zio" %% "zio-logging" % zioLoggingVersion,
-      "dev.zio" %% "zio-logging-slf4j" % zioLoggingVersion,
-      "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
+      // Retry logic
+      "dev.failsafe" % "failsafe" % failSafeVersion,
       // Logging
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
       "ch.qos.logback" % "logback-classic" % logbackVersion,

@@ -1,48 +1,38 @@
 package com.gm2211.turbol.backend.config
 
+import com.gm2211.logging.BackendLogging
+import com.gm2211.reactive.Task.*
 import com.gm2211.turbol.backend.config.ConfigWatcher
 import com.gm2211.turbol.backend.config.runtime.{LoggingConfig, RuntimeConfig}
-import com.gm2211.turbol.backend.logging.BackendLogging
-import com.gm2211.turbol.backend.util.{MoreExecutors, ZIOUtils}
+import com.gm2211.turbol.backend.util.MoreExecutors
 import org.scalatest.concurrent.Eventually.eventually
 import org.scalatest.concurrent.Futures.{interval, timeout}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.SpanSugar.*
-import zio.*
-import zio.stream.*
 
 import java.io.{File, IOException}
 import java.nio.file.*
 import java.util.concurrent.Executors
 import scala.concurrent.ExecutionContext
 
-class ConfigWatcherTest extends AnyFlatSpec with Matchers with ZIOUtils with BackendLogging {
-  given zio.Runtime[Any] = zio.Runtime.default
+class ConfigWatcherTest extends AnyFlatSpec with Matchers with BackendLogging {
 
-  "ConfigWatcher" should "watch config file" in {
+  "Refreshable config" should "call subscriber when updated" in {
     val testPath: Path = Files.createTempFile("test", ".conf")
-    val configWatcher = ConfigWatcher.watchConfig(testPath, "")(using Executors.newFixedThreadPool(1))
+    val refreshableConfig = ConfigWatcher.watchConfig(testPath, 0)(using Executors.newFixedThreadPool(1))
     val countDownLatch = new java.util.concurrent.CyclicBarrier(2)
     var counter = 0
 
-    configWatcher.onUpdate{a =>
-      counter += 1
-    }(using Executors.newFixedThreadPool(1))
+    refreshableConfig.onUpdate { _ => counter += 1 }(using Executors.newFixedThreadPool(1))
 
-    ZIO
-      .loop(0)(_ < 2, _ + 1) { i =>
-        ZIO.attemptBlocking{
-          log.info(s"Writing file: $i")
-          
-          Files.writeString(testPath, s"Foo ${i}", StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-        }
+    (0 to 2).foreach { i =>
+      Files.writeString(testPath, s"$i", StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+      eventually(timeout(5.seconds), interval(100.millis)) {
+        counter shouldBe i + 1
       }
-      .forkDaemon
-      .runUnsafe(using Executors.newFixedThreadPool(1))
-
-    eventually(timeout(50.seconds), interval(100.millis)) {
-      counter shouldBe 2
     }
+
+    refreshableConfig.get shouldBe 12
   }
 }

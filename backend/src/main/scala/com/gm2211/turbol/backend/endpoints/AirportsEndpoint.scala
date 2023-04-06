@@ -10,7 +10,6 @@ import cats.data.Kleisli
 import cats.effect.IO
 import com.gm2211.turbol.backend.objects.api.airports.search.{AirportSearchRequest, AirportSearchResponse}
 import com.gm2211.turbol.backend.objects.api.airports.{Airport, IATACode, ICAOCode}
-import com.gm2211.turbol.backend.server.RuntimeEnvTypes.AppTask
 import com.gm2211.turbol.backend.util.BackendSerialization
 import io.circe.generic.auto.*
 import org.http4s.circe.*
@@ -21,18 +20,15 @@ import org.http4s.dsl.Http4sDsl
 import org.http4s.dsl.io.*
 import org.http4s.implicits.*
 import org.http4s.{HttpRoutes, Request, Response}
-import zio.*
-import zio.interop.catz.*
-import zio.interop.catz.implicits.*
 
 import scala.language.implicitConversions
 
 object AirportsEndpoint extends Endpoint with BackendSerialization {
   override val basePath: String = "/airports"
-  override val routes: HttpRoutes[AppTask] = HttpRoutes.of[AppTask] { case req @ POST -> Root / "search" =>
-    for
+  override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] { case req @ POST -> Root / "search" =>
+    for {
       // Decode a User request
-      searchRequest: AirportSearchRequest <- req.as[AirportSearchRequest]
+      searchRequest: IO[AirportSearchRequest] <- IO(req.as[AirportSearchRequest])
       resp <- Ok(
         AirportSearchResponse(
           List(
@@ -47,6 +43,6 @@ object AirportsEndpoint extends Endpoint with BackendSerialization {
           )
         ).toJson
       )
-    yield resp
+    } yield resp
   }
 }

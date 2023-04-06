@@ -36,6 +36,12 @@ trait TryUtils {
       }
     }
 
+    def getOrThrow(exceptionMapper: Throwable => Exception): T = {
+      tr match
+        case Failure(exception) => throw exceptionMapper(exception)
+        case Success(value) => value
+    }
+
     def toFuture: Future[T] =
       tr match {
         case Failure(exception) => Future.failed(exception)
