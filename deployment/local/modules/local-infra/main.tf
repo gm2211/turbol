@@ -23,27 +23,25 @@ resource "helm_release" "postgresql" {
   name       = "postgresql"
   repository = "https://charts.bitnami.com/bitnami"
   chart      = "postgresql"
-  version    = "10.12.0"
+  version    = "12.2.7"
   timeout    = 10 * 60 # timeout for each k8s action - 10 minutes
 
-  set {
-    name  = "global.postgresql.postgresqlDatabase"
-    value = local.postgres_database_name
-  }
+    set {
+      name  = "global.postgresql.auth.postgresPassword"
+      value = local.postgres_superuser_password
+    }
 
-  set {
-    name  = "global.postgresql.postgresqlUsername"
-    value = local.postgres_superuser
-  }
+    set {
+      name  = "global.postgresql.service.ports.postgresql"
+      value = local.postgres_port
+    }
+}
+resource "null_resource" "delete_pvs" {
+  depends_on = [helm_release.postgresql]
 
-  set {
-    name  = "global.postgresql.postgresqlPassword"
-    value = local.postgres_superuser_password
-  }
-
-  set {
-    name  = "service.port"
-    value = local.postgres_port
+  provisioner "local-exec" {
+    when    = destroy
+    command = "kubectl delete pv postgresql-0"
   }
 }
 

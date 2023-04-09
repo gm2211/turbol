@@ -6,9 +6,6 @@
 
 package com.gm2211.turbol.backend.util
 
-import com.gm2211.reactive.Task
-import com.gm2211.reactive.Task.*
-
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
@@ -28,10 +25,6 @@ trait OptionUtils {
   }
 
   implicit class OptionExtensions[T](option: Option[T]) {
-    def toTask: Task[T] = {
-      toTry.toTask
-    }
-
     def toFuture: Future[T] =
       option match {
         case Some(value) => Future.successful(value)

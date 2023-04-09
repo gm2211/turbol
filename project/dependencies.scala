@@ -5,6 +5,8 @@ object dependencies {
 
   // Functional
   val fs2Version = "3.6.1"
+  val catsEffects = "3.4.8"
+  val catsCore = "2.9.0"
 
   // Logging
   val logbackVersion = "1.4.6"
@@ -46,6 +48,8 @@ object dependencies {
       "org.tpolecat" %% "doobie-postgres" % doobieVersion,
       // Functional
       "co.fs2" %% "fs2-core" % fs2Version,
+      "org.typelevel" %% "cats-effect" % catsEffects,
+      "org.typelevel" %% "cats-core" % catsCore,
       // Retry logic
       "dev.failsafe" % "failsafe" % failSafeVersion,
       // Logging

@@ -1,0 +1,8 @@
+"database-config":
+  "admin-user": "postgres"
+  "database-name": "dev"
+  "hostname": "postgresql"
+  "port": 5432
+"logging":
+  "level-by-class-name": {}
+  "root-logger-level": "info"

@@ -12,7 +12,9 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
 import com.gm2211.logging.{BackendLogger, BackendLogging}
+import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.backend.config.install.{InstallConfig, ServerConfig}
+import com.gm2211.turbol.backend.config.runtime.RuntimeConfig
 import com.gm2211.turbol.backend.endpoints.*
 import org.http4s.client.Client
 import org.http4s.dsl.io.*
@@ -27,9 +29,7 @@ import scala.concurrent.duration.*
 object AppServer extends BackendLogging {
   private type MyHttpApp = Kleisli[IO, Request[IO], Response[IO]]
 
-  def createServer(install: InstallConfig): Resource[IO, Server] = {
-    // TODO(gm2211): Need to figure out how to add Allow-Origin header to failed responses too, since CORS middleware
-    //               is applied only to successful responses unless error handling is somehow applied before
+  def createServer(install: InstallConfig, runtime: Refreshable[RuntimeConfig]): Resource[IO, Server] = {
     val maybeApplyCORS: MyHttpApp => MyHttpApp = {
       if install.server.devMode then {
         CORS

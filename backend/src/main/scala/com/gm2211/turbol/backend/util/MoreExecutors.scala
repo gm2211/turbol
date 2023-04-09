@@ -56,9 +56,9 @@ object MoreExecutors extends BackendLogging {
    * Creates a threadpool executor with a fixed number of threads = number of cores.
    * Should be used for non-blocking operations.
    */
-  def fixed(namePrefix: String, daemonic: Boolean = true): ExecutorService = {
+  def fixed(namePrefix: String, numThreads: Int, daemonic: Boolean = true): ExecutorService = {
     val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic)
-    Executors.newFixedThreadPool(4, threadFactory)
+    Executors.newFixedThreadPool(numThreads, threadFactory)
   }
 
   private object ThreadFactoryBuilder extends BackendLogging {

@@ -1,1 +1,3 @@
-{}
+"server":
+  "dev-mode": false
+  "port": 8050

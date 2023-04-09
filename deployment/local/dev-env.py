@@ -65,7 +65,7 @@ def update_helm_repos():
 
 def terraform_apply(cluster_name, script_dir, target=None):
     target_str = "--target={}".format(target) if target else ""
-    raw_bash('terraform apply {} --auto-approve -var="k8s_cluster_name={}" -var-file="{}/../secrets.tfvars"'.format(
+    raw_bash('terraform apply {} --auto-approve -var="k8s_cluster_name={}" -var-file="{}/../secrets.auto.tfvars"'.format(
         target_str, cluster_name, script_dir))
 
 
@@ -103,7 +103,7 @@ def get_http_port_from_config(conf_dir):
     import yaml
 
     with open("{}/install.yml".format(conf_dir), "r") as conf:
-        return yaml.safe_load(conf)["http-port"]
+        return yaml.safe_load(conf)["server"]["port"]
 
 
 def proxy_app_to_localhost():
