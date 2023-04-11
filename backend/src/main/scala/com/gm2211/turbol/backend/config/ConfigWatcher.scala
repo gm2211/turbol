@@ -6,18 +6,24 @@
 
 package com.gm2211.turbol.backend.config
 
+import cats.effect.unsafe.IORuntime
+import cats.effect.{IO, Resource}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.*
 import com.gm2211.turbol.backend.util.{BackendSerialization, ConfigSerialization, TryUtils}
 import com.sun.nio.file.SensitivityWatchEventModifier
+import fs2.io.file.Path.fromNioPath
+import fs2.io.file.Watcher
 import io.circe.Decoder
+import retry.{RetryPolicies, retryingOnAllErrors}
 
 import java.nio.file
+import java.nio.file.*
 import java.nio.file.StandardWatchEventKinds.*
 import java.nio.file.WatchEvent.Kind
-import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
 import java.util.concurrent.ExecutorService
 import scala.concurrent.ExecutionContext
+import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
 
@@ -28,38 +34,50 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
    * reloading it as necessary. Changes to the runtime config after the server has started will be propagated
    * throughout the server.
    */
-  def watchConfig[T, R](path: Path, initialValue: => T)(using executorService: ExecutorService)(using d: Decoder[T])
-    : Refreshable[T] = {
-    val configDirPath = path.getParent
+  def watchConfig[T](configPath: Path, initialValue: => T)
+    (using IORuntime)
+    (using Decoder[T])
+  : Refreshable[T] = {
+    val configDirPath = configPath.getParent
 
     val watchService: WatchService = FileSystems.getDefault.newWatchService()
     configDirPath.register(watchService, Array[Kind[_]](ENTRY_MODIFY), SensitivityWatchEventModifier.HIGH)
 
     val configRef: Refreshable[T] = Refreshable(initialValue)
 
-    executorService.execute { () =>
-      while (true) {
-        Try {
-          val watchKey: WatchKey = watchService.take()
-          val watchedFiledChanged = watchKey.pollEvents().asScala.exists(_.context() == path.getFileName)
-          watchKey.reset()
-          log.info("Detected change in config dir", safe("configDirPath", configDirPath))
-          if (watchedFiledChanged) {
-            log.info("Detected change in config file", safe("configPath", path))
-            readConfig(path) match
-              case Failure(exception) =>
-                log.info(
-                  "Failed to read config, will leave existing config present",
-                  exception,
-                  safe("configPath", path)
-                )
-              case Success(config) =>
-                configRef.update(config)
-                log.info("Successfully updated config", safe("configPath", path))
-          }
-        }.ifFailure(exception => log.info("Unhandled error while monitoring config", exception))
+    retryingOnAllErrors(
+      policy = RetryPolicies.constantDelay[IO](0.seconds),
+      onError = (error: Throwable, details: retry.RetryDetails) => {
+        IO.println(s"Failed to read config, will retry $error ${details}")
+      }
+    ) {
+      IO.blocking {
+        while (true) {
+          Try {
+            val watchKey: WatchKey = watchService.take()
+            val watchedFiledChanged = watchKey.pollEvents().asScala.exists(_.context() == configPath.getFileName)
+            watchKey.reset()
+            log.info("Detected change in config dir", safe("configDirPath", configDirPath))
+            if (watchedFiledChanged) {
+              log.info("Detected change in config file", safe("configPath", configPath))
+              readConfig(configPath) match
+                case Failure(exception) =>
+                  log.info(
+                    "Failed to read config, will leave existing config present",
+                    exception,
+                    safe("configPath", configPath)
+                  )
+                case Success(config) =>
+                  configRef.update(config)
+                  log.info("Successfully updated config", safe("configPath", configPath))
+            }
+          }.ifFailure(exception => log.info("Unhandled error while monitoring config", exception))
+        }
       }
     }
+      .background
+      .useForever
+      .unsafeRunAndForget()
 
     configRef
   }

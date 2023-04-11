@@ -16,6 +16,10 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 object MoreExecutors extends BackendLogging {
+  extension (executorService: ExecutorService) {
+    def toExecutionContext: ExecutionContext = ExecutionContext.fromExecutorService(executorService)
+  }
+
   def sameThread: ExecutorService = new ExecutorService {
     override def shutdown(): Unit = ()
     override def shutdownNow(): util.List[Runnable] = List().asJava
@@ -70,7 +74,7 @@ object MoreExecutors extends BackendLogging {
     def apply(namePrefix: String, daemonic: Boolean): ThreadFactory = { (r: Runnable) =>
       val thread = new Thread(r)
 
-      thread.setName(s"$namePrefix-${thread.getName}")
+      thread.setName(s"$namePrefix-${thread.getName.toLowerCase}")
       thread.setDaemon(daemonic)
       thread.setUncaughtExceptionHandler((_: Thread, e: Throwable) => log.warn("Unhandled exception", e))
 

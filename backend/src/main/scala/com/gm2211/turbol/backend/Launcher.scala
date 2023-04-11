@@ -6,7 +6,9 @@
 
 package com.gm2211.turbol.backend
 
-import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
+import _root_.io.circe.derivation.Configuration
+import _root_.io.circe.{Decoder, Encoder}
+import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
 import cats.effect.{Async, ExitCode, IO, IOApp}
 import cats.implicits.*
 import com.comcast.ip4s.Port
@@ -14,9 +16,8 @@ import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.backend.config.ConfigWatcher
 import com.gm2211.turbol.backend.config.install.InstallConfig
 import com.gm2211.turbol.backend.config.runtime.RuntimeConfig
+import com.gm2211.turbol.backend.util.MoreExecutors.*
 import com.gm2211.turbol.backend.util.{ConfigSerialization, MoreExecutors, OptionUtils, TryUtils}
-import io.circe.derivation.Configuration
-import io.circe.{Decoder, Encoder}
 import org.http4s.circe.{jsonEncoderOf, jsonOf}
 import org.http4s.{EntityDecoder, EntityEncoder}
 
@@ -28,7 +29,6 @@ import scala.io.Source
 import scala.util.Success
 
 object Launcher extends IOApp with ConfigSerialization with OptionUtils with TryUtils with BackendLogging {
-
   override def run(args: List[String]): IO[ExitCode] = {
     val installConfigPath = sys.env.get("INSTALL_CONFIG_OVERRIDES_PATH").orThrow()
     val runtimeConfigPath = Paths.get(sys.env.get("RUNTIME_CONFIG_OVERRIDES_PATH").orThrow())
@@ -38,9 +38,7 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
       .fromYaml[InstallConfig]
       .getOrThrow(e => new IllegalArgumentException(s"Cannot read install config at $installConfigPath\n", e))
     val runtime =
-      ConfigWatcher.watchConfig(runtimeConfigPath, RuntimeConfig.default)(
-        using MoreExecutors.fixed("config-watcher", 1)
-      )
+      ConfigWatcher.watchConfig(runtimeConfigPath, RuntimeConfig.default)(using IORuntime.global)
 
     def appServer = AppServer.createServer(install, runtime)
 

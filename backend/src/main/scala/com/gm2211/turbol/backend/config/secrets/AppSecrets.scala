@@ -12,7 +12,7 @@ import io.circe.derivation.ConfiguredDecoder
 
 // Decided not to use Vault for now to keep things simple
 case class AppSecrets(
-  postgresPassword: String
+  dbAdminPassword: String
 )
 object AppSecrets extends ConfigSerialization {
   given Decoder[AppSecrets] = ConfiguredDecoder.derived[AppSecrets]

@@ -4,7 +4,7 @@
 locals {
   // Decided to keep secrets management simple for now - see my other project 'idoctor' for how to use Hashicorp Vault
   install_secrets = {
-    postgres-password = var.postgres_password
+    db-admin-password = var.postgres_password
   }
   # Install
   install_config = {

@@ -21,52 +21,57 @@ import scala.concurrent.ExecutionContext
 
 trait TransactionManager {
   def readOnly[T](
-    action: TransactionalStores => ConnectionIO[T]
+    action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
   ): IO[T]
 
   def readWrite[T](
-    action: TransactionalStores => ConnectionIO[T]
+    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[T]
   ): IO[T]
 
   def readWriteVoid(
-    action: TransactionalStores => ConnectionIO[Any]
+    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[Any]
   ): IO[Unit]
 }
 
-class SlickSqlTransactionManager(
-  storesFactory: Set[TxnCapability] => TransactionalStores,
+class TransactionManagerImpl(
+  stores: TransactionalStores,
   transactorProvider: DBTransactorProvider
 ) extends TransactionManager {
-  private val readOnlyStores = storesFactory(Set(CanReadDB))
-  private val readWriteStores = storesFactory(Set(CanReadDB, CanWriteToDB))
-
   override def readOnly[T](
-    action: TransactionalStores => ConnectionIO[T]
+    action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
   ): IO[T] = {
-    transactionally(action)(readOnlyStores)
+    transactionally { stores =>
+      given CanReadDB.type = CanReadDB
+
+      action(stores)
+    }
   }
 
   override def readWrite[T](
-    action: TransactionalStores => ConnectionIO[T]
+    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[T]
   ): IO[T] = {
-    transactionally(action)(readWriteStores)
+    transactionally{ stores =>
+      given CanReadDB.type = CanReadDB
+
+      given CanWriteToDB.type = CanWriteToDB
+
+      action(stores)
+    }
   }
 
   override def readWriteVoid(
-    action: TransactionalStores => ConnectionIO[Any]
+    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[Any]
   ): IO[Unit] = {
-    transactionally(action)(readWriteStores).map(_ => ())
+    readWriteVoid(action).map(_ => ())
   }
 
   private def transactionally[T](
     action: TransactionalStores => ConnectionIO[T]
-  )(
-    stores: TransactionalStores
   ): IO[T] = {
-    transactionally(action, forceRefreshClient = false)(stores)
+    transactionally(action, forceRefreshClient = false)
       .recoverWith {
         // TODO(gm2211): let's figure out the retry backoff story here
-        case CredentialsNeedRefreshing => transactionally(action, forceRefreshClient = true)(stores)
+        case CredentialsNeedRefreshing => transactionally(action, forceRefreshClient = true)
         case throwable: Throwable => IO.raiseError(throwable)
       }
   }
@@ -74,8 +79,6 @@ class SlickSqlTransactionManager(
   private def transactionally[T](
     action: TransactionalStores => ConnectionIO[T],
     forceRefreshClient: Boolean
-  )(
-    stores: TransactionalStores
   ): IO[T] = {
     for {
       transactor <- transactorProvider.transactor(forceRefresh = forceRefreshClient)

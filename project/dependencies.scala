@@ -13,7 +13,7 @@ object dependencies {
   val scalaLoggingVersion = "3.9.5"
 
   // Retry logic
-  val failSafeVersion = "3.3.1"
+  val catsRetryVersion = "3.1.0"
 
   // Reflection / macros
   val lihaoyiSourcecodeVersion = "0.3.0"
@@ -51,7 +51,7 @@ object dependencies {
       "org.typelevel" %% "cats-effect" % catsEffects,
       "org.typelevel" %% "cats-core" % catsCore,
       // Retry logic
-      "dev.failsafe" % "failsafe" % failSafeVersion,
+      "com.github.cb372" %% "cats-retry" % catsRetryVersion,
       // Logging
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
       "ch.qos.logback" % "logback-classic" % logbackVersion,
