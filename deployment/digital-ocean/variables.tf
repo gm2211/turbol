@@ -9,5 +9,5 @@ variable postgres_superuser_password {
   sensitive = true
 }
 variable prod_app_version {
-  default = "latest"
+  default = "1.1.0"
 }
