@@ -1,7 +1,7 @@
 import sbt.{Def, *}
 
 object dependencies {
-  val versionOfScala = "3.2.2"
+  val versionOfScala = "3.3.0-RC4"
 
   // Dependency injection
   val macWireVersion = "2.5.8"

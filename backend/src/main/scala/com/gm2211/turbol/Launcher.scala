@@ -26,14 +26,14 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
       .fromYaml[InstallConfig]
       .getOrThrow(e => new IllegalArgumentException(s"Cannot read install config at $installConfigPath\n", e))
     val appSecrets: Refreshable[AppSecrets] =
-      ConfigWatcher.watchConfig(appSecretsPath, AppSecrets(dbAdminPassword = ""))(using IORuntime.global)
+      ConfigWatcher.watchConfig(appSecretsPath)(using IORuntime.global)
     val runtime: Refreshable[RuntimeConfig] =
-      ConfigWatcher.watchConfig(runtimeConfigPath, RuntimeConfig.default)(using IORuntime.global)
+      ConfigWatcher.watchConfig(runtimeConfigPath)(using IORuntime.global)
 
     val configModule: ConfigModule = ConfigModule(install, runtime, appSecrets)
     val appModule: AppModule = AppModule(configModule, StorageModule(configModule))
     val appServer = AppServer.createServer(appModule)
-    
+
     appModule.storageModule.txnManager.awaitInitialized()
 
     appServer

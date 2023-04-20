@@ -8,18 +8,14 @@ package com.gm2211.turbol.util
 
 import com.gm2211.logging.BackendLogging
 import io.circe.derivation.Configuration
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Decoder, Json}
 
-import java.io.{File, InputStreamReader}
-import java.nio.file.{Path, Paths}
+import java.io.File
 import scala.io.Source
-import scala.util.{Failure, Success, Try, Using}
+import scala.util.{Failure, Success, Try}
 
 trait ConfigSerialization extends BackendLogging {
-  import io.circe.parser.decode as decodeJson
-  import io.circe.syntax.*
   import io.circe.yaml.parser.parse as decodeYaml
-  import io.circe.yaml.syntax.*
 
   given customConfig: Configuration =
     Configuration

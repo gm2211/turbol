@@ -1,18 +1,13 @@
 package com.gm2211.turbol.storage.stores
 
 import cats.*
-import cats.data.*
-import cats.effect.*
-import cats.implicits.*
-import com.gm2211.turbol.objects.internal.model.airports.{Airport, ICAOCode}
+import com.gm2211.turbol.objects.internal.model.airports.ICAOCode
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}
 import doobie.*
-import doobie.hikari.HikariTransactor
 import doobie.implicits.*
 import doobie.postgres.*
 import doobie.postgres.implicits.*
-import doobie.util.ExecutionContexts
 
 trait AirportsStore extends DBStore {
   def putAirport(

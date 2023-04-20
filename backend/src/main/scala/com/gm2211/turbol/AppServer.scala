@@ -2,12 +2,9 @@ package com.gm2211.turbol
 
 import cats.data.Kleisli
 import cats.effect.{IO, Resource}
-import com.comcast.ip4s.Literals.ipv4
-import com.comcast.ip4s.{ipv4, Port}
+import com.comcast.ip4s.{Port, ipv4}
 import com.gm2211.logging.BackendLogging
-import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.config.install.InstallConfig
-import com.gm2211.turbol.config.runtime.RuntimeConfig
 import com.gm2211.turbol.endpoints.{AirportsEndpoint, Endpoint, FlightsEndpoint}
 import com.gm2211.turbol.modules.AppModule
 import org.http4s.ember.server.EmberServerBuilder

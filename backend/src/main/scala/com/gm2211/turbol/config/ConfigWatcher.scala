@@ -6,14 +6,12 @@
 
 package com.gm2211.turbol.config
 
+import cats.effect.IO
 import cats.effect.unsafe.IORuntime
-import cats.effect.{IO, Resource}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.*
-import com.gm2211.turbol.util.{BackendSerialization, ConfigSerialization, TryUtils}
+import com.gm2211.turbol.util.{ConfigSerialization, TryUtils}
 import com.sun.nio.file.SensitivityWatchEventModifier
-import fs2.io.file.Path.fromNioPath
-import fs2.io.file.Watcher
 import io.circe.Decoder
 import retry.{RetryPolicies, retryingOnAllErrors}
 
@@ -21,8 +19,6 @@ import java.nio.file
 import java.nio.file.*
 import java.nio.file.StandardWatchEventKinds.*
 import java.nio.file.WatchEvent.Kind
-import java.util.concurrent.ExecutorService
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
@@ -34,7 +30,7 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
    * reloading it as necessary. Changes to the runtime config after the server has started will be propagated
    * throughout the server.
    */
-  def watchConfig[T](configPath: Path, initialValue: => T)
+  def watchConfig[T](configPath: Path)
     (using IORuntime)
     (using Decoder[T])
   : Refreshable[T] = {
@@ -43,7 +39,7 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
     val watchService: WatchService = FileSystems.getDefault.newWatchService()
     configDirPath.register(watchService, Array[Kind[_]](ENTRY_MODIFY), SensitivityWatchEventModifier.HIGH)
 
-    val configRef: Refreshable[T] = Refreshable(initialValue)
+    val configRef: Refreshable[T] = Refreshable(readConfig(configPath).get)
 
     retryingOnAllErrors(
       policy = RetryPolicies.constantDelay[IO](0.seconds),
@@ -71,7 +67,7 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
                   configRef.update(config)
                   log.info("Successfully updated config", safe("configPath", configPath))
             }
-          }.ifFailure(exception => log.info("Unhandled error while monitoring config", exception))
+          }.doOnFailure(exception => log.info("Unhandled error while monitoring config", exception))
         }
       }
     }

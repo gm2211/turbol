@@ -1,18 +1,15 @@
 package com.gm2211.turbol.storage
 
-import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
 import cats.effect.{Deferred, IO, Ref, Resource}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.config.runtime.{DatabaseConfig, H2, Postgres}
 import com.gm2211.turbol.config.secrets.AppSecrets
-import com.gm2211.turbol.objects.internal.storage.db.DBCredentials
 import com.gm2211.turbol.util.MoreExecutors.given
 import com.gm2211.turbol.util.{CatsUtils, MoreExecutors, Scheduler}
 import com.softwaremill.tagging.*
 import doobie.hikari.HikariTransactor
 
-import java.util.concurrent.ExecutorService
 import scala.concurrent.ExecutionContext
 
 trait DBTransactorProvider {

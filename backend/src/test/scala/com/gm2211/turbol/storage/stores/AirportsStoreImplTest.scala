@@ -1,13 +1,8 @@
 package com.gm2211.turbol.storage.stores
 
-import cats.effect.IO
-import com.gm2211.reactive.Refreshable
-import com.gm2211.turbol.config.runtime.{DatabaseConfig, LoggingConfig, RuntimeConfig}
-import com.gm2211.turbol.objects.internal.model.airports.{Airport, IATACode, ICAOCode}
+import com.gm2211.turbol.objects.internal.model.airports.ICAOCode
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
-import com.gm2211.turbol.util.{TestTxnManager, TestWithDb}
-import doobie.syntax.ConnectionIOOps
-import doobie.{syntax, ConnectionIO, WeakAsync}
+import com.gm2211.turbol.util.TestWithDb
 import org.scalatest.funsuite.AnyFunSuite
 
 class AirportsStoreImplTest extends TestWithDb {

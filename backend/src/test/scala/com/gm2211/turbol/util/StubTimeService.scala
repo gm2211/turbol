@@ -13,14 +13,16 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicLong
 import scala.concurrent.duration.*
 
-final class StubTimeService extends TimeService {
+final class StubTimeService extends TimeService with ExpressionUtils {
   private val epochMillis: AtomicLong = AtomicLong(0)
 
   override def now: DatetimeUtc = DatetimeUtc(epochMillis.get())
   override def today: LocalDate = LocalDate.ofEpochDay(epochMillis.get().millis.toDays)
 
   def set(time: DatetimeUtc): Unit = epochMillis.set(time.epochMillis)
-  def forward(duration: Duration): Unit = epochMillis.updateAndGet(cur => cur + duration.toMillis)
+  def forward(duration: Duration): Unit = ignoringRetValue {
+    epochMillis.updateAndGet(cur => cur + duration.toMillis)
+  }
   def backward(duration: Duration): Unit = forward(duration * -1)
 }
 

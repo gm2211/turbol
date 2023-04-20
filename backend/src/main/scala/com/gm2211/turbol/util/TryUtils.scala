@@ -36,6 +36,13 @@ trait TryUtils {
       }
     }
 
+    def doOnFailure(action: Throwable => Unit): Unit = {
+      tr match {
+        case Failure(error: Throwable) => action(error)
+        case _ => ()
+      }
+    }
+
     def getOrThrow(exceptionMapper: Throwable => Exception): T = {
       tr match
         case Failure(exception) => throw exceptionMapper(exception)

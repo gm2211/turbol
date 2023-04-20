@@ -6,12 +6,11 @@
 
 package com.gm2211.turbol.util
 
-import com.gm2211.logging.{BackendLogger, BackendLogging}
+import com.gm2211.logging.BackendLogging
 
 import java.util
 import java.util.concurrent.*
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 

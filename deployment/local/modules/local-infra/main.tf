@@ -7,7 +7,7 @@ provider "helm" {
 resource "random_password" "postgres_superuser_password" {
   length           = 25
   special          = true
-  override_special = "_%@"
+  override_special = "_-*#"
 }
 
 locals {
@@ -35,7 +35,13 @@ resource "helm_release" "postgresql" {
       name  = "global.postgresql.service.ports.postgresql"
       value = local.postgres_port
     }
+
+    set {
+      name = "global.postgresql.auth.database"
+      value = local.postgres_database_name
+    }
 }
+
 resource "null_resource" "delete_pvs" {
   depends_on = [helm_release.postgresql]
 
@@ -43,7 +49,7 @@ resource "null_resource" "delete_pvs" {
   # overwritten by the new helm installation
   provisioner "local-exec" {
     when    = destroy
-    command = "kubectl delete pv postgresql-0"
+    command = "kubectl delete pvc data-postgresql-0"
   }
 }
 

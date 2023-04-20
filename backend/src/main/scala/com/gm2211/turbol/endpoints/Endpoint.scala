@@ -6,7 +6,6 @@
 
 package com.gm2211.turbol.endpoints
 import cats.effect.IO
-import com.gm2211.turbol.config.install.InstallConfig
 import org.http4s.HttpRoutes
 import org.http4s.dsl.Http4sDsl
 

@@ -7,7 +7,6 @@ import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations.*
 import sbtrelease.Vcs
 import org.apache.commons.io.FileUtils
 import scala.sys.process.Process
-import com.typesafe.sbt.packager.docker.Cmd
 
 import java.nio.charset.StandardCharsets
 
@@ -41,7 +40,13 @@ inThisBuild(
       "-deprecation",
       "-feature",
       "-Yretain-trees",
-      "-language:implicitConversions"
+      "-explaintypes",
+      "-unchecked",
+      "-language:implicitConversions",
+      "-Werror",
+      "-Wunused:all",
+      "-Wunused:imports",
+      "-Wvalue-discard",
     ),
     Compile / javacOptions ++= Seq(
       "-source",

@@ -7,7 +7,6 @@
 package com.gm2211.turbol.config.runtime
 
 import ch.qos.logback.classic.Level
-import com.gm2211.turbol.config.runtime.Debug.level
 import com.gm2211.turbol.util.ConfigSerialization
 import io.circe.derivation.ConfiguredDecoder
 import io.circe.{Decoder, HCursor}

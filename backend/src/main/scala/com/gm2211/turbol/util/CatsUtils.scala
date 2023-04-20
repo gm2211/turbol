@@ -4,7 +4,6 @@ import cats.effect.IO
 import cats.effect.unsafe.IORuntime
 import com.gm2211.turbol.util.MoreExecutors.*
 
-import java.util.concurrent.ExecutorService
 import scala.concurrent.ExecutionContext
 
 object CatsUtils extends CatsUtils { // Allows us to import CatsUtils._ in other files

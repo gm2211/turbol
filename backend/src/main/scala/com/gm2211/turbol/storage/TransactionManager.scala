@@ -1,25 +1,13 @@
 package com.gm2211.turbol.storage
 
 import cats.*
-import cats.data.*
 import cats.effect.*
-import cats.effect.unsafe.IORuntime
-import cats.implicits.*
-import com.gm2211.reactive.Refreshable
-import com.gm2211.turbol.config.runtime.DatabaseConfig
 import com.gm2211.turbol.objects.internal.errors.CredentialsNeedRefreshing
-import com.gm2211.turbol.objects.internal.model.airports.ICAOCode
-import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB, TxnCapability}
+import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}
 import com.gm2211.turbol.objects.internal.storage.db.TransactionalStores
-import com.gm2211.turbol.storage.stores.AirportsStoreImpl
 import com.gm2211.turbol.util.CatsUtils
 import doobie.*
-import doobie.hikari.HikariTransactor
 import doobie.implicits.*
-import doobie.syntax.*
-
-import scala.collection.immutable.Set
-import scala.concurrent.ExecutionContext
 
 trait TransactionManager {
   def awaitInitialized(): Unit

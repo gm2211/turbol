@@ -1,10 +1,6 @@
 package com.gm2211.turbol.config
 
-import cats.effect.IO
-import cats.effect.unsafe.IORuntime
-import com.gm2211.logging.BackendLogging
-import com.gm2211.turbol.config.ConfigWatcher
-import com.gm2211.turbol.config.runtime.{LoggingConfig, RuntimeConfig}
+import _root_.io.circe.Decoder
 import com.gm2211.turbol.util.CatsUtils
 import com.gm2211.turbol.util.MoreExecutors.*
 import org.scalatest.concurrent.Eventually.eventually
@@ -13,15 +9,17 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.SpanSugar.*
 
-import java.io.{File, IOException}
 import java.nio.file.*
 import java.util.concurrent.Executors
-import scala.concurrent.ExecutionContext
 
 final class ConfigWatcherTest extends AnyFunSuite with Matchers with CatsUtils {
   test("Refreshable config produced by watcher should call subscriber when watched config is updated") {
     val testPath: Path = Files.createTempFile("test", ".conf")
-    val refreshableConfig = ConfigWatcher.watchConfig(testPath, 0)
+    
+    Files.writeString(testPath, 0.toString, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    
+    val refreshableConfig =
+      ConfigWatcher.watchConfig[Int](testPath)
     var counter = 0
 
     refreshableConfig.onUpdate { _ => counter += 1 }(using Executors.newFixedThreadPool(1).toExecutionContext)

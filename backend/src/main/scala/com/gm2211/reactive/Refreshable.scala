@@ -3,12 +3,10 @@ package com.gm2211.reactive
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.util.TryUtils
 
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicReference
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
-import scala.util.Try
-import scala.util.control.NonLocalReturns.*
+import scala.util.{Try, boundary}
 
 trait Refreshable[T] {
   def update(t: T): Unit
@@ -23,11 +21,11 @@ final class RefreshableImpl[T](initial: T) extends Refreshable[T] with TryUtils 
   private val listeners = mutable.ArrayDeque.empty[(ExecutionContext, T => Unit)]
 
   override def update(newValue: T): Unit = {
-    returning {
+    boundary {
       val computedValue = this.value.getAndUpdate(existing => if existing == newValue then existing else newValue)
       if (computedValue == newValue) {
         log.info("Value not changed, not updating listeners")
-        throwReturn(())
+        boundary.break(())
       }
       value.set(newValue)
       listeners.foreach { (executor, listener) =>

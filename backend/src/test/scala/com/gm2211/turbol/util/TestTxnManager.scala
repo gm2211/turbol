@@ -7,7 +7,6 @@ import com.gm2211.turbol.objects.internal.storage.RawSqlStoreImpl
 import com.gm2211.turbol.objects.internal.storage.db.TransactionalStores
 import com.gm2211.turbol.storage.*
 import com.gm2211.turbol.storage.stores.AirportsStoreImpl
-import com.gm2211.turbol.util.MoreExecutors
 import com.gm2211.turbol.util.MoreExecutors.*
 import com.softwaremill.tagging.*
 import doobie.implicits.toSqlInterpolator

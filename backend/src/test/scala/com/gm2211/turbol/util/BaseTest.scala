@@ -1,7 +1,5 @@
 package com.gm2211.turbol.util
 
-import com.gm2211.turbol.util.CatsUtils
-import doobie.implicits.toSqlInterpolator
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
