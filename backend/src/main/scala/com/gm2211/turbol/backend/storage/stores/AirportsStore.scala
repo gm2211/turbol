@@ -6,47 +6,92 @@ import cats.effect.*
 import cats.implicits.*
 import com.gm2211.turbol.backend.objects.internal.model.airports.{Airport, ICAOCode}
 import com.gm2211.turbol.backend.objects.internal.storage.airports.AirportRow
-import com.gm2211.turbol.backend.objects.internal.storage.capabilities.CanReadDB
+import com.gm2211.turbol.backend.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}
 import doobie.*
 import doobie.hikari.HikariTransactor
 import doobie.implicits.*
+import doobie.postgres.*
+import doobie.postgres.implicits.*
+import doobie.util.ExecutionContexts
 
 trait AirportsStore extends DBStore {
-  def getAirport(airportCode: ICAOCode)(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
+  def putAirport(
+    airport: AirportRow
+  )(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
+
+  def getAirport(
+    airportCode: ICAOCode
+  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
 }
 final class AirportsStoreImpl extends AirportsStore {
-  override def getAirport(airportCode: ICAOCode)(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
+  override def putAirport(airport: AirportRow)(
+    using
+    CanReadDB.type,
+    CanWriteToDB.type
+  ): doobie.ConnectionIO[Unit] = {
     sql"""
-      SELECT id,
-             display_id,
-             type,
-             name,
+          INSERT INTO airports (
+            display_id,
+            airport_type,
+            airport_name,
+            latitude_deg,
+            longitude_deg,
+            iso_country,
+            icao_code,
+            iata_code,
+            local_code,
+            keywords
+          ) VALUES (
+            ${airport.displayId},
+            ${airport.airportType},
+            ${airport.name},
+            ${airport.latitudeDeg},
+            ${airport.longitudeDeg},
+            ${airport.isoCountry},
+            ${airport.icaoCode},
+            ${airport.iataCode},
+            ${airport.localCode},
+            ${airport.keywords}
+          )
+         """.updateWithLogger.run.map(_ => ())
+  }
+
+  override def getAirport(
+    airportCode: ICAOCode
+  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
+    sql"""
+      select display_id,
+             airport_type,
+             airport_name,
              latitude_deg,
              longitude_deg,
              iso_country,
              icao_code,
              iata_code,
-             local_code
-      FROM airports
-      WHERE icao_code = ${airportCode.toString}
-    """.query[AirportRow].option
+             local_code,
+      from airports
+      where icao_code = ${airportCode.toString}
+    """.queryWithLogger[AirportRow].option
   }
 
-  override def createTableIfNotExists(): ConnectionIO[Unit] = {
-    sql"""
-      CREATE TABLE IF NOT EXISTS airports (
-        id INTEGER PRIMARY KEY,
-        display_id VARCHAR(10) NOT NULL,
-        type VARCHAR(20) NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        latitude_deg DECIMAL(9, 6) NOT NULL,
-        longitude_deg DECIMAL(9, 6) NOT NULL,
-        iso_country VARCHAR(2),
-        icao_code VARCHAR(10),
-        iata_code VARCHAR(3),
-        local_code VARCHAR(10),
-        keywords VARCHAR(255)[]
-      )
-    """.update.run.map(_ => ())
+  override def createTableIfNotExists(): ConnectionIO[Any] = {
+    for {
+      createTable <- sql"""
+              create table if not exists airports (
+                display_id varchar(10) not null,
+                airport_type varchar(20) not null,
+                airport_name varchar(255) not null,
+                latitude_deg double precision not null,
+                longitude_deg double precision not null,
+                iso_country varchar(2),
+                icao_code varchar(10) not null primary key,
+                iata_code varchar(3) not null,
+                local_code varchar(10),
+                keywords varchar(255) array
+              )
+            """.update.run
+      _ <- sql"create index if not exists airports_icao_code_idx on airports (icao_code)".update.run
+      _ <- sql"create index if not exists airports_iata_code_idx on airports (iata_code)".update.run
+    } yield ()
   }
 }

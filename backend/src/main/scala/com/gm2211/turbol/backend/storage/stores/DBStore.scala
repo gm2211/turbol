@@ -1,7 +1,8 @@
 package com.gm2211.turbol.backend.storage.stores
 
+import com.gm2211.turbol.backend.util.DBUtils
 import doobie.ConnectionIO
 
-trait DBStore {
-  def createTableIfNotExists(): ConnectionIO[Unit]
+trait DBStore extends DBUtils {
+  def createTableIfNotExists(): ConnectionIO[Any]
 }

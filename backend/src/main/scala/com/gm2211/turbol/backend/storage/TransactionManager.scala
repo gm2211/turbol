@@ -8,9 +8,11 @@ import cats.implicits.*
 import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.backend.config.runtime.DatabaseConfig
 import com.gm2211.turbol.backend.objects.internal.errors.CredentialsNeedRefreshing
+import com.gm2211.turbol.backend.objects.internal.model.airports.ICAOCode
 import com.gm2211.turbol.backend.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB, TxnCapability}
 import com.gm2211.turbol.backend.objects.internal.storage.db.TransactionalStores
 import com.gm2211.turbol.backend.storage.stores.AirportsStoreImpl
+import com.gm2211.turbol.backend.util.CatsUtils
 import doobie.*
 import doobie.hikari.HikariTransactor
 import doobie.implicits.*
@@ -20,49 +22,62 @@ import scala.collection.immutable.Set
 import scala.concurrent.ExecutionContext
 
 trait TransactionManager {
+  def awaitInitialized(): Unit
+
   def readOnly[T](
     action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): IO[T]
+  ): T
 
   def readWrite[T](
-    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): IO[T]
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[T]
+  ): T
 
   def readWriteVoid(
-    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[Any]
-  ): IO[Unit]
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
+  ): Unit
 }
 
 class TransactionManagerImpl(
   stores: TransactionalStores,
   transactorProvider: DBTransactorProvider
-) extends TransactionManager {
+) extends TransactionManager
+    with CatsUtils {
+  override def awaitInitialized(): Unit = {
+    transactorProvider.awaitInitialized()
+    readWriteVoid { txn =>
+      txn
+        .map(_.createTableIfNotExists())
+        .reduce((existing, next) => existing.flatMap(_ => next))
+        .map(_ => ())
+    }
+  }
+
   override def readOnly[T](
     action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): IO[T] = {
+  ): T = {
     transactionally { stores =>
       given CanReadDB.type = CanReadDB
 
       action(stores)
-    }
+    }.evalOnIOExec().unsafeRunSync()
   }
 
   override def readWrite[T](
-    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): IO[T] = {
-    transactionally{ stores =>
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[T]
+  ): T = {
+    transactionally { stores =>
       given CanReadDB.type = CanReadDB
 
       given CanWriteToDB.type = CanWriteToDB
 
       action(stores)
-    }
+    }.evalOnIOExec().unsafeRunSync()
   }
 
   override def readWriteVoid(
-    action: CanReadDB.type ?=> CanWriteToDB.type ?=> TransactionalStores => ConnectionIO[Any]
-  ): IO[Unit] = {
-    readWriteVoid(action).map(_ => ())
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
+  ): Unit = {
+    readWrite(action)
   }
 
   private def transactionally[T](

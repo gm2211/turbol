@@ -137,10 +137,9 @@ lazy val backend = project
   .settings(
     moduleName := "turbol-backend",
     // Linting and formatting
-    // Using intellij's built-in instead until scalafmt goes back to being decent again
-    //    compile := (
-    //      (Compile / compile) dependsOn (Compile / scalafmtAll, Compile / scalafmtCheck)
-    //    ).value,
+    compile := (
+      (Compile / compile) dependsOn (Compile / scalafmtAll, Compile / scalafmtCheck)
+    ).value,
     // Deps
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
