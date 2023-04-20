@@ -40,7 +40,8 @@ inThisBuild(
     Compile / scalacOptions ++= Seq(
       "-deprecation",
       "-feature",
-      "-Yretain-trees"
+      "-Yretain-trees",
+      "-language:implicitConversions"
     ),
     Compile / javacOptions ++= Seq(
       "-source",

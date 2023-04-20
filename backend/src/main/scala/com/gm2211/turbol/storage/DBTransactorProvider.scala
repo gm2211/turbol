@@ -7,8 +7,9 @@ import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.config.runtime.{DatabaseConfig, H2, Postgres}
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.objects.internal.storage.db.DBCredentials
-import com.gm2211.turbol.util.CatsUtils
-import com.gm2211.turbol.util.MoreExecutors.*
+import com.gm2211.turbol.util.MoreExecutors.given
+import com.gm2211.turbol.util.{CatsUtils, MoreExecutors, Scheduler}
+import com.softwaremill.tagging.*
 import doobie.hikari.HikariTransactor
 
 import java.util.concurrent.ExecutorService
@@ -19,23 +20,21 @@ trait DBTransactorProvider {
   def transactor(forceRefresh: Boolean = false): IO[HikariTransactor[IO]]
 }
 
-final class DbTransactorProviderImpl(
+final class DBTransactorProviderImpl(
   dbConfig: Refreshable[DatabaseConfig],
-  appSecrets: Refreshable[AppSecrets]
-)(
-  using ioExecutor: ExecutionContext
+  appSecrets: Refreshable[AppSecrets],
+  scheduler: Scheduler @@ DBTransactorProvider
 ) extends DBTransactorProvider
     with BackendLogging
     with CatsUtils {
+
   private val initialized: Deferred[IO, Unit] = Deferred.unsafe[IO, Unit]
   private val transactorAndReleaserRef: Ref[IO, (HikariTransactor[IO], IO[Unit])] =
     Ref.unsafe[IO, (HikariTransactor[IO], IO[Unit])]((null, null))
 
   dbConfig
-    .zipWith(appSecrets)
-    .onUpdate((conf, secrets) => initDb(conf, secrets))(
-      using ioExecutor
-    )
+    .zipWith(appSecrets)(using scheduler)
+    .onUpdate((conf, secrets) => initDb(conf, secrets)(using scheduler))(using scheduler)
 
   override def awaitInitialized(): Unit = {
     initialized

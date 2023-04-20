@@ -51,6 +51,7 @@ object dependencies {
       "org.tpolecat" %% "doobie-postgres" % doobieVersion,
       // Dependency injection
       "com.softwaremill.macwire" %% "macros" % macWireVersion % "provided",
+      "com.softwaremill.macwire" %% "util" % macWireVersion,
       // Functional
       "co.fs2" %% "fs2-core" % fs2Version,
       "org.typelevel" %% "cats-effect" % catsEffects,

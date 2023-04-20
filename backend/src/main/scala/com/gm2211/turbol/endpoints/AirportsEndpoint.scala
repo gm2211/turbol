@@ -21,8 +21,6 @@ import org.http4s.dsl.io.*
 import org.http4s.implicits.*
 import org.http4s.{HttpRoutes, Request, Response}
 
-import scala.language.implicitConversions
-
 object AirportsEndpoint extends Endpoint with BackendSerialization {
   override val basePath: String = "/airports"
   override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] { case req @ POST -> Root / "search" =>

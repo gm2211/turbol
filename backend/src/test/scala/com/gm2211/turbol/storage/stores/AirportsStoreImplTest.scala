@@ -10,8 +10,6 @@ import doobie.syntax.ConnectionIOOps
 import doobie.{syntax, ConnectionIO, WeakAsync}
 import org.scalatest.funsuite.AnyFunSuite
 
-import scala.language.implicitConversions
-
 class AirportsStoreImplTest extends TestWithDb {
 
   test("should be able to store and retrieve an airport") {

@@ -19,10 +19,15 @@ object MoreExecutors extends BackendLogging {
   extension (executorService: ExecutorService) {
     def toExecutionContext: ExecutionContext = ExecutionContext.fromExecutorService(executorService)
   }
+  extension (executionContext: ExecutionContext) {
+    def toScheduler: Scheduler = SchedulerImpl(executionContext)
+  }
 
   given Conversion[ExecutorService, ExecutionContext] = _.toExecutionContext
+  given Conversion[ExecutionContext, Scheduler] = _.toScheduler
+  given Conversion[Scheduler, ExecutionContext] = _.executionContext
 
-  def sameThread: ExecutorService = new ExecutorService {
+  def sameThread: Scheduler = new ExecutorService {
     override def shutdown(): Unit = ()
     override def shutdownNow(): util.List[Runnable] = List().asJava
     override def isShutdown: Boolean = false
@@ -50,24 +55,24 @@ object MoreExecutors extends BackendLogging {
     override def invokeAny[T](tasks: util.Collection[_ <: Callable[T]], timeout: Long, unit: TimeUnit): T =
       tasks.asScala.head.call() // TODO: implement timeout
     override def execute(command: Runnable): Unit = command.run()
-  }
+  }.toExecutionContext.toScheduler
 
   /**
    * Creates a new executor service that reuses pooled threads if possible, otherwise creates new threads.
    * Should be used for blocking operations.
    */
-  def io(namePrefix: String): ExecutorService = {
+  def io(namePrefix: String): Scheduler = {
     val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic = true)
-    Executors.newCachedThreadPool(threadFactory)
+    Executors.newCachedThreadPool(threadFactory).toExecutionContext.toScheduler
   }
 
   /**
    * Creates a threadpool executor with a fixed number of threads = number of cores.
    * Should be used for non-blocking operations.
    */
-  def fixed(namePrefix: String, numThreads: Int, daemonic: Boolean = true): ExecutorService = {
+  def fixed(namePrefix: String, numThreads: Int, daemonic: Boolean = true): Scheduler = {
     val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic)
-    Executors.newFixedThreadPool(numThreads, threadFactory)
+    Executors.newFixedThreadPool(numThreads, threadFactory).toExecutionContext.toScheduler
   }
 
   private object ThreadFactoryBuilder extends BackendLogging {

@@ -3,12 +3,13 @@ package com.gm2211.turbol
 import cats.data.Kleisli
 import cats.effect.{IO, Resource}
 import com.comcast.ip4s.Literals.ipv4
-import com.comcast.ip4s.{Port, ipv4}
+import com.comcast.ip4s.{ipv4, Port}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.RuntimeConfig
 import com.gm2211.turbol.endpoints.{AirportsEndpoint, Endpoint, FlightsEndpoint}
+import com.gm2211.turbol.modules.AppModule
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.{CORS, ErrorHandling, RequestLogger, ResponseLogger}
 import org.http4s.server.{Router, Server}
@@ -17,7 +18,9 @@ import org.http4s.{Request, Response}
 object AppServer extends BackendLogging {
   private type MyHttpApp = Kleisli[IO, Request[IO], Response[IO]]
 
-  def createServer(install: InstallConfig, runtime: Refreshable[RuntimeConfig]): Resource[IO, Server] = {
+  def createServer(appModule: AppModule): Resource[IO, Server] = {
+    val install: InstallConfig = appModule.configModule.install
+
     val maybeApplyCORS: MyHttpApp => MyHttpApp = {
       if install.server.devMode then {
         CORS

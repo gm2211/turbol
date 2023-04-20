@@ -14,8 +14,6 @@ import io.circe.generic.auto.*
 import org.http4s.HttpRoutes
 import org.http4s.dsl.io.*
 
-import scala.language.implicitConversions
-
 object FlightsEndpoint extends Endpoint with BackendSerialization {
   override val basePath: String = "/flights"
   override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] { case GET -> Root / flightNumber / "plan" =>

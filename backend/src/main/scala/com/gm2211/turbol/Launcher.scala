@@ -8,6 +8,7 @@ import com.gm2211.turbol.config.ConfigWatcher
 import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.RuntimeConfig
 import com.gm2211.turbol.config.secrets.AppSecrets
+import com.gm2211.turbol.modules.{AppModule, ConfigModule, StorageModule}
 import com.gm2211.turbol.util.{ConfigSerialization, OptionUtils, TryUtils}
 
 import java.nio.file.{Path, Paths}
@@ -29,7 +30,11 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
     val runtime: Refreshable[RuntimeConfig] =
       ConfigWatcher.watchConfig(runtimeConfigPath, RuntimeConfig.default)(using IORuntime.global)
 
-    def appServer = AppServer.createServer(install, runtime)
+    val configModule: ConfigModule = ConfigModule(install, runtime, appSecrets)
+    val appModule: AppModule = AppModule(configModule, StorageModule(configModule))
+    val appServer = AppServer.createServer(appModule)
+    
+    appModule.storageModule.txnManager.awaitInitialized()
 
     appServer
       .use(_ => IO.never)
