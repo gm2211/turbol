@@ -6,8 +6,8 @@
 
 package com.gm2211.turbol.util
 
-import com.gm2211.turbol.backend.objects.internal.DatetimeUtc
-import com.gm2211.turbol.backend.services.TimeService
+import com.gm2211.turbol.objects.internal.DatetimeUtc
+import com.gm2211.turbol.services.TimeService
 
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicLong

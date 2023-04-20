@@ -3,6 +3,9 @@ import sbt.{Def, *}
 object dependencies {
   val versionOfScala = "3.2.2"
 
+  // Dependency injection
+  val macWireVersion = "2.5.8"
+
   // Functional
   val fs2Version = "3.6.1"
   val catsEffects = "3.4.8"
@@ -46,6 +49,8 @@ object dependencies {
       "org.tpolecat" %% "doobie-core" % doobieVersion,
       "org.tpolecat" %% "doobie-hikari" % doobieVersion,
       "org.tpolecat" %% "doobie-postgres" % doobieVersion,
+      // Dependency injection
+      "com.softwaremill.macwire" %% "macros" % macWireVersion % "provided",
       // Functional
       "co.fs2" %% "fs2-core" % fs2Version,
       "org.typelevel" %% "cats-effect" % catsEffects,

@@ -39,6 +39,8 @@ resource "helm_release" "postgresql" {
 resource "null_resource" "delete_pvs" {
   depends_on = [helm_release.postgresql]
 
+  # Necessary because otherwise old data (like the password for the postgres user) will be persisted and not be
+  # overwritten by the new helm installation
   provisioner "local-exec" {
     when    = destroy
     command = "kubectl delete pv postgresql-0"

@@ -9,7 +9,7 @@ package com.gm2211.reactive
 import java.util.concurrent.ExecutorService
 import scala.concurrent.duration.*
 import scala.concurrent.{Await, ExecutionContext, Future}
-import com.gm2211.turbol.backend.util.MoreExecutors.*
+import com.gm2211.turbol.util.MoreExecutors.*
 import scala.language.implicitConversions
 
 object FutureUtils extends FutureUtils // Allows ._ imports

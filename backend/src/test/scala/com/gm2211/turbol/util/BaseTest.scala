@@ -1,6 +1,6 @@
 package com.gm2211.turbol.util
 
-import com.gm2211.turbol.backend.util.CatsUtils
+import com.gm2211.turbol.util.CatsUtils
 import doobie.implicits.toSqlInterpolator
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.funsuite.AnyFunSuite

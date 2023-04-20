@@ -95,7 +95,7 @@ def get_arch():
 def get_ubuntu_release_name():
   return bash("lsb_release -c | yq eval .Codename -")
 
-final class BashResult:
+class BashResult:
   def __init__(self, ps, out, err):
     self.ps = ps
     self.out = out

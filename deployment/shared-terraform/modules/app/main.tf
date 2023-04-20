@@ -142,7 +142,7 @@ resource "kubernetes_deployment" "be-app" {
             value = "${local.server_configs_dir}/${local.runtime_config_filename}"
           }
           env {
-            name  = "INSTALL_SECRETS_PATH"
+            name  = "APP_SECRETS_PATH"
             value = "${local.server_secrets_dir}/${local.server_install_secrets_filename}"
           }
         }
