@@ -5,10 +5,6 @@
 
 name: Scala CI
 
-concurrency:
-  group: "main"
-  cancel-in-progress: true
-
 on:
   push:
     branches: [ "develop" ]
