@@ -1,3 +1,9 @@
+/*
+ * Copyright 2020 Giulio Mecocci
+ *
+ * All rights reserved.
+ */
+
 package com.gm2211.turbol.storage
 
 import cats.effect.{Deferred, IO, Ref, Resource}
