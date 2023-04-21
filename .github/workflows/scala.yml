@@ -72,6 +72,8 @@ jobs:
           ${{ runner.os }}-sbt-cache-v2
     - name: Allow run-p command
       run: npm i npm-run-all
+    - name: Install npm deps
+      run: cd frontend && npm install && cd ..
     - name: Publish 
       run: sbt Docker/publish
   deploy:
