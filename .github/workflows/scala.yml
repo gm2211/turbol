@@ -17,10 +17,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-
+  prepare:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Set up JDK 19
@@ -29,5 +27,49 @@ jobs:
         java-version: '19'
         distribution: 'temurin'
         cache: 'sbt'
+  build:
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
     - name: Run tests
       run: sbt test
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Docker Login
+      run: docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASS"
+    - name: Publish 
+      run: ./sbtw Docker/publish
+  deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.ref_type == "tag"
+    steps:
+    - name: write terraform creds
+      run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
+    - name: Install utils
+      run: sudo apt-get update && sudo apt-get install -y curl wget git jq unzip apache2-utils
+    - name: Install doctl
+      run: |
+        curl -L https://github.com/digitalocean/doctl/releases/download/v${DOCTL_VERSION}/doctl-${DOCTL_VERSION}-linux-amd64.tar.gz | tar xz -C /tmp\
+        && sudo mv /tmp/doctl /usr/local/bin
+    - name: Install terraform
+      run: |
+        wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -O /tmp/terraform.zip\
+        && cd /tmp\
+        && unzip terraform.zip\
+        && sudo mv terraform /usr/local/bin
+    - name: Write credentials for digital ocean
+      run: |
+        doctl auth init -t $DOCEAN_TOKEN\
+        && doctl kubernetes cluster config save $(doctl kubernetes cluster list | tail -n+2 | head | cut -d ' ' -f1)
+    - name: Deploy
+      run: |
+        cd deployment/digital-ocean\
+        && terraform init\
+        && terraform apply -auto-approve
+        command: |
+          cd deployment/digital-ocean\
+          && terraform init\
+          && terraform apply -auto-approve
