@@ -74,6 +74,8 @@ jobs:
       run: npm i npm-run-all
     - name: Install npm deps
       run: cd frontend && npm install && cd ..
+    - name: Print version
+      run: echo $(git describe --tag)
     - name: Publish 
       run: sbt Docker/publish
   deploy:
