@@ -74,6 +74,8 @@ jobs:
       run: npm i npm-run-all
     - name: Install npm deps
       run: cd frontend && npm install && cd ..
+    - name: Get tags
+      run: git fetch --tags origin
     - name: Print version
       run: echo $(git describe --tag)
     - name: Publish 
