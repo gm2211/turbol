@@ -6,7 +6,7 @@
 name: Scala CI
 
 concurrency:
-  group: ${{ github.head_ref }}
+  group: "main"
   cancel-in-progress: true
 
 on:
