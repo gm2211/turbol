@@ -46,7 +46,7 @@ inThisBuild(
       "-Werror",
       "-Wunused:all",
       "-Wunused:imports",
-      "-Wvalue-discard",
+      "-Wvalue-discard"
     ),
     Compile / javacOptions ++= Seq(
       "-source",
@@ -81,11 +81,14 @@ lazy val dockerBuildxSettings = Seq(
     dockerAliases
       .value
       .foreach(alias =>
-        Process(
-          "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
-            alias + " .",
-          baseDirectory.value / "target" / "docker" / "stage"
-        ).!
+        if (alias.tag.isDefined) {
+          println(s"Building image: $alias")
+          Process(
+            "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+              alias + " .",
+            baseDirectory.value / "target" / "docker" / "stage"
+          ).!
+        }
       )
   },
   Docker / publish := Def
