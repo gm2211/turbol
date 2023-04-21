@@ -80,16 +80,16 @@ lazy val dockerBuildxSettings = Seq(
     println(s"Building and pushing image with Buildx ${dockerCommands.value}")
     dockerAliases
       .value
-      .foreach(alias =>
-        if (alias.tag.isDefined) {
-          println(s"Building image: $alias")
+      .foreach { alias =>
+        println("FOOOOO")
+        if (false) {
           Process(
             "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
               alias + " .",
             baseDirectory.value / "target" / "docker" / "stage"
           ).!
         }
-      )
+      }
   },
   Docker / publish := Def
     .sequential(
