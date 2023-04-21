@@ -173,7 +173,7 @@ lazy val backend = project
     // we don't actually need to expose these volumes, but it doesn't matter since we deploy with k8s
     dockerExposedVolumes := Seq("/opt/docker/var/log", "/opt/docker/var/conf"),
     // Run
-    Compile / mainClass := Some("com.gm2211.turbol.backend.Launcher"),
+    Compile / mainClass := Some("com.gm2211.turbol.Launcher"),
     // Test
     Test / fork := true,
     Test / envFileName := "backend/var/conf/test.env",
