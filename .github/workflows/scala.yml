@@ -52,15 +52,8 @@ jobs:
     needs: build
     steps:
     - uses: actions/checkout@v3
-    - name: Echo usernam
-      run: |
-        if [ "$DOCKERHUB_USERNAME" != '' ]; then
-          echo "asdf $DOCKERHUB_USERNAME asdfjl"
-        else
-          echo "NOT FOUND"
-        fi
     - name: Docker Login
-      run: docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASS"
+      run: docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASSWORD"
     - name: Cache sbt
       uses: actions/cache@v2
       with:
