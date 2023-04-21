@@ -1,18 +1,13 @@
 terraform {
-  backend "remote" {
-    organization = "gm2211"
-
-    workspaces {
-      name = "turbol-cli"
-    }
-  }
   required_providers {
     digitalocean = {
       source = "digitalocean/digitalocean"
+    }
+    helm = {
+      source  = "hashicorp/helm"
     }
     kubernetes = {
       source = "hashicorp/kubernetes"
     }
   }
-  required_version = ">= 1.4.0"
 }

@@ -23,10 +23,8 @@ locals {
   // Hostnames
   prod_hostname      = local.domain
   // Postgres
+  postgres_prod_db   = "prod"
   postgres_port      = 25060
-  // See: https://cloud.digitalocean.com/databases/postgres?i=0eb48b
-  postgres_host      = "private-postgres-do-user-6593469-0.a.db.ondigitalocean.com"
-  postgres_superuser = "doadmin"
 }
 
 // Modules
@@ -54,11 +52,16 @@ module "prod" {
   k8s_cluster_ca         = local.digital_ocean_k8s_cluster_ca
   k8s_cluster_host       = local.digital_ocean_k8s_host
   k8s_cluster_token      = local.digital_ocean_k8s_token
-  postgres_database_name = "prod"
-  postgres_host          = local.postgres_host
+  postgres_database_name = local.postgres_prod_db
+  postgres_host          = module.infra.postgres_host
   postgres_port          = local.postgres_port
-  postgres_user          = local.postgres_superuser
-  postgres_password      = var.postgres_superuser_password
+  postgres_user          = module.infra.postgres_admin_user
+  postgres_password      = module.infra.postgres_password
+}
+
+resource "digitalocean_database_db" "prod-db" {
+  cluster_id = module.infra.postgres_cluster_id
+  name       = local.postgres_prod_db
 }
 
 // I really wish I could use the same ingress for both frontend and backend to save money, but, because we need 2

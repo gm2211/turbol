@@ -1,5 +1,7 @@
 // Providers
-
+provider "digitalocean" {
+  token = var.digitalocean_api_token
+}
 provider "kubernetes" {
   host                   = var.digital_ocean_k8s_host
   token                  = var.digital_ocean_k8s_token
@@ -17,9 +19,19 @@ locals {
   cert_issuer_email       = "turbol@gmeco.cc"
 }
 
+// DB
+resource "digitalocean_database_cluster" "postgres" {
+  name       = "postgres"
+  engine     = "pg"
+  version    = "11"
+  size       = "db-s-1vcpu-1gb"
+  region     = "nyc1"
+  node_count = 1
+}
+
 // External DNS
 resource "helm_release" "external-dns" {
-  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
+  depends_on = [kubernetes_manifest.install-cert-manager-issuer]
   name       = "external-dns"
   chart      = "external-dns"
   repository = var.external_dns_helm_stable_repo
@@ -139,7 +151,7 @@ resource "kubernetes_manifest" "install-cert-manager-issuer" {
 
 // Ingress
 resource "helm_release" "nginx-ingress" {
-  depends_on = [ kubernetes_manifest.install-cert-manager-issuer ]
+  depends_on = [kubernetes_manifest.install-cert-manager-issuer]
   name       = "nginx"
   version    = "4.5.2"
   chart      = "ingress-nginx"

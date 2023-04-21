@@ -5,9 +5,6 @@ variable digitalocean_api_token {
 variable docker_hub_password {
   sensitive = true
 }
-variable postgres_superuser_password {
-  sensitive = true
-}
 variable prod_app_version {
   default = "1.1.0"
 }
