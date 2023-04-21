@@ -110,10 +110,12 @@ lazy val frontend = project
   .in(file("frontend"))
   .settings(
     publishFrontendDocker := {
-      val exitCode =
-        Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
-      if (exitCode != 0) {
-        throw new RuntimeException("Failed to build frontend docker image")
+      if (false) {
+        val exitCode =
+          Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
+        if (exitCode != 0) {
+          throw new RuntimeException("Failed to build frontend docker image")
+        }
       }
     }
   )
