@@ -17,12 +17,12 @@ permissions:
   contents: read
   
 env:
-  DOCKERHUB_USERNAME: ${{ secrets.DockerHubUsername }}
-  DOCKERHUB_PASSWORD: ${{ secrets.DockerHubPassword }}
-  TERRAFORM_CLOUD_TOKEN: ${{ secrets.TerraformCloudToken }}
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUBUSERNAME }}
+  DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUBPASSWORD }}
+  TERRAFORM_CLOUD_TOKEN: ${{ secrets.TERRAFORMCLOUDTOKEN }}
   DOCTL_VERSION: 1.93.1
   TERRAFORM_VERSION: 1.4.5
-  DOCEAN_TOKEN: ${{ secrets.DigitalOceanToken }}
+  DOCEAN_TOKEN: ${{ secrets.DIGITALOCEANTOKEN }}
   
 jobs:
   prepare:
@@ -40,8 +40,6 @@ jobs:
     needs: prepare
     steps:
     - uses: actions/checkout@v3
-    - name: ls
-      run: ls
     - name: Run tests
       run: ./sbtw test
   publish:
