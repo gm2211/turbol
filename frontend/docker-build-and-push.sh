@@ -42,7 +42,7 @@ EXPOSE 9000
 EOF
 
 # 4. Creates a Docker image named turbol and sets the version using git tag
-tag=$(git describe --tag)
+tag=$(git describe --tag --always)
 image_name="docker.io/gm2211/turbol-fe"
 echo "Building image ${image_name}:${tag} and ${image_name}:latest and pushing them to Docker Hub..."
 docker buildx build --platform=linux/arm64,linux/amd64 --push -t "${image_name}":"${tag}" .
