@@ -77,7 +77,7 @@ jobs:
     - name: Get tags
       run: git fetch --tags origin
     - name: Print version
-      run: echo $(git describe --tag)
+      run: echo $(git describe --tag --always)
     - name: Publish 
       run: sbt Docker/publish
   deploy:
