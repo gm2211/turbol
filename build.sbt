@@ -89,10 +89,15 @@ lazy val dockerBuildxSettings = Seq(
       })
       .foreach { alias =>
         Process(
-          "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+          "ls; ls target; du -h; docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
             alias + " .",
           baseDirectory.value / "target" / "docker" / "stage"
         ).!
+//        Process(
+//          "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+//            alias + " .",
+//          baseDirectory.value / "target" / "docker" / "stage"
+//        ).!
       }
   },
   Docker / publish := Def
