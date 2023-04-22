@@ -90,6 +90,11 @@ jobs:
 #        push: true
 #        tags: docker.io/gm2211/turbol-fe:latest
 #        platforms: linux/arm64,linux/amd64
+    - name: Print dir
+      run: |
+        ls -lah
+        du -h
+        pwd
     - name: Publish
       run: |
         export DOCKER_BIN_NAME=$(which docker)
