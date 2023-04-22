@@ -81,7 +81,7 @@ lazy val dockerBuildxSettings = Seq(
     dockerAliases
       .value
       .filter(alias => {
-        println(s"Found docker alias '$alias' - will remove it if tag not defined")
+        println(s"Found docker alias '$alias' - will remove it if tag not defined (tag: ${alias.tag.isDefined}")
         alias.tag.isDefined
       })
       .foreach { alias =>
