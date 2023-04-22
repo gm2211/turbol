@@ -81,19 +81,16 @@ lazy val dockerBuildxSettings = Seq(
     dockerAliases
       .value
       .foreach { alias =>
-        println("FOOOOO")
-        if (false) {
-          Process(
-            "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
-              alias + " .",
-            baseDirectory.value / "target" / "docker" / "stage"
-          ).!
-        }
+        Process(
+          "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
+            alias + " .",
+          baseDirectory.value / "target" / "docker" / "stage"
+        ).!
       }
   },
   Docker / publish := Def
     .sequential(
-      Docker / publishLocal,
+//      Docker / publishLocal,
       ensureDockerBuildx,
       dockerBuildAndPushWithBuildx
     )
@@ -110,12 +107,10 @@ lazy val frontend = project
   .in(file("frontend"))
   .settings(
     publishFrontendDocker := {
-      if (false) {
-        val exitCode =
-          Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
-        if (exitCode != 0) {
-          throw new RuntimeException("Failed to build frontend docker image")
-        }
+      val exitCode =
+        Seq("bash", s"${baseDirectory.value}/docker-build-and-push.sh").!
+      if (exitCode != 0) {
+        throw new RuntimeException("Failed to build frontend docker image")
       }
     }
   )
