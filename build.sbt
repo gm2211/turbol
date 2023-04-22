@@ -80,6 +80,10 @@ lazy val dockerBuildxSettings = Seq(
     println(s"Building and pushing image with Buildx ${dockerCommands.value}")
     dockerAliases
       .value
+      .filter(alias => {
+        println(s"Found docker alias '$alias' - will remove it if tag not defined")
+        alias.tag.isDefined
+      })
       .foreach { alias =>
         Process(
           "docker buildx build --platform=linux/arm64,linux/amd64 --push -t " +
