@@ -94,7 +94,7 @@ jobs:
       with:
         context: ./frontend
         push: true
-        tags: turbol-fe:latest
+        tags: docker.io/gm2211/turbol-fe:latest
 #    - name: Publish
 #      run: sbt Docker/publish
   deploy:
