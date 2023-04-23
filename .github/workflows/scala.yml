@@ -82,7 +82,7 @@ jobs:
           ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}
           ${{ runner.os }}-sbt-cache-v2
     - name: Get tags
-      run: git fetch --tags --all origin
+      run: git fetch --tags --all
     - name: Print version
       run: |
         echo "Version from git describe:"$(git describe --tag)
