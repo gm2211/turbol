@@ -87,18 +87,14 @@ jobs:
         run: |
           export DOCKER_BIN_NAME=$(which docker)
           sbt Docker/publish
-  check-should-deploy:
-    runs-on: ubuntu-latest
-    needs: publish
-    steps:
       - name: Check if release commit
         run: |
           tag=$(git describe --tag)
           [ $tag =~ ^[0-9]+.[0-9]+.[0-9]+$ ] && should_deploy = 1 || should_deploy = 0
   deploy:
     runs-on: ubuntu-latest
-    needs: check-should-deploy
-    if:  ${{ needs.check-should-deploy.outputs.should_deploy == 1 }}
+    needs: publish
+    if:  ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
       - name: write terraform creds
