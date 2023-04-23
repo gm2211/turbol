@@ -50,6 +50,8 @@ jobs:
     needs: build
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
     - uses: actions/setup-java@v3
       with:
         distribution: 'temurin' # See 'Supported distributions' for available options
@@ -81,17 +83,10 @@ jobs:
           ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
           ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}
           ${{ runner.os }}-sbt-cache-v2
-    - name: Get tags
-      run: git fetch --tags --all
     - name: Print version
       run: |
         echo "Version from git describe:"$(git describe --tag)
         sbt version
-    - name: Print dir
-      run: |
-        ls -lah
-        du -h
-        pwd
     - name: Publish
       run: |
         export DOCKER_BIN_NAME=$(which docker)
