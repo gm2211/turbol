@@ -50,6 +50,10 @@ jobs:
     needs: build
     steps:
     - uses: actions/checkout@v3
+    - uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin' # See 'Supported distributions' for available options
+        java-version: '19'
     # Add support for more platforms with QEMU (optional)
     # https://github.com/docker/setup-qemu-action
     - name: Set up QEMU
