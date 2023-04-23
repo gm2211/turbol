@@ -97,7 +97,7 @@ lazy val dockerBuildxSettings = Seq(
   },
   Docker / publish := Def
     .sequential(
-//      Docker / publishLocal,
+      Docker / publishLocal,
       ensureDockerBuildx,
       dockerBuildAndPushWithBuildx
     )
