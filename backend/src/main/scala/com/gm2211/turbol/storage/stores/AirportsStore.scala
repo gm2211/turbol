@@ -24,6 +24,7 @@ trait AirportsStore extends DBStore {
     airportCode: ICAOCode
   )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
 }
+
 final class AirportsStoreImpl extends AirportsStore {
   override def putAirport(airport: AirportRow)(
     using
@@ -32,25 +33,23 @@ final class AirportsStoreImpl extends AirportsStore {
   ): doobie.ConnectionIO[Unit] = {
     sql"""
           INSERT INTO airports (
-            display_id,
-            airport_type,
+            icao_code,
+            iata_code,
             airport_name,
+            airport_type,
             latitude_deg,
             longitude_deg,
             iso_country,
-            icao_code,
-            iata_code,
             local_code,
             keywords
           ) VALUES (
-            ${airport.displayId},
+            ${airport.icaoCode},
+            ${airport.iataCode},
+            ${airport.airportName},
             ${airport.airportType},
-            ${airport.name},
             ${airport.latitudeDeg},
             ${airport.longitudeDeg},
             ${airport.isoCountry},
-            ${airport.icaoCode},
-            ${airport.iataCode},
             ${airport.localCode},
             ${airport.keywords}
           )
@@ -61,15 +60,15 @@ final class AirportsStoreImpl extends AirportsStore {
     airportCode: ICAOCode
   )(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
     sql"""
-      select display_id,
-             airport_type,
-             airport_name,
-             latitude_deg,
-             longitude_deg,
-             iso_country,
-             icao_code,
-             iata_code,
-             local_code,
+      select 
+            icao_code,
+            iata_code,
+            airport_name,
+            airport_type,
+            latitude_deg,
+            longitude_deg,
+            iso_country,
+            local_code,
       from airports
       where icao_code = ${airportCode.toString}
     """.queryWithLogger[AirportRow].option
@@ -79,14 +78,13 @@ final class AirportsStoreImpl extends AirportsStore {
     for {
       createTable <- sql"""
               create table if not exists airports (
-                display_id varchar(10) not null,
-                airport_type varchar(20) not null,
-                airport_name varchar(255) not null,
-                latitude_deg double precision not null,
-                longitude_deg double precision not null,
-                iso_country varchar(2),
                 icao_code varchar(10) not null primary key,
                 iata_code varchar(3) not null,
+                airport_name varchar(255),
+                airport_type varchar(20),
+                latitude_deg double precision,
+                longitude_deg double precision,
+                iso_country varchar(2),
                 local_code varchar(10),
                 keywords varchar(255) array
               )

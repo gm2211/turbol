@@ -17,7 +17,7 @@ import com.softwaremill.tagging.*
 import scala.annotation.unused
 
 @Module
-class StorageModule(@unused configModule: ConfigModule) {
+final class StorageModule(@unused configModule: ConfigModule) {
   @unused private lazy val transactorProviderExecutor: Scheduler @@ DBTransactorProvider =
     MoreExecutors.io("db-transactor-provider").taggedWith[DBTransactorProvider]
 

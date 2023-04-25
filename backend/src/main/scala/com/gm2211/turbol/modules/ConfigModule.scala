@@ -15,7 +15,7 @@ import com.gm2211.turbol.util.MoreExecutors.{*, given}
 import com.softwaremill.macwire.Module
 
 @Module
-class ConfigModule(
+final class ConfigModule(
   val install: InstallConfig,
   val runtime: Refreshable[RuntimeConfig],
   val appSecrets: Refreshable[AppSecrets]

@@ -11,6 +11,12 @@ object dependencies {
   val catsEffects = "3.4.8"
   val catsCore = "2.9.0"
 
+  // Guava
+  val guavaVersion = "30.1.1-jre"
+
+  // Http
+  val sttpVersion = "4.0.0-M1"
+
   // Logging
   val logbackVersion = "1.4.6"
   val scalaLoggingVersion = "3.9.5"
@@ -56,6 +62,10 @@ object dependencies {
       "co.fs2" %% "fs2-core" % fs2Version,
       "org.typelevel" %% "cats-effect" % catsEffects,
       "org.typelevel" %% "cats-core" % catsCore,
+      // Guava
+      "com.google.guava" % "guava" % guavaVersion,
+      // Http
+      "com.softwaremill.sttp.client4" %% "core" % sttpVersion,
       // Retry logic
       "com.github.cb372" %% "cats-retry" % catsRetryVersion,
       // Logging

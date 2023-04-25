@@ -26,6 +26,6 @@ trait TestTxnManager {
   val txnManager = new TransactionManagerImpl(stores, dbTransactorProviderImpl)
 
   txnManager.awaitInitialized()
-  txnManager.readWriteVoid { txn => txn.raw.executeQuery(sql"drop table if exists airports;") }
+  txnManager.readWriteVoid { txn => txn.raw.executeUpdate(sql"drop table if exists airports;") }
   txnManager.readWriteVoid { txn => txn.airportsStore.createTableIfNotExists().map(_ => ()) }
 }

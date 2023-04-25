@@ -9,14 +9,13 @@ package com.gm2211.turbol.objects.internal.storage.airports
 import doobie.util.Read
 
 case class AirportRow(
-  displayId: String,
-  airportType: String,
-  name: String,
-  latitudeDeg: Double,
-  longitudeDeg: Double,
-  isoCountry: Option[String],
   icaoCode: String,
   iataCode: String,
+  airportName: Option[String],
+  airportType: Option[String],
+  latitudeDeg: Option[Double],
+  longitudeDeg: Option[Double],
+  isoCountry: Option[String],
   localCode: Option[String],
   keywords: List[String]
 ) {}
@@ -24,19 +23,27 @@ case class AirportRow(
 object AirportRow {
   // Allows reading a row from the database without reading the 'keywords' field
   given Read[AirportRow] =
-    Read[(String, String, String, Double, Double, Option[String], String, String, Option[String])].map {
-      case (displayId, airportType, name, latitudeDeg, longitudeDeg, isoCountry, icaoCode, iataCode, localCode) =>
+    Read[(
+      String,
+      String,
+      Option[String],
+      Option[String],
+      Option[Double],
+      Option[Double],
+      Option[String],
+      Option[String]
+    )].map {
+      case (icaoCode, iataCode, airportName, airportType, latitudeDeg, longitudeDeg, isoCountry, localCode) =>
         AirportRow(
-          displayId,
-          airportType,
-          name,
-          latitudeDeg,
-          longitudeDeg,
-          isoCountry,
-          icaoCode,
-          iataCode,
-          localCode,
-          List()
+          icaoCode = icaoCode,
+          iataCode = iataCode,
+          airportName = airportName,
+          airportType = airportType,
+          latitudeDeg = latitudeDeg,
+          longitudeDeg = longitudeDeg,
+          isoCountry = isoCountry,
+          localCode = localCode,
+          keywords = List()
         )
     }
 }

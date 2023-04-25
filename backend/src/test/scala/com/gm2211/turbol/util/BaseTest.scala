@@ -9,8 +9,8 @@ trait TestWithDb extends BaseTest with TestTxnManager {
   override def beforeEach(): Unit = {
     super.beforeEach()
     txnManager.readWriteVoid { txn =>
-      txn.raw.executeQuery("DROP ALL OBJECTS DELETE FILES")
+      txn.raw.executeUpdate("DROP ALL OBJECTS DELETE FILES")
     }
-    txnManager.awaitInitialized()
+    txnManager.awaitInitialized().value
   }
 }

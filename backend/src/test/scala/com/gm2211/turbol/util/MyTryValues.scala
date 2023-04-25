@@ -13,6 +13,7 @@ import scala.util.{Failure, Success, Try}
 
 /** Alternative to org.scalatest.TryValues with better error messages. */
 trait MyTryValues {
+  import ExpressionUtils.*
   extension [T](theTry: Try[T]) {
     def failure(implicit pos: source.Position): Failure[T] = {
       theTry match {
@@ -22,7 +23,13 @@ trait MyTryValues {
       }
     }
 
-    def success(implicit pos: source.Position): Success[T] = {
+    def value(implicit pos: source.Position): T = success.value
+    
+    def assertSuccess(implicit pos: source.Position): Unit = ignoringRetValue {
+      success
+    }
+    
+    private def success(implicit pos: source.Position): Success[T] = {
       theTry match {
         case success: Success[T] => success
         case Failure(exception) =>
@@ -33,5 +40,6 @@ trait MyTryValues {
           )
       }
     }
+
   }
 }

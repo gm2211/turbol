@@ -8,6 +8,7 @@ package com.gm2211.turbol.storage
 
 import cats.*
 import cats.effect.*
+import cats.implicits.*
 import com.gm2211.turbol.objects.internal.errors.CredentialsNeedRefreshing
 import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}
 import com.gm2211.turbol.objects.internal.storage.db.TransactionalStores
@@ -15,20 +16,26 @@ import com.gm2211.turbol.util.CatsUtils
 import doobie.*
 import doobie.implicits.*
 
+import scala.util.Try
+
 trait TransactionManager {
-  def awaitInitialized(): Unit
+  def awaitInitialized(): Try[Unit]
 
   def readOnly[T](
     action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): T
+  ): Try[T]
 
   def readWrite[T](
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[T]
-  ): T
+  ): Try[T]
 
   def readWriteVoid(
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
-  ): Unit
+  ): Try[Unit]
+
+  def readWriteVoidSeq(
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => Seq[ConnectionIO[Unit]]
+  ): Try[Unit]
 }
 
 class TransactionManagerImpl(
@@ -36,7 +43,7 @@ class TransactionManagerImpl(
   transactorProvider: DBTransactorProvider
 ) extends TransactionManager
     with CatsUtils {
-  override def awaitInitialized(): Unit = {
+  override def awaitInitialized(): Try[Unit] = {
     transactorProvider.awaitInitialized()
     readWriteVoid { txn =>
       txn
@@ -48,30 +55,31 @@ class TransactionManagerImpl(
 
   override def readOnly[T](
     action: CanReadDB.type ?=> TransactionalStores => ConnectionIO[T]
-  ): T = {
+  ): Try[T] = Try {
     transactionally { stores =>
       given CanReadDB.type = CanReadDB
-
       action(stores)
     }.evalOnIOExec().unsafeRunSync()
   }
 
   override def readWrite[T](
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[T]
-  ): T = {
+  ): Try[T] = Try {
     transactionally { stores =>
       given CanReadDB.type = CanReadDB
-
       given CanWriteToDB.type = CanWriteToDB
-
       action(stores)
     }.evalOnIOExec().unsafeRunSync()
   }
 
   override def readWriteVoid(
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
-  ): Unit = {
-    readWrite(action)
+  ): Try[Unit] = readWrite(action)
+
+  def readWriteVoidSeq(
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => Seq[ConnectionIO[Unit]]
+  ): Try[Unit] = {
+    readWrite[Seq[Unit]] { txn => action(txn).sequence }.map(_ => ())
   }
 
   private def transactionally[T](
