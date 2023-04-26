@@ -27,7 +27,7 @@ class AirportDataUpdaterTest extends TestWithDb {
     }
   }
 
-  test("") {
+  test("should correctly parse and store airports data") {
     new AirportDataUpdater(
       txnManager,
       AirportDataParserFactory,
