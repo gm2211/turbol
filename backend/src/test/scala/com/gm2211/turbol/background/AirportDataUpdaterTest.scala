@@ -8,8 +8,8 @@ import java.io.File
 import scala.io.Source
 import scala.util.Try
 
-class AirportIataIcaoUpdaterTest extends TestWithDb {
-  val mockDownloader = new AirportDataDownloader {
+class AirportDataUpdaterTest extends TestWithDb {
+  private val mockDownloader = new AirportDataDownloader {
     import com.gm2211.turbol.util.FileUtils.*
     override def downloadToTempFile: Try[File] = {
       Try {
