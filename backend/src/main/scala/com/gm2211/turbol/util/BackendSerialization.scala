@@ -20,15 +20,15 @@ trait BackendSerialization:
     .withDiscriminator("@type") // same as @JsonTypeInfo(property = "@type")
 
   extension [T](value: T) {
-    def toJson(implicit e: Encoder[T]): Json = value.asJson
+    def toJson(using e: Encoder[T]): Json = value.asJson
   }
   extension (string: String) {
-    def fromJson[T](implicit decoder: Decoder[T]): Try[T] = Try {
-      decodeJson(string)(decoder)
+    def fromJson[T: Decoder]: Try[T] = Try {
+      decodeJson(string)
     }.flatMap(_.toTry)
   }
 
   extension (json: Json) {
-    def parse[T](implicit d: Decoder[T]): Try[T] =
+    def parse[T: Decoder]: Try[T] =
       Try { json.as[T] }.flatMap(_.toTry)
   }

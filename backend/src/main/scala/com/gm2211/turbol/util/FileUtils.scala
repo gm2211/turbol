@@ -6,6 +6,8 @@
 
 package com.gm2211.turbol.util
 
+import io.circe.Decoder
+
 import java.io.{File, FileInputStream, InputStreamReader, PrintWriter}
 import java.nio.charset.{Charset, StandardCharsets}
 import scala.collection.mutable
@@ -13,7 +15,7 @@ import scala.io.{Codec, Source}
 import scala.util.{Try, Using}
 
 object FileUtils extends FileUtils // Allow ._ import
-trait FileUtils {
+trait FileUtils extends BackendSerialization {
   import ExpressionUtils.*
   extension (file: File) {
     def inputStream: FileInputStream = new FileInputStream(file)
@@ -23,6 +25,8 @@ trait FileUtils {
       
     def usingStreamWriter: (PrintWriter => Unit) => Try[Unit] =
       Using(PrintWriter(file))
+      
+    def readAs[T : Decoder]: Try[T] = file.readLines().mkString.fromJson
 
     def readLines(charset: Charset = StandardCharsets.UTF_8): Seq[String] = {
       val lines = mutable.ListBuffer[String]()
