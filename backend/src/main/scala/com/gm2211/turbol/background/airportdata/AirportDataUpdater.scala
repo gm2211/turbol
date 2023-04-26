@@ -35,7 +35,7 @@ final class AirportDataUpdater(
   }
 
   private def flushTmpFileToDb(tmpFile: File): Try[Unit] = {
-    var parser: AirportDataParser = ???
+    var parser: AirportDataParser = null
     val rowBatch = mutable.ListBuffer[AirportRow]()
 
     val rowProcessingOutcome = tmpFile.forEachLine {
