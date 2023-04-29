@@ -42,7 +42,7 @@ resource "helm_release" "postgresql" {
     }
 }
 
-resource "null_resource" "delete_pvs" {
+resource "null_resource" "delete_pvcs" {
   depends_on = [helm_release.postgresql]
 
   # Necessary because otherwise old data (like the password for the postgres user) will be persisted and not be

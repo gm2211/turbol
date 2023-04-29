@@ -81,7 +81,7 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
   private def readConfig[T: Decoder](path: Path): Try[T] = {
     path
       .toFile
-      .fromYaml
+      .readAsYaml[T]
       .ifSuccess(_ => log.info("Successfully read config", safe("configPath", path)))
       .ifFailure(error => log.info(s"Failed to read config", error, safe("configPath", path)))
   }

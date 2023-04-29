@@ -24,7 +24,7 @@ def create_kind_cluster(home_dir, delete_existing_cluster):
         print("Deleting existing kind cluster '{}'...".format(kind_cluster_name))
         raw_bash("sudo kind delete cluster --name {}".format(kind_cluster_name))
 
-    print("Creating kind cluster '{}'...".format(kind_cluster_name))
+    print("Creating kind cluster '{}' (expected to fail if it already exists)...".format(kind_cluster_name))
 
     result = raw_bash("sudo kind create cluster --name {}".format(kind_cluster_name))
 
@@ -64,17 +64,30 @@ def update_helm_repos():
 
 
 def terraform_apply(cluster_name, script_dir, target=None):
+    terraform(cluster_name, script_dir, target, "apply")
+
+def terraform_destroy(cluster_name, script_dir, target=None):
+    terraform(cluster_name, script_dir, target, "destroy")
+
+def terraform(cluster_name, script_dir, target=None, action="apply"):
     target_str = "--target={}".format(target) if target else ""
-    raw_bash('terraform apply {} --auto-approve -var="k8s_cluster_name={}" -var-file="{}/../secrets.auto.tfvars"'.format(
-        target_str, cluster_name, script_dir))
+    raw_bash('terraform {} {} --auto-approve -var="k8s_cluster_name={}" -var-file="{}/../secrets.auto.tfvars"'.format(
+        action, target_str, cluster_name, script_dir))
 
 
 def terraform_init():
+    print("Initializing terraform...")
     raw_bash("terraform init")
+    print("Initialized terraform")
 
 
 def terraform_install_infra(cluster_name, script_dir):
+    print("Destroying local infra...")
+    terraform_destroy(cluster_name, script_dir, "module.local-infra")
+    print("Destroyed local infra")
+    print("Re-initializing local infra...")
     terraform_apply(cluster_name, script_dir, "module.local-infra")
+    print("Re-initialized local infra")
 
 
 def terraform_start_all(cluster_name, script_dir):

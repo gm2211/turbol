@@ -69,6 +69,7 @@ final class AirportsStoreImpl extends AirportsStore {
             longitude_deg,
             iso_country,
             local_code,
+            keywords
       from airports
       where icao_code = ${airportCode.toString}
     """.queryWithLogger[AirportRow].option

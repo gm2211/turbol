@@ -65,7 +65,7 @@ final class AirportDataUpdater(
   private def flushRowBatch(batch: List[AirportRow]): Try[Unit] = {
     if (batch.isEmpty) return Success(())
     log.info("Flushing row batch to db")
-    txnManager.readWriteVoidSeq { txn =>
+    txnManager.readWriteVoid { txn =>
       batch.map(row => txn.airportsStore.putAirport(row))
     }.recoverWith { exception =>
       log.error("Failed to flush row batch to db", unsafe("batch", batch), unsafe("exception", exception.toString))

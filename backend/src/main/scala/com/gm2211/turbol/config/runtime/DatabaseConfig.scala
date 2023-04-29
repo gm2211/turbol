@@ -24,4 +24,3 @@ object DatabaseConfig extends ConfigSerialization {
 
 sealed trait DBType
 case object Postgres extends DBType
-case object H2 extends DBType

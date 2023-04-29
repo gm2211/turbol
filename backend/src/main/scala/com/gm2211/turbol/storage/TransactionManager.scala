@@ -30,10 +30,6 @@ trait TransactionManager {
   ): Try[T]
 
   def readWriteVoid(
-    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
-  ): Try[Unit]
-
-  def readWriteVoidSeq(
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => Seq[ConnectionIO[Unit]]
   ): Try[Unit]
 }
@@ -44,13 +40,16 @@ class TransactionManagerImpl(
 ) extends TransactionManager
     with CatsUtils {
   override def awaitInitialized(): Try[Unit] = {
-    transactorProvider.awaitInitialized()
-    readWriteVoid { txn =>
-      txn
-        .map(_.createTableIfNotExists())
-        .reduce((existing, next) => existing.flatMap(_ => next))
-        .map(_ => ())
-    }
+    for {
+      _ <- transactorProvider.awaitInitialized()
+      _ <- readWriteVoid { txn =>
+          txn
+            .map(_.createTableIfNotExists())
+            .reduce((existing, next) => existing.flatMap(_ => next))
+            .map(_ => ())
+            .just
+      }
+    } yield ()
   }
 
   override def readOnly[T](
@@ -73,10 +72,6 @@ class TransactionManagerImpl(
   }
 
   override def readWriteVoid(
-    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Unit]
-  ): Try[Unit] = readWrite(action)
-
-  def readWriteVoidSeq(
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => Seq[ConnectionIO[Unit]]
   ): Try[Unit] = {
     readWrite[Seq[Unit]] { txn => action(txn).sequence }.map(_ => ())

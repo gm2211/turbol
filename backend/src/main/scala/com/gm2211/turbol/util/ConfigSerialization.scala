@@ -8,7 +8,7 @@ package com.gm2211.turbol.util
 
 import com.gm2211.logging.BackendLogging
 import io.circe.derivation.Configuration
-import io.circe.{Decoder, Json}
+import io.circe.{Decoder, Json, ParsingFailure}
 
 import java.io.File
 import scala.io.Source
@@ -26,18 +26,12 @@ trait ConfigSerialization extends BackendLogging {
       .withDiscriminator("case-class-type")
 
   extension (file: File) {
-    def fromYaml[T: Decoder]: Try[T] = {
+    def readAsYaml[T: Decoder]: Try[T] = {
       import FileUtils.*
-      file.usingStreamReader { inputStreamReader =>
-        for
-          yamlOrError <- Try { decodeYaml(inputStreamReader) }
-          yaml <- yamlOrError.toTry
-          obj <- yaml.as[T].toTry
-        yield obj
-      }.flatten
+      file.readAs(decodeYaml)
     }
   }
-
+    
   extension (source: Source) {
     def fromYaml[T: Decoder]: Try[T] = {
       def logFailureAndConvertToScala(message: String, failureMessage: String): Failure[T] = {

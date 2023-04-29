@@ -6,4 +6,14 @@
 
 package com.gm2211.turbol.objects.internal.storage.capabilities
 
-case object CanReadDB extends TxnCapability
+import doobie.ConnectionIO
+
+case object CanReadDB extends TxnCapability {
+  extension (action: ConnectionIO[Unit]) {
+    def just: Seq[ConnectionIO[Unit]] = Seq(action)
+    def thenDo(other: ConnectionIO[Unit]): Seq[ConnectionIO[Unit]] = Seq(action, other)
+  }
+  extension (seq: Seq[ConnectionIO[Unit]]) {
+    def thenDo(other: ConnectionIO[Unit]): Seq[ConnectionIO[Unit]] = seq :+ other
+  }
+}

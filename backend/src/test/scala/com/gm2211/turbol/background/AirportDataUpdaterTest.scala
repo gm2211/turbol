@@ -10,7 +10,6 @@ import scala.util.Try
 
 class AirportDataUpdaterTest extends TestWithDb {
   private val mockDownloader = new AirportDataDownloader {
-    import com.gm2211.turbol.util.FileUtils.*
     override def downloadToTempFile: Try[File] = {
       Try {
         val tmpFile = File.createTempFile("airports", ".csv")

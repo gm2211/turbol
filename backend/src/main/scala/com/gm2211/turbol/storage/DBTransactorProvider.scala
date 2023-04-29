@@ -9,7 +9,7 @@ package com.gm2211.turbol.storage
 import cats.effect.{Deferred, IO, Ref, Resource}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
-import com.gm2211.turbol.config.runtime.{DatabaseConfig, H2, Postgres}
+import com.gm2211.turbol.config.runtime.{DatabaseConfig, Postgres}
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.util.MoreExecutors.given
 import com.gm2211.turbol.util.{CatsUtils, MoreExecutors, Scheduler}
@@ -17,9 +17,10 @@ import com.softwaremill.tagging.*
 import doobie.hikari.HikariTransactor
 
 import scala.concurrent.ExecutionContext
+import scala.util.Try
 
 trait DBTransactorProvider {
-  def awaitInitialized(): Unit
+  def awaitInitialized(): Try[Unit]
   def transactor(forceRefresh: Boolean = false): IO[HikariTransactor[IO]]
 }
 
@@ -39,13 +40,14 @@ final class DBTransactorProviderImpl(
     .zipWith(appSecrets)(using scheduler)
     .onUpdate((conf, secrets) => initDb(conf, secrets)(using scheduler))(using scheduler)
 
-  override def awaitInitialized(): Unit = {
+  override def awaitInitialized(): Try[Unit] = Try {
     initialized
       .get
       .map(_ => log.info("Done waiting till db initialization"))
       .evalOnIOExec()
       .unsafeRunSync()
   }
+
   override def transactor(forceRefresh: Boolean): IO[HikariTransactor[IO]] = {
     transactorAndReleaserRef.get.map(_._1)
   }
@@ -62,19 +64,11 @@ final class DBTransactorProviderImpl(
           s"${dbConfig.databaseName}" +
           s"?user=${dbConfig.adminUser}" +
           s"&password=${appSecrets.dbAdminPassword}"
-      case H2 =>
-        s"jdbc:h2:mem:${dbConfig.databaseName};" +
-          s"MODE=PostgreSQL;" +
-          s"DB_CLOSE_DELAY=-1;" +
-          s"DATABASE_TO_LOWER=TRUE;" +
-          s"USER=${dbConfig.adminUser};" +
-          s"PASSWORD=${appSecrets.dbAdminPassword}"
     }
     val transactor = for {
       transactor <- HikariTransactor.newHikariTransactor[IO](
         dbConfig.databaseType match {
           case Postgres => "org.postgresql.Driver"
-          case H2 => "org.h2.Driver"
         },
         connectionString,
         dbConfig.adminUser,
@@ -84,16 +78,12 @@ final class DBTransactorProviderImpl(
       _ <- Resource.pure { log.info("Initializing DB", unsafe("dbConfig", dbConfig)) }
     } yield transactor
 
-    val transactorAndReleaser: (HikariTransactor[IO], IO[Unit]) = transactor
-      .allocated
-      .evalOn(ioExecutor)
-      .unsafeRunSync()
-
-    val updateRef = for {
+    val updateRef: IO[Unit] = for {
       oldTransactorAndRelease <- transactorAndReleaserRef.get
-      _ <- Option(oldTransactorAndRelease._2).getOrElse(IO.unit) // release
+      transactorAndReleaser <- transactor.allocated
+      _ <- Option(oldTransactorAndRelease._2).getOrElse(IO.unit) // Release old transactor, if any
       _ <- transactorAndReleaserRef.set(transactorAndReleaser)
-      _ <- IO { log.info("Updated db ref") }
+      _ <- IO { log.info("Updated db ref", unsafe("connection-string", connectionString)) }
     } yield ()
 
     updateRef

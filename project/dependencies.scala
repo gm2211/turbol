@@ -28,6 +28,7 @@ object dependencies {
   val lihaoyiSourcecodeVersion = "0.3.0"
 
   // Storage
+  val embeddedPostgresVersion = "2.0.3"
   val h2Version = "2.1.214"
   val postgresVersion = "42.5.4"
   val doobieVersion = "1.0.0-RC1"
@@ -91,6 +92,7 @@ object dependencies {
   val backendTestDeps = Def.setting(
     Seq(
       "com.h2database" % "h2" % h2Version,
+      "io.zonky.test" % "embedded-postgres" % embeddedPostgresVersion,
       "org.scalatest" %% "scalatest" % scalatestVersion,
       "org.scalatest" %% "scalatest-flatspec" % scalatestVersion,
       "org.scalatest" %% "scalatest-matchers-core" % scalatestVersion,
