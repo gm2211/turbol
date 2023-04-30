@@ -9,7 +9,7 @@ locals {
   # Install
   install_config = {
     server = {
-      dev-mode = false
+      dev-mode = var.be_dev_mode
       port     = var.be_app_port
     }
   }
