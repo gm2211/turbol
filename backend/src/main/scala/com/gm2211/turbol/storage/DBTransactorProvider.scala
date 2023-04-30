@@ -9,7 +9,7 @@ package com.gm2211.turbol.storage
 import cats.effect.{Deferred, IO, Ref, Resource}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
-import com.gm2211.turbol.config.runtime.{DatabaseConfig, Postgres}
+import com.gm2211.turbol.config.runtime.DatabaseConfig
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.util.MoreExecutors.given
 import com.gm2211.turbol.util.{CatsUtils, MoreExecutors, Scheduler}
@@ -58,18 +58,14 @@ final class DBTransactorProviderImpl(
   )(
     using ioExecutor: ExecutionContext
   ): Unit = {
-    val connectionString = dbConfig.databaseType match {
-      case Postgres =>
-        s"jdbc:postgresql://${dbConfig.hostname}:${dbConfig.port}/" +
-          s"${dbConfig.databaseName}" +
-          s"?user=${dbConfig.adminUser}" +
-          s"&password=${appSecrets.dbAdminPassword}"
-    }
+    val connectionString =
+      s"jdbc:postgresql://${dbConfig.hostname}:${dbConfig.port}/" +
+        s"${dbConfig.databaseName}" +
+        s"?user=${dbConfig.adminUser}" +
+        s"&password=${appSecrets.dbAdminPassword}"
     val transactor = for {
       transactor <- HikariTransactor.newHikariTransactor[IO](
-        dbConfig.databaseType match {
-          case Postgres => "org.postgresql.Driver"
-        },
+        "org.postgresql.Driver",
         connectionString,
         dbConfig.adminUser,
         appSecrets.dbAdminPassword,

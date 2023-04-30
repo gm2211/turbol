@@ -23,6 +23,10 @@ trait AirportsStore extends DBStore {
   def getAirport(
     airportCode: ICAOCode
   )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
+
+  def search(
+    query: String
+  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
 }
 
 final class AirportsStoreImpl extends AirportsStore {
@@ -51,7 +55,7 @@ final class AirportsStoreImpl extends AirportsStore {
             ${airport.longitudeDeg},
             ${airport.isoCountry},
             ${airport.localCode},
-            ${airport.keywords}
+            ${airport.keywords.map(_.toLowerCase())}
           )
          """.updateWithLogger.run.map(_ => ())
   }
@@ -72,6 +76,31 @@ final class AirportsStoreImpl extends AirportsStore {
             keywords
       from airports
       where icao_code = ${airportCode.toString}
+    """.queryWithLogger[AirportRow].option
+  }
+
+  override def search(
+    query: String
+  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
+    sql"""
+      select 
+            icao_code,
+            iata_code,
+            airport_name,
+            airport_type,
+            latitude_deg,
+            longitude_deg,
+            iso_country,
+            local_code,
+            keywords
+      from airports
+      where icao_code = ${query}
+      or iata_code = ${query}
+      or airport_name = ${query}
+      or airport_type = ${query}
+      or iso_country = ${query}
+      or local_code = ${query}
+      or keywords @> ARRAY[${query.toLowerCase()}]
     """.queryWithLogger[AirportRow].option
   }
 

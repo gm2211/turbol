@@ -13,7 +13,6 @@ import io.circe.derivation.ConfiguredDecoder
 case class DatabaseConfig(
   adminUser: String = "postgres",
   databaseName: String = "dev",
-  databaseType: DBType = Postgres,
   hostname: String = "postgresql",
   port: Int = 5432
 )
@@ -21,6 +20,3 @@ case class DatabaseConfig(
 object DatabaseConfig extends ConfigSerialization {
   given decoder: Decoder[DatabaseConfig] = ConfiguredDecoder.derived[DatabaseConfig]
 }
-
-sealed trait DBType
-case object Postgres extends DBType

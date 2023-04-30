@@ -3,15 +3,16 @@ package com.gm2211.turbol.util
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.storage.TransactionManager
 import doobie.implicits.toSqlInterpolator
-import org.scalatest.BeforeAndAfterEach
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 
 import scala.util.{Failure, Try}
 
 trait BaseTest
     extends AnyFunSuite
     with BeforeAndAfterEach
+    with BeforeAndAfterAll
     with CatsUtils
     with FileUtils
     with StringUtils
@@ -21,16 +22,12 @@ trait BaseTest
     with Matchers
 
 trait TestWithDb extends BaseTest {
-  private var _txnManager: TransactionManager = null
+  private val testTxnManagerFactory: TestTransactionManagerFactory = TestTransactionManagerFactory()
 
   override def beforeEach(): Unit = {
     super.beforeEach()
 
     Try {
-      val testTxnManagerFactory = TestTransactionManagerFactory()
-
-      this._txnManager = testTxnManagerFactory.txnManager
-
       txnManager.awaitInitialized().value
 
       txnManager.readWriteVoid { txn =>
@@ -50,7 +47,12 @@ trait TestWithDb extends BaseTest {
     }.ignoreRetValue()
   }
 
+  override def afterAll(): Unit = {
+    super.afterAll()
+    testTxnManagerFactory.close()
+  }
+
   def txnManager: TransactionManager = {
-    _txnManager
+    testTxnManagerFactory.txnManager
   }
 }
