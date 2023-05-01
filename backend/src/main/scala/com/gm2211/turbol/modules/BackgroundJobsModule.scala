@@ -6,7 +6,7 @@ import com.softwaremill.macwire.*
 import scala.annotation.unused
 
 @Module
-final class BackgroundJobsModule(val storageModule: StorageModule) {
+final class BackgroundJobsModule(val storageModule: StorageModule, val servicesModule: ServicesModule) {
   @unused lazy val airportDataDownloader: AirportDataDownloader = wire[AirportDataDownloaderImpl]
   @unused lazy val airportRowParser: AirportDataParserFactory = wire[AirportDataParserFactoryImpl]
   

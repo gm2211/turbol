@@ -30,4 +30,5 @@ final case class DatetimeUtc(epochMillis: Long) {
 
 object DatetimeUtc {
   given Ordering[DatetimeUtc] = Ordering.by(_.epochMillis)
+  given Conversion[Instant, DatetimeUtc] = (instant: Instant) => DatetimeUtc(instant.toEpochMilli)
 }
