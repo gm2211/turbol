@@ -13,7 +13,8 @@ interface Airport {
 }
 
 interface AirportSearchRequest {
-  query: string
+  query: string,
+  limit: number
 }
 
 interface AirportSearchResponse {

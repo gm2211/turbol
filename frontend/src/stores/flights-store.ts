@@ -52,7 +52,8 @@ export const useFlightsStore = defineStore('flights', {
         return
       }
       const searchRequest: AirportSearchRequest = {
-        query: textQuery
+        query: textQuery,
+        limit: 10
       }
       await axios
         .post(`/api/airports/search`, searchRequest)

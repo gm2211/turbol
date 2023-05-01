@@ -20,15 +20,11 @@ trait AirportsStore extends DBStore {
 
   def getAirport(airportCode: ICAOCode)(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
 
-  def search(query: String)(using CanReadDB.type): ConnectionIO[List[AirportRow]]
+  def search(query: String, limit: Int = 50)(using CanReadDB.type): ConnectionIO[List[AirportRow]]
 }
 
 final class AirportsStoreImpl extends AirportsStore {
-  override def putAirport(airport: AirportRow)(
-    using
-    CanReadDB.type,
-    CanWriteToDB.type
-  ): doobie.ConnectionIO[Unit] = {
+  override def putAirport(airport: AirportRow)(using CanReadDB.type, CanWriteToDB.type): doobie.ConnectionIO[Unit] = {
     sql"""
           INSERT INTO airports (
             icao_code,
@@ -65,9 +61,7 @@ final class AirportsStoreImpl extends AirportsStore {
          """.updateWithLogger.run.map(_ => ())
   }
 
-  override def getAirport(
-    airportCode: ICAOCode
-  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
+  override def getAirport(airportCode: ICAOCode)(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
     sql"""
       select 
             icao_code,
@@ -85,9 +79,7 @@ final class AirportsStoreImpl extends AirportsStore {
     """.queryWithLogger[AirportRow].option
   }
 
-  override def search(
-    query: String
-  )(using CanReadDB.type): ConnectionIO[List[AirportRow]] = {
+  override def search(query: String, limit: Int = 50)(using CanReadDB.type): ConnectionIO[List[AirportRow]] = {
     val keywordQuery = if (query.length > 5) {
       s"%${query.toLowerCase()}%"
     } else {
@@ -117,6 +109,7 @@ final class AirportsStoreImpl extends AirportsStore {
         from airports, unnest(keywords) as keyword
         where keyword ilike ${keywordQuery}
       )
+      limit ${limit}
     """.queryWithLogger[AirportRow].to[List]
   }
 

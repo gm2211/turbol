@@ -24,7 +24,7 @@ final class AirportsEndpoint(airportsService: AirportsService) extends Endpoint 
     val responseJson: IO[Json] = for {
       // Decode a User request
       searchRequest: AirportSearchRequest <- req.as[AirportSearchRequest]
-      airports <- IO.fromTry { airportsService.search(searchRequest.query) }
+      airports <- IO.fromTry { airportsService.search(searchRequest.query, searchRequest.limit) }
       resp = AirportSearchResponse(airports.toList.map(AirportsEndpoint.toApi))
     } yield resp.toJson
     Ok(responseJson)

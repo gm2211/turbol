@@ -62,11 +62,7 @@ function scoreAirport(airport: Airport, query: string) {
 
 function getAndSortFetchedAirports(query: string) {
   const airports = flightsStore.getAirports(query)
-  const sortedAirports = CollectionsUtils.sortBy(airports, (airport) =>
-    scoreAirport(airport, query)
-  )
-  console.log(`Gotten airports and sorted: ${sortedAirports.map((airport) => airport.icao)}`)
-  return sortedAirports
+  return CollectionsUtils.sortBy(airports, (airport) => scoreAirport(airport, query))
 }
 
 const updateAirportCompletions = (query: string) => {

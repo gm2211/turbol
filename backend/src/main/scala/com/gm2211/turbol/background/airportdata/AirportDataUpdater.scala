@@ -33,7 +33,7 @@ final class AirportDataUpdater(
   override def run(): IO[Unit] = IO.fromTry(fetchAndUpdateAirportData())
 
   def fetchAndUpdateAirportData(): Try[Unit] = {
-    val updatedRecently = timeService.timeSince(lastUpdated.get) <= 10.minutes
+    val updatedRecently = timeService.timeSince(lastUpdated.get) <= 10.days
     if (updatedRecently) {
       return Success(())
     }
