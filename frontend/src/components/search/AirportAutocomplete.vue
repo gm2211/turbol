@@ -45,17 +45,21 @@ const selectedAirport = computed(() => {
 const makeItemTitle = (item: any) => `${item?.raw?.city} - ${item?.raw?.name}`
 const makeItemSubtitle = (item: any) => `${item?.raw?.icao} , ${item?.raw?.iata}`
 const extractComparisonFields = (airport: Airport) => [
-  airport.icao,
-  airport.iata,
-  airport.name,
-  airport.city,
-  airport.country
-]
+  [airport.icao, 1],
+  [airport.iata, 1],
+  [airport.name, 2],
+  [airport.city, 10],
+  [airport.country, 20]
+] as Array<[string, number]>
 
 function scoreAirport(airport: Airport, query: string) {
   const score = extractComparisonFields(airport)
-    .zipWithIndex()
-    .map(([field, index]) => StringsUtils.editDistance(field, query) * (index + 1))
+    .map(([field, discountFactor]) => {
+      if (field.startsWith(query)) {
+        return discountFactor
+      }
+      return StringsUtils.editDistance(field, query) * discountFactor
+    })
     .sum()
   return score || 0
 }
@@ -76,7 +80,7 @@ const updateAirportCompletions = (query: string) => {
 const filterAirportCompletions = (value: string, query: string, item?: any) => {
   const airport: Airport | undefined = item?.raw as Airport | undefined
   if (airport) {
-    return extractComparisonFields(airport).some((field) => StringsUtils.similar(query, field))
+    return extractComparisonFields(airport).some(([field, _ignored]) => StringsUtils.similar(query, field))
   }
   return StringsUtils.similar(query, value)
 }

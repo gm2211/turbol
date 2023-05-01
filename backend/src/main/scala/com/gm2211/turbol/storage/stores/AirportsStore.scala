@@ -80,35 +80,41 @@ final class AirportsStoreImpl extends AirportsStore {
   }
 
   override def search(query: String, limit: Int = 50)(using CanReadDB.type): ConnectionIO[List[AirportRow]] = {
+    val likeQuery = s"%${query.toLowerCase}%"
     val keywordQuery = if (query.length > 5) {
       s"%${query.toLowerCase()}%"
     } else {
       s"${query.toLowerCase()}"
     }
     sql"""
-      select 
-            icao_code,
-            iata_code,
-            airport_name,
-            airport_type,
-            latitude_deg,
-            longitude_deg,
-            municipality,
-            iso_country,
-            local_code,
-            keywords
-      from airports
-      where icao_code ilike ${"%" + query.toLowerCase + "%"}
-      or iata_code ilike ${"%" + query.toLowerCase + "%"}
-      or airport_name ilike ${"%" + query.toLowerCase + "%"}
-      or airport_type ilike ${"%" + query.toLowerCase + "%"}
-      or iso_country ilike ${"%" + query.toLowerCase + "%"}
-      or local_code ilike ${"%" + query.toLowerCase + "%"}
-      or icao_code in (
-        select icao_code
-        from airports, unnest(keywords) as keyword
-        where keyword ilike ${keywordQuery}
+      (
+        select *, case when airport_type = 'large_airport' then 1 else 2 end as rank
+        from airports 
+        where icao_code = ${likeQuery}
+          or iata_code = ${likeQuery}
       )
+      union
+      (
+        select *, case when airport_type = 'large_airport' then 10 else 20 end as rank
+        from airports 
+        where icao_code ilike ${likeQuery}
+          or iata_code ilike ${likeQuery}
+      )
+      union
+      (
+        select *, case when airport_type = 'large_airport' then 100 else 200 end as rank
+        from airports
+        where airport_name ilike ${likeQuery}
+        or airport_type ilike ${likeQuery}
+        or iso_country ilike ${likeQuery}
+        or local_code ilike ${likeQuery}
+        or icao_code in (
+          select icao_code
+          from airports, unnest(keywords) as keyword
+          where keyword ilike ${keywordQuery}
+        )
+      )
+      order by rank
       limit ${limit}
     """.queryWithLogger[AirportRow].to[List]
   }
