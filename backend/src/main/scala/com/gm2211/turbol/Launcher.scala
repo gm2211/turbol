@@ -14,8 +14,8 @@ import com.gm2211.turbol.config.ConfigWatcher
 import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.RuntimeConfig
 import com.gm2211.turbol.config.secrets.AppSecrets
-import com.gm2211.turbol.modules.{AppModule, BackgroundJobsModule, ConfigModule, StorageModule}
-import com.gm2211.turbol.util.{ConfigSerialization, OptionUtils, TryUtils}
+import com.gm2211.turbol.modules.*
+import com.gm2211.turbol.util.{ConfigSerialization, MoreExecutors, OptionUtils, TryUtils}
 
 import java.nio.file.{Path, Paths}
 import scala.io.Source
@@ -38,13 +38,26 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
 
     val configModule: ConfigModule = ConfigModule(install, runtime, appSecrets)
     val storageModule = StorageModule(configModule)
-    val appModule: AppModule = AppModule(configModule, storageModule, BackgroundJobsModule(storageModule))
+    val servicesModule = ServicesModule(storageModule)
+    val appModule: AppModule = AppModule(
+      backgroundJobsModule = BackgroundJobsModule(storageModule),
+      configModule = configModule,
+      endpointsModule = EndpointsModule(servicesModule),
+      servicesModule = servicesModule,
+      storageModule = storageModule
+    )
     val appServer = AppServer.createServer(appModule)
 
     appModule.storageModule.txnManager.awaitInitialized()
 
     appServer
-      .use(_ => IO.never)
+      .use(_ =>
+        for {
+          _ <-
+            appModule.backgroundJobsModule.airportDataUpdater.runForever(MoreExecutors.fixed("bg", 1).executionContext)
+          _ <- IO.never
+        } yield ()
+      )
       .as(ExitCode.Success)
   }
   private def readPathFromEnv(envVarName: String, envVarDescription: String) = {

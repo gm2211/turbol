@@ -69,6 +69,7 @@ object AirportDataParser extends StringUtils {
     val typeColumnName = "type"
     val latitudeDegColumnName = "latitude_deg"
     val longitudeDegColumnName = "longitude_deg"
+    val municipalityColumnName = "municipality"
     val isoCountryColumnName = "iso_country"
     val localCodeColumnName = "local_code"
     val keywordsColumnName = "keywords"
@@ -101,6 +102,7 @@ final class AirportDataParserImpl(idxByColName: Map[String, Int])
       airportType = getColValue(CsvColumnNames.typeColumnName)
       latitudeDeg = getColValue(CsvColumnNames.latitudeDegColumnName).flatMap(_.toDoubleOption)
       longitudeDeg = getColValue(CsvColumnNames.longitudeDegColumnName).flatMap(_.toDoubleOption)
+      municipality = getColValue(CsvColumnNames.municipalityColumnName)
       isoCountry = getColValue(CsvColumnNames.isoCountryColumnName)
       localCode = getColValue(CsvColumnNames.localCodeColumnName)
       keywords = getColValue(CsvColumnNames.keywordsColumnName)
@@ -113,6 +115,7 @@ final class AirportDataParserImpl(idxByColName: Map[String, Int])
       airportType = airportType,
       latitudeDeg = latitudeDeg,
       longitudeDeg = longitudeDeg,
+      municipality = municipality,
       isoCountry = isoCountry,
       localCode = localCode,
       keywords = keywords
@@ -120,7 +123,7 @@ final class AirportDataParserImpl(idxByColName: Map[String, Int])
   }
 }
 
-object AirportDataParserFactory extends AirportDataParserFactory with StringUtils {
+final class AirportDataParserFactoryImpl() extends AirportDataParserFactory with StringUtils {
   override def fromHeader(header: String): AirportDataParserImpl = {
     val idxByCol = mutable.Map[String, Int]()
 

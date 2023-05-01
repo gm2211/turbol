@@ -1,6 +1,6 @@
 package com.gm2211.turbol.background
 
-import com.gm2211.turbol.background.airportdata.{AirportDataDownloader, AirportDataParserFactory, AirportDataUpdater}
+import com.gm2211.turbol.background.airportdata.{AirportDataDownloader, AirportDataParserFactoryImpl, AirportDataUpdater}
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.util.TestWithDb
 
@@ -29,7 +29,7 @@ class AirportDataUpdaterTest extends TestWithDb {
   test("should correctly parse and store airports data") {
     new AirportDataUpdater(
       txnManager,
-      AirportDataParserFactory,
+      AirportDataParserFactoryImpl(),
       mockDownloader
     ).fetchAndUpdateAirportData().assertSuccess
     println(txnManager.readOnly { txn => txn.raw.executeQueryList[AirportRow]("select * from airports") })

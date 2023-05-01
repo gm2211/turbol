@@ -9,33 +9,35 @@ package com.gm2211.turbol.endpoints
 import cats.effect.IO
 import com.gm2211.turbol.objects.api.airports.search.{AirportSearchRequest, AirportSearchResponse}
 import com.gm2211.turbol.objects.api.airports.{Airport, IATACode, ICAOCode}
+import com.gm2211.turbol.services.AirportsService
 import com.gm2211.turbol.util.BackendSerialization
+import io.circe.Json
 import io.circe.generic.auto.*
 import org.http4s.circe.*
 import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 import org.http4s.dsl.io.*
 import org.http4s.{HttpRoutes, Request, Response}
 
-object AirportsEndpoint extends Endpoint with BackendSerialization {
+final class AirportsEndpoint(airportsService: AirportsService) extends Endpoint with BackendSerialization {
   override val basePath: String = "/airports"
   override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] { case req @ POST -> Root / "search" =>
-    for {
+    val responseJson: IO[Json] = for {
       // Decode a User request
-      searchRequest: IO[AirportSearchRequest] <- IO(req.as[AirportSearchRequest])
-      resp <- Ok(
-        AirportSearchResponse(
-          List(
-            Airport(
-              name = "Fiumicino",
-              city = "Rome",
-              country = "Italy",
-              iata = IATACode("LIRF"),
-              icao = ICAOCode("LIRF"),
-              location = (41.8002778, 12.2388889)
-            )
-          )
-        ).toJson
-      )
-    } yield resp
+      searchRequest: AirportSearchRequest <- req.as[AirportSearchRequest]
+      airports <- IO.fromTry { airportsService.search(searchRequest.query) }
+      resp = AirportSearchResponse(airports.toList.map(AirportsEndpoint.toApi))
+    } yield resp.toJson
+    Ok(responseJson)
   }
+}
+object AirportsEndpoint {
+  def toApi(airport: com.gm2211.turbol.objects.internal.model.airports.Airport): Airport =
+    Airport(
+      name = airport.name,
+      city = airport.city,
+      country = airport.country,
+      iata = IATACode(airport.iata.toString),
+      icao = ICAOCode(airport.icao.toString),
+      location = airport.location
+    )
 }

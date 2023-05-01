@@ -6,7 +6,9 @@
 
 package com.gm2211.turbol.background.airportdata
 
+import cats.effect.IO
 import com.gm2211.logging.BackendLogging
+import com.gm2211.turbol.background.BackgroundJob
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.storage.TransactionManager
 import com.gm2211.turbol.util
@@ -20,7 +22,9 @@ final class AirportDataUpdater(
   private val txnManager: TransactionManager,
   private val parserFactory: AirportDataParserFactory,
   private val downloader: AirportDataDownloader
-) extends util.FileUtils with StringUtils with BackendLogging {
+) extends BackgroundJob with util.FileUtils with StringUtils with BackendLogging {
+
+  override def run(): IO[Unit] = IO.fromTry(fetchAndUpdateAirportData())
 
   def fetchAndUpdateAirportData(): Try[Unit] = {
     for {

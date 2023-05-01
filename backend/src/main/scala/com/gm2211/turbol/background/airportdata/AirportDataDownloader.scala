@@ -1,7 +1,6 @@
 package com.gm2211.turbol.background.airportdata
 
 import com.gm2211.logging.BackendLogging
-import com.gm2211.turbol.background.airportdata.AirportDataDownloaderImpl.log
 import org.apache.commons.io.FileUtils
 
 import java.io.File
@@ -13,7 +12,7 @@ import scala.util.{Failure, Try}
 trait AirportDataDownloader {
   def downloadToTempFile: Try[File]
 }
-object AirportDataDownloaderImpl extends AirportDataDownloader with BackendLogging {
+final class AirportDataDownloaderImpl extends AirportDataDownloader with BackendLogging {
   private val url = URL("https://davidmegginson.github.io/ourairports-data/airports.csv")
 
   def downloadToTempFile: Try[File] = {

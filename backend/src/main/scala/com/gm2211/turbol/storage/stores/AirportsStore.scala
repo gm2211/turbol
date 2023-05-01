@@ -16,17 +16,11 @@ import doobie.postgres.*
 import doobie.postgres.implicits.*
 
 trait AirportsStore extends DBStore {
-  def putAirport(
-    airport: AirportRow
-  )(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
+  def putAirport(airport: AirportRow)(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
 
-  def getAirport(
-    airportCode: ICAOCode
-  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
+  def getAirport(airportCode: ICAOCode)(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
 
-  def search(
-    query: String
-  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]]
+  def search(query: String)(using CanReadDB.type): ConnectionIO[List[AirportRow]]
 }
 
 final class AirportsStoreImpl extends AirportsStore {
@@ -43,6 +37,7 @@ final class AirportsStoreImpl extends AirportsStore {
             airport_type,
             latitude_deg,
             longitude_deg,
+            municipality,
             iso_country,
             local_code,
             keywords
@@ -53,10 +48,20 @@ final class AirportsStoreImpl extends AirportsStore {
             ${airport.airportType},
             ${airport.latitudeDeg},
             ${airport.longitudeDeg},
+            ${airport.municipality},
             ${airport.isoCountry},
             ${airport.localCode},
             ${airport.keywords.map(_.toLowerCase())}
-          )
+          ) on conflict (icao_code) do update
+            set iata_code = ${airport.iataCode},
+                airport_name = ${airport.airportName},
+                airport_type = ${airport.airportType},
+                latitude_deg = ${airport.latitudeDeg},
+                longitude_deg = ${airport.longitudeDeg},
+                municipality = ${airport.municipality},
+                iso_country = ${airport.isoCountry},
+                local_code = ${airport.localCode},
+                keywords = ${airport.keywords.map(_.toLowerCase())}
          """.updateWithLogger.run.map(_ => ())
   }
 
@@ -71,6 +76,7 @@ final class AirportsStoreImpl extends AirportsStore {
             airport_type,
             latitude_deg,
             longitude_deg,
+            municipality,
             iso_country,
             local_code,
             keywords
@@ -81,7 +87,12 @@ final class AirportsStoreImpl extends AirportsStore {
 
   override def search(
     query: String
-  )(using CanReadDB.type): ConnectionIO[Option[AirportRow]] = {
+  )(using CanReadDB.type): ConnectionIO[List[AirportRow]] = {
+    val keywordQuery = if (query.length > 5) {
+      s"%${query.toLowerCase()}%"
+    } else {
+      s"${query.toLowerCase()}"
+    }
     sql"""
       select 
             icao_code,
@@ -90,23 +101,28 @@ final class AirportsStoreImpl extends AirportsStore {
             airport_type,
             latitude_deg,
             longitude_deg,
+            municipality,
             iso_country,
             local_code,
             keywords
       from airports
-      where icao_code = ${query}
-      or iata_code = ${query}
-      or airport_name = ${query}
-      or airport_type = ${query}
-      or iso_country = ${query}
-      or local_code = ${query}
-      or keywords @> ARRAY[${query.toLowerCase()}]
-    """.queryWithLogger[AirportRow].option
+      where icao_code ilike ${"%" + query.toLowerCase + "%"}
+      or iata_code ilike ${"%" + query.toLowerCase + "%"}
+      or airport_name ilike ${"%" + query.toLowerCase + "%"}
+      or airport_type ilike ${"%" + query.toLowerCase + "%"}
+      or iso_country ilike ${"%" + query.toLowerCase + "%"}
+      or local_code ilike ${"%" + query.toLowerCase + "%"}
+      or icao_code in (
+        select icao_code
+        from airports, unnest(keywords) as keyword
+        where keyword ilike ${keywordQuery}
+      )
+    """.queryWithLogger[AirportRow].to[List]
   }
 
   override def createTableIfNotExists(): ConnectionIO[Any] = {
     for {
-      createTable <- sql"""
+      _ <- sql"""
               create table if not exists airports (
                 icao_code varchar(10) not null primary key,
                 iata_code varchar(3) not null,
@@ -114,6 +130,7 @@ final class AirportsStoreImpl extends AirportsStore {
                 airport_type varchar(20),
                 latitude_deg double precision,
                 longitude_deg double precision,
+                municipality varchar(255),
                 iso_country varchar(2),
                 local_code varchar(10),
                 keywords varchar(255) array
