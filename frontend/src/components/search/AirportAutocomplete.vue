@@ -5,11 +5,10 @@
     :filter-completions="filterAirportCompletions"
     :completions="airportCompletions"
     :label="label"
-    :item-title-field-name="airportId"
-    :item-value-field-name="airportId"
-    :item-props-field-names="fieldsToDisplay"
-    :make-completion-item-title="makeItemTitle"
-    :make-completion-item-subtitle="makeItemSubtitle"
+    :selected-value-function="identityFunction"
+    :make-selected-item-title="makeItemTitle"
+    :make-completion-item-title="makeCompletionItemTitle"
+    :make-completion-item-subtitle="makeCompletionItemSubtitle"
     @needs-fetch="updateAirportCompletions"
   />
 </template>
@@ -33,8 +32,7 @@ defineProps({
   }
 })
 
-const airportId = 'icao'
-const fieldsToDisplay = ['icao', 'name']
+const identityFunction = (item: Record<string, any>) => item
 const flightsStore = useFlightsStore()
 const airportCompletions = ref([] as Array<Airport>)
 
@@ -42,15 +40,22 @@ const genericAutocompleteComponent = ref(null as any)
 const selectedAirport = computed(() => {
   return genericAutocompleteComponent.value.selectedValue || ({} as Airport)
 })
-const makeItemTitle = (item: any) => `${item?.raw?.city} - ${item?.raw?.name}`
-const makeItemSubtitle = (item: any) => `${item?.raw?.icao} , ${item?.raw?.iata}`
-const extractComparisonFields = (airport: Airport) => [
-  [airport.icao, 1],
-  [airport.iata, 1],
-  [airport.name, 2],
-  [airport.city, 10],
-  [airport.country, 20]
-] as Array<[string, number]>
+const makeItemTitle = (item: Record<string, any>, fallback?: any) => {
+  if (Object.keys(item).length == 0) {
+    return fallback
+  }
+  return `${item['city']} (${item['iata']})`
+}
+const makeCompletionItemTitle = (item: any) => `${item?.raw?.city} - ${item?.raw?.name}`
+const makeCompletionItemSubtitle = (item: any) => `${item?.raw?.icao} , ${item?.raw?.iata}`
+const extractComparisonFields = (airport: Airport) =>
+  [
+    [airport.icao, 1],
+    [airport.iata, 1],
+    [airport.name, 2],
+    [airport.city, 10],
+    [airport.country, 20]
+  ] as Array<[string, number]>
 
 function scoreAirport(airport: Airport, query: string) {
   const score = extractComparisonFields(airport)
@@ -80,7 +85,9 @@ const updateAirportCompletions = (query: string) => {
 const filterAirportCompletions = (value: string, query: string, item?: any) => {
   const airport: Airport | undefined = item?.raw as Airport | undefined
   if (airport) {
-    return extractComparisonFields(airport).some(([field, _ignored]) => StringsUtils.similar(query, field))
+    return extractComparisonFields(airport).some(([field, _ignored]) =>
+      StringsUtils.similar(query, field)
+    )
   }
   return StringsUtils.similar(query, value)
 }

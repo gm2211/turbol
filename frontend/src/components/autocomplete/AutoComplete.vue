@@ -6,9 +6,8 @@
     :label="label"
     :loading="loadingCompletions"
     :items="completions"
-    :item-title="itemTitleFieldName"
-    :item-value="itemValueFieldName"
-    :item-props="itemPropsFieldNames"
+    :item-value="selectedValueFunction"
+    :item-title="makeSelectedItemTitle"
     :custom-filter="filterCompletions"
     class="mx-4"
     density="comfortable"
@@ -38,9 +37,8 @@ defineProps<{
   cssClass: string
   label: string
   completions: any[]
-  itemTitleFieldName: string
-  itemValueFieldName: string
-  itemPropsFieldNames: string[]
+  selectedValueFunction: (item: Record<string, any>, fallback?: any) => any,
+  makeSelectedItemTitle: (item: Record<string, any>, fallback?: any) => any,
   makeCompletionItemTitle: (item: any) => string
   makeCompletionItemSubtitle: (item: any) => string
   filterCompletions: (value: string, query: string, item?: any) => boolean
@@ -48,7 +46,7 @@ defineProps<{
 
 const loadingCompletions = ref(false)
 const selectedValue = ref(undefined)
-const selectedValueBeingEntered = ref(undefined)
+const selectedValueBeingEntered = ref(undefined as string | undefined)
 
 watch(selectedValueBeingEntered, async (query) => {
   loadingCompletions.value = true

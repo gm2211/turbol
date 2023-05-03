@@ -1,9 +1,6 @@
 <template>
   <v-col class="pa-0">
     <v-card class="fill-height my-card">
-      <v-row class="justify-center ma-lg-16">
-        <h1>Turbulence Analysis</h1>
-      </v-row>
       <v-row class="justify-center">
         <AirportAutocomplete
           ref="departureAirport"
@@ -11,7 +8,7 @@
           label="Departure Airport"
         />
         <AirportAutocomplete
-          ref="arrivalAiport"
+          ref="arrivalAirport"
           :css-class="autoCompleteCss"
           label="Arrival Airport"
         />
