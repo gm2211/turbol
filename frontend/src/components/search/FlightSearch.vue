@@ -1,10 +1,10 @@
 <template>
-    <v-card class="fill-height my-card d-flex flex-column">
-        <v-row class="flex-grow-0 mt-8 ml-7 mr-7">
+    <v-col class="fill-height d-flex flex-column" style="width: 100%; height: 100%">
+        <v-row class="flex-grow-0 mt-1 mb-1">
             <FlightSearchBox ref="searchBox"/>
         </v-row>
-        <v-row class="flex-grow-1 mb-10">
-            <v-card class="my-card pa-10 mt-2 mb-10 ml-10 mr-10 fill-height">
+        <v-row class="flex-grow-1 mt-1 mb-1">
+            <v-card class="my-card">
                 <ul class="fill-height justify-center text-center">
                     <li v-for="flight in flights" :key="flight.flightNumber">
                         {{ flight.flightNumber }} - {{ flight.departureDateTime }}
@@ -12,7 +12,7 @@
                 </ul>
             </v-card>
         </v-row>
-    </v-card>
+    </v-col>
 </template>
 
 <script setup lang="ts">

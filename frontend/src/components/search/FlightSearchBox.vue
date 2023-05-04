@@ -1,5 +1,5 @@
 <template>
-  <v-card class="my-card pa-5">
+  <v-card class="my-card pa-5 text-grey-darken-4">
     <v-row>
       <v-col>
         <v-row class="justify-end">
