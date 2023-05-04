@@ -1,5 +1,5 @@
 <template>
-  <v-card class="my-card pa-10 mt-10 mr-10 ml-10 mb-2">
+  <v-card class="my-card pa-5">
     <v-row>
       <v-col>
         <v-row class="justify-end">

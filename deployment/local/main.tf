@@ -22,7 +22,7 @@ module "local-infra" {
 module "app-config" {
   source                 = "../shared-terraform/modules/app-config"
   be_app_port            = 8081
-  dev_mode               = true
+  be_dev_mode            = true
   postgres_database_name = module.local-infra.postgres_database_name
   postgres_host          = module.local-infra.postgres_host
   postgres_port          = module.local-infra.postgres_port
