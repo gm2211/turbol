@@ -1,9 +1,9 @@
 <template>
     <v-col class="fill-height d-flex flex-column" style="width: 100%; height: 100%">
-        <v-row class="flex-grow-0 mt-1 mb-1">
+        <v-row class="flex-grow-0 mt-sm-n1 mb-1">
             <FlightSearchBox ref="searchBox"/>
         </v-row>
-        <v-row class="flex-grow-1 mt-1 mb-1">
+        <v-row class="flex-grow-1 mt-1 mb-sm-n1">
             <v-card class="my-card">
                 <ul class="fill-height justify-center text-center">
                     <li v-for="flight in flights" :key="flight.flightNumber">

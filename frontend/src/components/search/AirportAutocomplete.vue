@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { useFlightsStore } from '@/stores/flights-store'
+import { useAirportsStore } from '@/stores/aiports-store'
 import type { Airport } from '@/objects/airports/airports'
 import StringsUtils from '@/util/strings'
 import AutoComplete from '@/components/autocomplete/AutoComplete.vue'
@@ -33,7 +33,7 @@ defineProps({
 })
 
 const identityFunction = (item: Record<string, any>) => item
-const flightsStore = useFlightsStore()
+const airportsStore = useAirportsStore()
 const airportCompletions = ref([] as Array<Airport>)
 
 const genericAutocompleteComponent = ref(null as any)
@@ -70,12 +70,12 @@ function scoreAirport(airport: Airport, query: string) {
 }
 
 function getAndSortFetchedAirports(query: string) {
-  const airports = flightsStore.getAirports(query)
+  const airports = airportsStore.getAirports(query)
   return CollectionsUtils.sortBy(airports, (airport) => scoreAirport(airport, query))
 }
 
 const updateAirportCompletions = (query: string) => {
-  flightsStore.fetchAirports(query).then(() => {
+  airportsStore.fetchAirports(query).then(() => {
     airportCompletions.value = getAndSortFetchedAirports(query)
   })
 }
