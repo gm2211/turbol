@@ -1,31 +1,31 @@
 :root {
-  --my-blue: rgba(16, 50, 79, 0.97);
-  --my-blue-transparent: rgba(24, 39, 52, 0.6);
-  --my-grey: rgba(200, 200, 200, 0.7);
-  --bg-gradient-1: rgba(91, 143, 178, 0.2);
-  --bg-gradient-2: rgba(4, 36, 65, 0.3);
+    --my-blue: rgba(16, 50, 79, 0.97);
+    --my-blue-transparent: rgba(24, 39, 52, 0.6);
+    --my-grey: rgba(200, 200, 200, 0.7);
+    --bg-gradient-1: rgba(91, 143, 178, 0.2);
+    --bg-gradient-2: rgba(4, 36, 65, 0.3);
 }
 
 .v-card.my-card {
-  background: linear-gradient(0deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
-  width: 100%;
-  height: 100%;
+    background: linear-gradient(0deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+    width: 100%;
+    height: 100%;
 }
 
 .v-main.bg {
-  position: relative;
-  z-index: 1;
+    position: relative;
+    z-index: 1;
 }
 
 .bg:before {
-  content: '';
-  background: url('../images/bg.jpg');
-  background-size: cover;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  opacity: 0.7;
-  position: absolute;
-  z-index: -1;
+    content: '';
+    background: url('../images/bg.jpg');
+    background-size: cover;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    opacity: 0.7;
+    position: absolute;
+    z-index: -1;
 }
