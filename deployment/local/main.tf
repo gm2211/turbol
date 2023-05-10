@@ -28,4 +28,5 @@ module "app-config" {
   postgres_port          = module.local-infra.postgres_port
   postgres_user          = module.local-infra.postgres_superuser
   postgres_password      = module.local-infra.postgres_superuser_password
+  mapbox_token           = var.dev_mapbox_token
 }

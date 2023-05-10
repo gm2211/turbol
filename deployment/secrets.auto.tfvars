@@ -1,2 +1,4 @@
 digitalocean_api_token = "dop_v1_20e2dbd88ec320f4945740f7acd5beb105b6b796d6b8ebf07e6209f6c0d28e45"
 docker_hub_password = "gAkKHj_goYDRazjQ74pJrUs*r"
+dev_mapbox_token = "pk.eyJ1IjoiZ21lY29jY2kiLCJhIjoiY2xoOXppN2JuMDI4YjNrcXVxeHd6OXc2ayJ9.Tkxx0fZg-SSgGnZg0d9D7A"
+prod_mapbox_token = "sk.eyJ1IjoiZ21lY29jY2kiLCJhIjoiY2xoYTJ0ajlhMGRjMDNzcGh2cjNldmo5YyJ9.XfHe6yRHDm-AM8ePgBKKBA"

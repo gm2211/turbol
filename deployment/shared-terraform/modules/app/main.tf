@@ -13,33 +13,34 @@ module "app-config" {
   postgres_port          = var.postgres_port
   postgres_user          = var.postgres_user
   postgres_password      = var.postgres_password
+  mapbox_token           = var.mapbox_token
 }
 
 ########## App ##############
 # Locals
 locals {
   # App
-  fe_app_label                    = "fe-app"
-  fe_app_name                     = "turbol-fe"
+  fe_app_label = "fe-app"
+  fe_app_name  = "turbol-fe"
 
-  be_app_label                    = "be-app"
-  be_app_name                     = "turbol"
+  be_app_label                  = "be-app"
+  be_app_name                   = "turbol"
   # Docker
-  dockerhub_username_pass         = "${var.dockerhub_username}:${var.dockerhub_password}"
-  docker_image_pull_secret_name   = kubernetes_secret.docker-hub-login.metadata[0].name
+  dockerhub_username_pass       = "${var.dockerhub_username}:${var.dockerhub_password}"
+  docker_image_pull_secret_name = kubernetes_secret.docker-hub-login.metadata[0].name
   # Server config
-  server_configs_volume_name      = "server-configs"
-  server_configs_dir              = "/etc/conf/plain"
-  install_config_filename         = "install.yml"
-  runtime_config_filename         = "runtime.yml"
-  server_config_map_data          = {
+  server_configs_volume_name    = "server-configs"
+  server_configs_dir            = "/etc/conf/plain"
+  install_config_filename       = "install.yml"
+  runtime_config_filename       = "runtime.yml"
+  server_config_map_data        = {
     (local.install_config_filename) = yamlencode(module.app-config.install_config),
     (local.runtime_config_filename) = yamlencode(module.app-config.runtime_config)
   }
-  server_secrets_volume_name = "server-secrets"
-  server_secrets_dir         = "/etc/conf/secrets"
+  server_secrets_volume_name      = "server-secrets"
+  server_secrets_dir              = "/etc/conf/secrets"
   server_install_secrets_filename = "install-secrets.yml"
-  server_secrets_data        = {
+  server_secrets_data             = {
     (local.server_install_secrets_filename) = yamlencode(module.app-config.install_secrets)
   }
 }

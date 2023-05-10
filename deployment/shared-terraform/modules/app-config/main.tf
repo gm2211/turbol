@@ -5,6 +5,7 @@ locals {
   // Decided to keep secrets management simple for now - see my other project 'idoctor' for how to use Hashicorp Vault
   install_secrets = {
     db-admin-password = var.postgres_password
+    mapbox-token      = var.mapbox_token
   }
   # Install
   install_config = {

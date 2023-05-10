@@ -18,13 +18,13 @@ locals {
     data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
   )
   // App
-  be_app_port        = 8081
-  fe_app_port        = 9000
+  be_app_port      = 8081
+  fe_app_port      = 9000
   // Hostnames
-  prod_hostname      = local.domain
+  prod_hostname    = local.domain
   // Postgres
-  postgres_prod_db   = "prod"
-  postgres_port      = 25060
+  postgres_prod_db = "prod"
+  postgres_port    = 25060
 }
 
 // Modules
@@ -57,6 +57,7 @@ module "prod" {
   postgres_port          = local.postgres_port
   postgres_user          = module.infra.postgres_admin_user
   postgres_password      = module.infra.postgres_password
+  mapbox_token           = var.prod_mapbox_token
 }
 
 resource "digitalocean_database_db" "prod-db" {

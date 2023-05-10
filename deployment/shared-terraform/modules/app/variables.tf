@@ -13,3 +13,6 @@ variable postgres_host {}
 variable postgres_port {}
 variable postgres_user {}
 variable postgres_password {}
+variable mapbox_token {
+  sensitive = true
+}
