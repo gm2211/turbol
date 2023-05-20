@@ -11,7 +11,7 @@ import cats.effect.{IO, Resource}
 import com.comcast.ip4s.{ipv4, Port}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.config.install.InstallConfig
-import com.gm2211.turbol.endpoints.{Endpoint, FlightsEndpoint, FrontendConfigEndpoint}
+import com.gm2211.turbol.endpoints.{Endpoint, FlightsEndpoint}
 import com.gm2211.turbol.modules.AppModule
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.{CORS, ErrorHandling, RequestLogger, ResponseLogger}
@@ -37,7 +37,11 @@ object AppServer extends BackendLogging {
       }
     }
     val endpoints =
-      LazyList[Endpoint](appModule.endpointsModule.airportsEndpoint, FlightsEndpoint, appModule.endpointsModule.frontendConfigEndpoint)
+      LazyList[Endpoint](
+        appModule.endpointsModule.airportsEndpoint,
+        FlightsEndpoint,
+        appModule.endpointsModule.frontendConfigEndpoint
+      )
         .map(endpoint => s"/api/${endpoint.basePath.dropWhile(_ == '/')}" -> endpoint.routes)
         .toList
     val router: MyHttpApp = Router[IO](endpoints*).orNotFound

@@ -25,7 +25,7 @@ object FlightsEndpoint extends Endpoint with BackendSerialization {
       (37.77, -122.41),
       (51.47, -0.45)
     )
-    val flightPlan = FlightPlan(FlightNumber(flightNumber), flightPath)
+    val flightPlan: FlightPlan = FlightPlan(FlightNumber(flightNumber), flightPath)
     Ok(flightPlan.toJson.noSpaces)
   }
 }

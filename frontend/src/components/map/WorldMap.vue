@@ -7,11 +7,15 @@
 <script setup lang="ts">
 import mapboxgl from "mapbox-gl";
 import {onMounted} from "vue";
+import {useConfigStore} from "@/stores/config-store";
 
 let map = undefined
+const configStore = useConfigStore()
 
 onMounted(() => {
-    mapboxgl.accessToken = "";
+    configStore.fetchConfig()
+
+    mapboxgl.accessToken = configStore.getMapboxToken();
 
     map = new mapboxgl.Map({
         container: 'map',

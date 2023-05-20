@@ -22,4 +22,5 @@ final class ConfigModule(
 ) {
   lazy val dbConfig: Refreshable[DatabaseConfig] =
     runtime.map(_.databaseConfig)(using MoreExecutors.fixed("db-config", 1))
+  lazy val appSecretsSupplier: () => AppSecrets = () => appSecrets.get
 }
