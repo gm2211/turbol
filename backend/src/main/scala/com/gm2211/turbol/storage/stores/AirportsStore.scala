@@ -12,7 +12,6 @@ import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}
 import com.gm2211.turbol.util.{SqlCol, SqlLit, SqlTable}
 import doobie.*
-import doobie.implicits.toSqlInterpolator
 
 trait AirportsStore extends DBStore {
   def putAirport(airport: AirportRow)(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
@@ -26,6 +25,7 @@ final class AirportsStoreImpl extends AirportsStore {
   import AirportsStore.*
 
   override def putAirport(airport: AirportRow)(using CanReadDB.type, CanWriteToDB.type): doobie.ConnectionIO[Unit] = {
+    val lowerCaseKeywords: List[String] = airport.keywords.map(_.toLowerCase())
     doob"""
           insert into $airportsTable ($allColumns) values (
             ${airport.icaoCode},
@@ -37,9 +37,9 @@ final class AirportsStoreImpl extends AirportsStore {
             ${airport.municipality},
             ${airport.isoCountry},
             ${airport.localCode},
-            ${airport.keywords.map(_.toLowerCase())}
+            $lowerCaseKeywords
           ) on conflict ($icaoCodeCol) do update
-            set $icaoCodeCol = ${airport.iataCode},
+            set $iataCodeCol = ${airport.iataCode},
                 $airportNameCol = ${airport.airportName},
                 $airportTypeCol = ${airport.airportType},
                 $latitudeDegCol = ${airport.latitudeDeg},
@@ -47,7 +47,7 @@ final class AirportsStoreImpl extends AirportsStore {
                 $municipalityCol = ${airport.municipality},
                 $isoCountryCol = ${airport.isoCountry},
                 $localCodeCol = ${airport.localCode},
-                $keywordsCol = ${airport.keywords.map(_.toLowerCase())}
+                $keywordsCol = $lowerCaseKeywords
          """.updateWithLogger.run.map(_ => ())
   }
 
@@ -104,8 +104,7 @@ final class AirportsStoreImpl extends AirportsStore {
 
   override def createTableIfNotExists(): ConnectionIO[Any] = {
     for {
-      _ <- doob"""
-              create table if not exists $airportsTable (
+      _ <- doob"""create table if not exists $airportsTable (
                 $icaoCodeCol varchar(10) not null primary key,
                 $iataCodeCol varchar(3) not null,
                 $airportNameCol varchar(255),

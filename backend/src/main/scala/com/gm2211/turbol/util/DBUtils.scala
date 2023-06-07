@@ -7,6 +7,8 @@
 package com.gm2211.turbol.util
 
 import com.gm2211.logging.BackendLogging
+import doobie.postgres.*
+import doobie.postgres.implicits.*
 import doobie.syntax.SqlInterpolator.SingleFragment
 import doobie.util.Read
 import doobie.util.fragment.Fragment
@@ -51,7 +53,7 @@ trait DBUtils extends BackendLogging {
               .orElse(s.toDoubleOption.map(SingleFragment.fromWrite(_).fr))
               .orElse(Some(SingleFragment.fromWrite(s).fr))
               .get
-//          case l: List[_] => SingleFragment.fromWrite(l.asInstanceOf[List[String]]).fr
+          case l: List[_] => SingleFragment.fromWrite(l.asInstanceOf[List[String]]).fr
           case _ => SingleFragment.fromWrite(value.toString).fr
         }
       }
