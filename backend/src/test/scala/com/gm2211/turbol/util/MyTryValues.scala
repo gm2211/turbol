@@ -29,7 +29,7 @@ trait MyTryValues {
       success
     }
     
-    private def success(implicit pos: source.Position): Success[T] = {
+    def success(implicit pos: source.Position): Success[T] = {
       theTry match {
         case success: Success[T] => success
         case Failure(exception) =>

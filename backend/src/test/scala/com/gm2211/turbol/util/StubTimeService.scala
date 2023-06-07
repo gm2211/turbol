@@ -19,11 +19,18 @@ final class StubTimeService extends TimeService with ExpressionUtils {
   override def now: DatetimeUtc = DatetimeUtc(epochMillis.get())
   override def today: LocalDate = LocalDate.ofEpochDay(epochMillis.get().millis.toDays)
 
-  def set(time: DatetimeUtc): Unit = epochMillis.set(time.epochMillis)
-  def forward(duration: Duration): Unit = ignoringRetValue {
-    epochMillis.updateAndGet(cur => cur + duration.toMillis)
+  def set(time: DatetimeUtc): StubTimeService = {
+    epochMillis.set(time.epochMillis)
+    this
   }
-  def backward(duration: Duration): Unit = forward(duration * -1)
+  def forward(duration: Duration): StubTimeService = {
+    epochMillis.updateAndGet(cur => cur + duration.toMillis)
+    this
+  }
+  def backward(duration: Duration): StubTimeService = {
+    forward(duration * -1)
+    this
+  }
 }
 
 object StubTimeService {

@@ -16,6 +16,7 @@ trait RawSqlStore {
   def executeUpdate(fragment: Fragment): ConnectionIO[Unit]
   def executeQuery[T: Read](query: String): ConnectionIO[T]
   def executeQueryList[T: Read](query: String): ConnectionIO[List[T]]
+  def executeQueryList[T: Read](fragment: Fragment): ConnectionIO[List[T]]
   def executeQuery[T: Read](fragment: Fragment): ConnectionIO[T]
 }
 final class RawSqlStoreImpl extends RawSqlStore with BackendLogging with DBUtils {
@@ -31,6 +32,11 @@ final class RawSqlStoreImpl extends RawSqlStore with BackendLogging with DBUtils
   override def executeQueryList[T: Read](query: String): ConnectionIO[List[T]] = {
     Fragment.const(query).queryWithLogger[T].to[List]
   }
+
+  override def executeQueryList[T: Read](fragment: Fragment): ConnectionIO[List[T]] = {
+    fragment.queryWithLogger[T].to[List]
+  }
+
   override def executeQuery[T: Read](fragment: Fragment): ConnectionIO[T] = {
     fragment.queryWithLogger[T].unique
   }

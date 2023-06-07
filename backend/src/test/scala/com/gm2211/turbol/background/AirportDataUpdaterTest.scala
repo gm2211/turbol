@@ -1,10 +1,13 @@
 package com.gm2211.turbol.background
 
 import com.gm2211.turbol.background.airportdata.{AirportDataDownloader, AirportDataParserFactoryImpl, AirportDataUpdater}
+import com.gm2211.turbol.objects.internal.DatetimeUtc
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
-import com.gm2211.turbol.util.{StubTimeService, TestWithDb}
+import com.gm2211.turbol.util.DBUtils.doob
+import com.gm2211.turbol.util.{SqlCol, StubTimeService, TestWithDb}
 
 import java.io.File
+import java.time.Instant
 import scala.io.Source
 import scala.util.Try
 
@@ -27,12 +30,22 @@ class AirportDataUpdaterTest extends TestWithDb {
   }
 
   test("should correctly parse and store airports data") {
+    listAirports() shouldBe empty
+
+    val timeService = StubTimeService().set(DatetimeUtc(Instant.now.toEpochMilli))
+
     AirportDataUpdater(
       txnManager,
       AirportDataParserFactoryImpl(),
       mockDownloader,
-      StubTimeService()
+      timeService
     ).fetchAndUpdateAirportData().assertSuccess
-    println(txnManager.readOnly { txn => txn.raw.executeQueryList[AirportRow]("select * from airports") })
+
+    listAirports() should not be empty
+  }
+  private def listAirports(): List[AirportRow] = {
+    txnManager.readOnly { txn =>
+      txn.raw.executeQueryList[AirportRow](doob"select ${SqlCol("*")} from airports")
+    }.success.get
   }
 }

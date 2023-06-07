@@ -38,6 +38,12 @@ class AirportsStoreImplTest extends TestWithDb {
       } yield airport
     }.value
     actual should contain(airportWithOtherName.copy(keywords = List()))
+
+    println(txnManager.readOnly { txn =>
+      txn.airportsStore.getAirport(ICAOCode("KJFK"))
+//      txn.raw.executeQueryList(
+//      doob"select ${SqlCol("*")} from airports where icao_code = ${ICAOCode("KJFK")}")
+    })
   }
 
   test("getting an airport that does not exist should return None") {

@@ -33,18 +33,20 @@ trait TestWithDb extends BaseTest {
       txnManager.readWriteVoid { txn =>
         txn.raw.executeUpdate(
           sql"""DROP SCHEMA public CASCADE;
-            |CREATE SCHEMA public;
-            |GRANT ALL ON SCHEMA public TO postgres;
-            |GRANT ALL ON SCHEMA public TO public;
-            |""".stripMargin
+               |CREATE SCHEMA public;
+               |GRANT ALL ON SCHEMA public TO postgres;
+               |GRANT ALL ON SCHEMA public TO public;
+               |""".stripMargin
         ).just
       }.value
 
       txnManager.awaitInitialized().value
-    }.recoverWith { error =>
-      log.error("Could not initialize test txn manager", error)
-      Failure(error)
-    }.ignoreRetValue()
+    } match {
+      case Failure(exception) =>
+        log.error("Could not initialize test txn manager", exception)
+        throw exception
+      case _ => ()
+    }
   }
 
   override def afterAll(): Unit = {
