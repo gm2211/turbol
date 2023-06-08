@@ -14,9 +14,13 @@ final class AppMetadataStoreImpl(timeService: TimeService) extends AppMetadataSt
   import AppMetadataStore.*
 
   override def airportsTableUpdated()(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit] = {
+    val nowInMillis: Long = timeService.now.epochMillis
+
     doob"""
     insert into $tableName ($keyCol, $valueCol)
-    values ($lastUpdatedAirportsTableKey, ${timeService.now.epochMillis})
+    values ($lastUpdatedAirportsTableKey, $nowInMillis)
+    on conflict ($keyCol)
+    do update set $valueCol = $nowInMillis
     """.updateWithLogger.run.map(_ => ())
   }
 

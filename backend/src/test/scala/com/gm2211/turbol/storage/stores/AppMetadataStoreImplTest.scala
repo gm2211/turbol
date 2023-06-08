@@ -21,6 +21,7 @@ class AppMetadataStoreImplTest extends TestWithDb {
     txnManager.readWrite { txn => txn.appMetadataStore.airportsTableUpdated() }
 
     stubTimeService.set(DatetimeUtc(2345))
+
     val lastUpdated = txnManager.readWrite { txn =>
       for {
         _ <- txn.appMetadataStore.airportsTableUpdated()
