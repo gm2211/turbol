@@ -37,7 +37,8 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
       ConfigWatcher.watchConfig(runtimeConfigPath)(using IORuntime.global)
 
     val configModule: ConfigModule = ConfigModule(install, runtime, appSecrets)
-    val storageModule = StorageModule(configModule)
+    val envModule: EnvironmentModule = EnvironmentModule()
+    val storageModule = StorageModule(configModule, envModule)
     val servicesModule = ServicesModule(storageModule)
     val appModule: AppModule = AppModule(
       backgroundJobsModule = BackgroundJobsModule(storageModule, servicesModule),

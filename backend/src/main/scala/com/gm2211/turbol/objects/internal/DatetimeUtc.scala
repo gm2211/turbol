@@ -7,13 +7,16 @@
 package com.gm2211.turbol.objects.internal
 
 import java.time.Instant
+import scala.annotation.targetName
 import scala.concurrent.duration.*
 
 final case class DatetimeUtc(epochMillis: Long) {
   def plus(duration: Duration): DatetimeUtc = this + duration
+  @targetName("add")
   def +(duration: Duration): DatetimeUtc = DatetimeUtc(epochMillis + duration.toMillis)
 
   def minus(duration: Duration): DatetimeUtc = this - duration
+  @targetName("subtract")
   def -(duration: Duration): DatetimeUtc = DatetimeUtc(epochMillis - duration.toMillis)
 
   def until(endTimeExclusive: DatetimeUtc): Duration = (endTimeExclusive.epochMillis - epochMillis).millis

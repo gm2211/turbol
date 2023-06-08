@@ -29,6 +29,10 @@ trait TransactionManager {
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[T]
   ): Try[T]
 
+  def readWriteT[T](
+    action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => ConnectionIO[Try[T]]
+  ): Try[T] = readWrite(action).flatten // TODO: use type match here instead of having "overloaded" method
+
   def readWriteVoid(
     action: (CanReadDB.type, CanWriteToDB.type) ?=> TransactionalStores => Seq[ConnectionIO[Unit]]
   ): Try[Unit]
@@ -43,11 +47,11 @@ class TransactionManagerImpl(
     for {
       _ <- transactorProvider.awaitInitialized()
       _ <- readWriteVoid { txn =>
-          txn
-            .map(_.createTableIfNotExists())
-            .reduce((existing, next) => existing.flatMap(_ => next))
-            .map(_ => ())
-            .just
+        txn
+          .map(_.createTableIfNotExists())
+          .reduce((existing, next) => existing.flatMap(_ => next))
+          .map(_ => ())
+          .just
       }
     } yield ()
   }

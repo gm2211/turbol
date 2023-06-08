@@ -6,7 +6,7 @@ import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.objects.internal.storage.RawSqlStoreImpl
 import com.gm2211.turbol.objects.internal.storage.db.TransactionalStores
 import com.gm2211.turbol.storage.*
-import com.gm2211.turbol.storage.stores.AirportsStoreImpl
+import com.gm2211.turbol.storage.stores.{AirportsStoreImpl, AppMetadataStoreImpl}
 import com.softwaremill.tagging.*
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres
 
@@ -24,9 +24,12 @@ class TestTransactionManagerFactory() extends StringUtils with ConfigSerializati
     Refreshable(AppSecrets("postgres", "") /* Default for embedded postgres */ ),
     MoreExecutors.io("transactor-provider-io").taggedWith[DBTransactorProvider]
   )
-  private val stores: TransactionalStores = TransactionalStores(AirportsStoreImpl(), RawSqlStoreImpl())
+  private val _stubTimeService = new StubTimeService()
+  private val stores: TransactionalStores = TransactionalStores(
+    AirportsStoreImpl(), AppMetadataStoreImpl(_stubTimeService), RawSqlStoreImpl())
 
-  val txnManager = new TransactionManagerImpl(stores, dbTransactorProviderImpl)
+  val txnManager: TransactionManager = new TransactionManagerImpl(stores, dbTransactorProviderImpl)
+  def stubTimeService: StubTimeService = _stubTimeService
 
   def close(): Unit = {
     postgres.close()

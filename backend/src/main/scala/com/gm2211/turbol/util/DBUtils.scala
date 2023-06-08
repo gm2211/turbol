@@ -47,6 +47,7 @@ trait DBUtils extends BackendLogging {
         value match {
           case i: Int => SingleFragment.fromWrite(i).fr
           case d: Double => SingleFragment.fromWrite(d).fr
+          case l: Long => SingleFragment.fromWrite(l).fr
           case s: String =>
             s.toIntOption
               .map(SingleFragment.fromWrite(_).fr)
