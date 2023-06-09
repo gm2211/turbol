@@ -92,9 +92,11 @@ jobs:
       - name: Check if release commit
         run: |
           tag=$(git describe --tag)
-          [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]] \
-          && echo "should_deploy=1" >> "$GITHUB_OUTPUT" \
-          || echo "should_deploy=0" >> "$GITHUB_OUTPUT"
+          is_release=[[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]] \
+            && echo "1" \
+            || echo "0" 
+          echo "Is release: "$is_release
+          echo "should_release=$is_release" >> "$GITHUB_OUTPUT"
   deploy:
     runs-on: ubuntu-latest
     needs: publish
