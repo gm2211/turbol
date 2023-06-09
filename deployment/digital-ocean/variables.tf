@@ -6,7 +6,7 @@ variable docker_hub_password {
   sensitive = true
 }
 variable prod_app_version {
-  default = "1.2.0"
+  default = "1.3.0"
 }
 variable "prod_mapbox_token" {
   sensitive = true
