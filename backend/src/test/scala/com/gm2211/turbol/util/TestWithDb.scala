@@ -31,12 +31,16 @@ trait TestWithDb extends BaseTest {
         throw exception
       case _ => ()
     }
+    
+    extraBeforeEach()
   }
 
   override def afterAll(): Unit = {
     super.afterAll()
     testTxnManagerFactory.close()
   }
+  
+  def extraBeforeEach(): Unit = ()
 
   def txnManager: TransactionManager = {
     testTxnManagerFactory.txnManager

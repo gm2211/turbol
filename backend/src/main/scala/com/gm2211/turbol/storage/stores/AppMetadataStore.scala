@@ -7,13 +7,13 @@ import com.gm2211.turbol.util.{BackendSerialization, SqlCol, SqlTable}
 import doobie.*
 
 trait AppMetadataStore extends DBStore {
-  def airportsTableUpdated()(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
+  def markAirportsTableUpdated()(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit]
   def getAirportsTableLastUpdated()(using CanReadDB.type): ConnectionIO[DatetimeUtc]
 }
 final class AppMetadataStoreImpl(timeService: TimeService) extends AppMetadataStore with BackendSerialization {
   import AppMetadataStore.*
 
-  override def airportsTableUpdated()(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit] = {
+  override def markAirportsTableUpdated()(using CanReadDB.type, CanWriteToDB.type): ConnectionIO[Unit] = {
     val nowInMillis: Long = timeService.now.epochMillis
 
     doob"""

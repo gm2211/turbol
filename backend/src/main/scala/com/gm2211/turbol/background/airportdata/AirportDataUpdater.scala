@@ -9,7 +9,6 @@ package com.gm2211.turbol.background.airportdata
 import cats.effect.IO
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.background.BackgroundJob
-import com.gm2211.turbol.objects.internal.DatetimeUtc
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.services.TimeService
 import com.gm2211.turbol.storage.TransactionManager
@@ -17,7 +16,6 @@ import com.gm2211.turbol.util
 import com.gm2211.turbol.util.StringUtils
 
 import java.io.File
-import java.util.concurrent.atomic.AtomicReference
 import scala.collection.mutable
 import scala.concurrent.duration.*
 import scala.util.{Failure, Success, Try}
@@ -28,12 +26,13 @@ final class AirportDataUpdater(
   private val downloader: AirportDataDownloader,
   private val timeService: TimeService
 ) extends BackgroundJob with util.FileUtils with StringUtils with BackendLogging {
-  private val lastUpdated = AtomicReference[DatetimeUtc](DatetimeUtc(0))
 
   override def run(): IO[Unit] = IO.fromTry(fetchAndUpdateAirportData())
 
   def fetchAndUpdateAirportData(): Try[Unit] = {
-    val updatedRecently = timeService.timeSince(lastUpdated.get) <= 10.days
+    val maybeLastUpdated = txnManager.readOnly { txn => txn.appMetadataStore.getAirportsTableLastUpdated() }.toOption
+    val updatedRecently = maybeLastUpdated.exists(lastUpdated => timeService.timeSince(lastUpdated) <= 10.days)
+
     if (updatedRecently) {
       log.info("Airport data is up to date")
       return Success(())
@@ -41,7 +40,7 @@ final class AirportDataUpdater(
     for {
       tmpFile: File <- downloader.downloadToTempFile
       _ <- flushTmpFileToDb(tmpFile)
-      _ <- Try { lastUpdated.set(timeService.now) }
+      _ <- txnManager.readWriteVoid { txn => List(txn.appMetadataStore.markAirportsTableUpdated()) }
       _ <- Try {
         log.info(s"Stored airport data in db")
         val successfulDeletion = tmpFile.delete()

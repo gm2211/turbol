@@ -9,7 +9,7 @@ class AppMetadataStoreImplTest extends TestWithDb {
     stubTimeService.set(DatetimeUtc(1337))
     val lastUpdated = txnManager.readWrite { txn =>
       for {
-        _ <- txn.appMetadataStore.airportsTableUpdated()
+        _ <- txn.appMetadataStore.markAirportsTableUpdated()
         lstUpdate <- txn.appMetadataStore.getAirportsTableLastUpdated()
       } yield lstUpdate
     }.value
@@ -18,13 +18,13 @@ class AppMetadataStoreImplTest extends TestWithDb {
 
   test("should be able to update and retrieve last updated time for airports table") {
     stubTimeService.set(DatetimeUtc(1337))
-    txnManager.readWrite { txn => txn.appMetadataStore.airportsTableUpdated() }
+    txnManager.readWrite { txn => txn.appMetadataStore.markAirportsTableUpdated() }
 
     stubTimeService.set(DatetimeUtc(2345))
 
     val lastUpdated = txnManager.readWrite { txn =>
       for {
-        _ <- txn.appMetadataStore.airportsTableUpdated()
+        _ <- txn.appMetadataStore.markAirportsTableUpdated()
         lstUpdate <- txn.appMetadataStore.getAirportsTableLastUpdated()
       } yield lstUpdate
     }.value
