@@ -8,20 +8,20 @@ name: Scala CI
 on:
   push:
     branches: [ "develop" ]
-    tags: 
+    tags:
       - "[1-9]+.[1-9]+.[1-9]+"
   pull_request:
     branches: [ "develop" ]
 
 permissions:
   contents: read
-  
+
 env:
   TERRAFORM_CLOUD_TOKEN: ${{ secrets.TERRAFORMCLOUDTOKEN }}
   DOCTL_VERSION: 1.93.1
   TERRAFORM_VERSION: 1.4.5
   DOCEAN_TOKEN: ${{ secrets.DIGITALOCEANTOKEN }}
-  
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,6 +48,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: build
+    outputs:
+      should_deploy: ${{ steps.check_if_release.outputs.should_deploy }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -90,11 +92,13 @@ jobs:
       - name: Check if release commit
         run: |
           tag=$(git describe --tag)
-          [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]] && should_deploy=1 || should_deploy=0
+          [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]] \
+          && echo "should_deploy=1" >> "$GITHUB_OUTPUT" \
+          || echo "should_deploy=0" >> "$GITHUB_OUTPUT"
   deploy:
     runs-on: ubuntu-latest
     needs: publish
-    if:  ${{ needs.publish.outputs.should_deploy == 1 }}
+    if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
       - name: write terraform creds
