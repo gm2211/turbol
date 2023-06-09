@@ -95,17 +95,22 @@ jobs:
           echo "git tag: "$tag
           if [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]]; then
             echo "1" 
-            echo "should_release=1" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=1" >> "$GITHUB_OUTPUT"
           else
             echo "0" 
-            echo "should_release=0" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=0" >> "$GITHUB_OUTPUT"
           fi
   deploy:
     runs-on: ubuntu-latest
     needs: publish
-    if: ${{ needs.publish.outputs.should_deploy == 1 }}
+#    if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
+      - uses: actions-ecosystem/action-regex-match@v2
+        id: regex-match
+        with:
+          text: ${{ github.ref_name }}
+          regex: '^[0-9]+.[0-9]+.[0-9]+$'
       - name: write terraform creds
         run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
       - name: Install utils
