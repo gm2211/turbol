@@ -43,6 +43,11 @@ jobs:
             ${{ runner.os }}-sbt-cache-v3-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
             ${{ runner.os }}-sbt-cache-v3-${{ hashFiles('**/*.sbt') }}
             ${{ runner.os }}-sbt-cache-v3
+      - name: Compile FE
+        run: |
+          cd frontend
+          npm install
+          npm run build
       - name: Run tests
         run: sbt test
   publish:

@@ -7,8 +7,8 @@ orig_dir="$(pwd)"
 cd "${script_dir}" || exit
 
 # Build and push
-./compile-and-build-docker.sh
-./docker-push.sh
+./compile-and-build-docker.sh || exit
+./docker-push.sh || exit
 
 # 2. Go back to the original directory
 cd "${orig_dir}" || exit
