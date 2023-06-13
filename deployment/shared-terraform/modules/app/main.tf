@@ -13,7 +13,6 @@ module "app-config" {
   postgres_port          = var.postgres_port
   postgres_user          = var.postgres_user
   postgres_password      = var.postgres_password
-  mapbox_token           = var.mapbox_token
 }
 
 ########## App ##############

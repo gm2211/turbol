@@ -3,6 +3,3 @@ variable docker_hub_password {
   sensitive = true
 }
 variable k8s_cluster_name {}
-variable dev_mapbox_token {
-  sensitive = true
-}

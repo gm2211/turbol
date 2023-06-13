@@ -57,7 +57,6 @@ module "prod" {
   postgres_port          = local.postgres_port
   postgres_user          = module.infra.postgres_admin_user
   postgres_password      = module.infra.postgres_password
-  mapbox_token           = var.prod_mapbox_token
 }
 
 resource "digitalocean_database_db" "prod-db" {

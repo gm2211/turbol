@@ -1,9 +1,7 @@
 import {defineStore} from 'pinia'
 import axios from 'axios'
 
-interface FrontendConfig {
-    domainLockedMapboxToken: string
-}
+interface FrontendConfig {}
 
 interface ConfigState {
     config: FrontendConfig | undefined
@@ -15,13 +13,7 @@ export const useConfigStore = defineStore('config', {
             config: undefined
         }
     },
-    getters: {
-        getMapboxToken: (state: ConfigState) => {
-            return (): string | undefined => {
-                return state.config?.domainLockedMapboxToken
-            }
-        }
-    },
+    getters: {},
     actions: {
         async fetchConfig() {
             if (this.config) {
