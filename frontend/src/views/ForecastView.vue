@@ -1,5 +1,5 @@
 <template>
-  <WorldMap ref="map" />
+  <WorldMap/>
 </template>
 
 <script setup lang="ts">
