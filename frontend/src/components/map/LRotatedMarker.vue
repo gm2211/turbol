@@ -10,6 +10,7 @@
 
 <script setup lang="ts">
 import {LIcon, LMarker} from "@vue-leaflet/vue-leaflet";
+import {onMounted} from "vue";
 
 const props = defineProps<{
   iconId: number,
@@ -20,16 +21,30 @@ const props = defineProps<{
   rotationAngle: number
 }>();
 
-const iconStyle = document.createElement('style');
-const className = `rotated-icon-${props.iconId}`
+const className: string = `rotated-icon-${props.iconId}`
+const applyRotation = () => {
+  const element = document.querySelector(`.leaflet-marker-icon.${className}`) as any;
+  if (element) {
+    const iconStyle = document.createElement('style');
+    const translation = element.style.transform.toString() || ""
+    iconStyle.textContent = `
+      .${className} {
+        transform:
+          ${translation}
+          rotate(${props.rotationAngle}deg) !important;
+      }
+      `;
+    document.querySelector(className)?.remove()
+    document.head.appendChild(iconStyle);
+  } else {
+    setTimeout(applyRotation, 10);
+  }
+};
 
-iconStyle.textContent = `
-    .${className} img {
-      transform: rotate(${props.rotationAngle}deg);
-      transition: transform 0.5s ease;
-    }
-  `;
+onMounted(() => {
+  applyRotation();
+})
 
-document.head.appendChild(iconStyle);
+defineExpose({applyRotation})
 
 </script>

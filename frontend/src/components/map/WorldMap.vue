@@ -8,6 +8,7 @@
             name="OpenStreet Maps"/>
         <l-polyline :lat-lngs="flightPath" color="red" :options="{ interactive: false }"/>
         <l-rotated-marker
+            ref="planeMarker"
             v-if="flightPath.length > 0"
             :icon-id="MathUtils.randomInt()"
             :lat-lng="flightPath[flightPath.length - 1]"
@@ -37,7 +38,8 @@ const planeRotationAngle = computed(() => {
   if (flightPath.value.length > 1) {
     const [startLat, startLng] = flightPath.value[flightPath.value.length - 2];
     const [destLat, destLng] = flightPath.value[flightPath.value.length - 1];
-    return GeoUtils.calculateBearing(startLat, startLng, destLat, destLng);
+    let bearing = GeoUtils.calculateBearing(startLat, startLng, destLat, destLng);
+    return (bearing - 30) % 360; // Icon is not straight, so we need to add an offset
   } else {
     return 0;
   }
@@ -50,10 +52,16 @@ const planeIconSize = computed(() => {
   return [Math.min(20, size), Math.min(20, size)];
 });
 const planeIconAnchor = computed(() => [planeIconSize.value[0] / 2, planeIconSize.value[1] / 2])
+const planeMarker = ref<LRotatedMarker>(undefined as LRotatedMarker);
 
 watch(flightPath, () => {
   if (flightPath.value.length > 0) {
     mapCenter.value = flightPath.value[flightPath.value.length - 1];
   }
 })
+
+watch(zoom, () => {
+  planeMarker.value.applyRotation()
+})
+
 </script>
