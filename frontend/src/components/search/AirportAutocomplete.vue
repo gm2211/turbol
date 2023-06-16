@@ -3,6 +3,7 @@
     ref="genericAutocompleteComponent"
     :css-class="cssClass"
     :filter-completions="filterAirportCompletions"
+    :loading-completions="loadingCompletions"
     :completions="airportCompletions"
     :label="label"
     :selected-value-function="identityFunction"
@@ -35,6 +36,7 @@ defineProps({
 const identityFunction = (item: Record<string, any>) => item
 const airportsStore = useAirportsStore()
 const airportCompletions = ref([] as Array<Airport>)
+const loadingCompletions = ref(false)
 
 const genericAutocompleteComponent = ref(null as any)
 const selectedAirport = computed(() => {
@@ -75,8 +77,10 @@ function getAndSortFetchedAirports(query: string) {
 }
 
 const updateAirportCompletions = (query: string) => {
+  loadingCompletions.value = true
   airportsStore.fetchAirports(query).then(() => {
     airportCompletions.value = getAndSortFetchedAirports(query)
+    loadingCompletions.value = false
   })
 }
 // TODO(gm2211): Instead of returning bool here, return a list of [start, end] tuples for each matched chunk so that we
