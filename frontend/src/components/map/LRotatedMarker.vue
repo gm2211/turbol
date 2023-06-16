@@ -25,16 +25,18 @@ const className: string = `rotated-icon-${props.iconId}`
 const applyRotation = () => {
   const element = document.querySelector(`.leaflet-marker-icon.${className}`) as any;
   if (element) {
-    const iconStyle = document.createElement('style');
+    const iconStyle = document.createElement('style', );
+    iconStyle.id="rotated-icon-style"
     const translation = element.style.transform.toString() || ""
     iconStyle.textContent = `
       .${className} {
+        transform-origin: center;
         transform:
           ${translation}
           rotate(${props.rotationAngle}deg) !important;
       }
       `;
-    document.querySelector(className)?.remove()
+    document.querySelector(`#${iconStyle.id}`)?.remove()
     document.head.appendChild(iconStyle);
   } else {
     setTimeout(applyRotation, 10);
