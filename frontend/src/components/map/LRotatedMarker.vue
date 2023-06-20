@@ -1,35 +1,38 @@
 <template>
   <l-marker :lat-lng="latLng" :options="{ interactive: false }">
     <l-icon
-        :icon-url="iconUrl"
-        :icon-size="iconSize"
-        :icon-anchor="iconAnchor"
-        :class-name="className"/>
+      :icon-url="iconUrl"
+      :icon-size="new Point(iconSize[0], iconSize[1])"
+      :icon-anchor="new Point(iconAnchor[0], iconAnchor[1])"
+      :class-name="className"
+    />
   </l-marker>
 </template>
 
 <script setup lang="ts">
-import {LIcon, LMarker} from "@vue-leaflet/vue-leaflet";
-import {onMounted} from "vue";
+import { LIcon, LMarker } from '@vue-leaflet/vue-leaflet'
+import { onMounted } from 'vue'
+import { latLng, LatLng, Point } from 'leaflet'
 
 const props = defineProps<{
-  iconId: number,
-  iconUrl: string,
-  iconSize: number[],
-  iconAnchor: number[],
-  latLng: number[],
+  iconId: number
+  iconUrl: string
+  iconSize: number[]
+  iconAnchor: number[]
+  latLng: LatLng
   rotationAngle: number
-}>();
+}>()
 
-let counter: number = 0
+// Stuff related to applying rotation to marker
 const className: string = `rotated-icon-${props.iconId}`
+let styleApplicationCounter: number = 0
 const genStyleId = (cnt: number) => `${className}-${cnt}-style`
 const applyRotation = () => {
-  const element = document.querySelector(`.leaflet-marker-icon.${className}`) as any;
+  const element = document.querySelector(`.leaflet-marker-icon.${className}`) as any
   if (element) {
-    const iconStyle = document.createElement('style',);
-    iconStyle.id = genStyleId(++counter)
-    const translation = element.style.transform.toString() || ""
+    const iconStyle = document.createElement('style')
+    iconStyle.id = genStyleId(++styleApplicationCounter)
+    const translation = element.style.transform.toString() || ''
     iconStyle.textContent = `
       .${className} {
         transform-origin: center;
@@ -37,19 +40,18 @@ const applyRotation = () => {
           ${translation}
           rotate(${props.rotationAngle}deg) !important;
       }
-      `;
-    document.head.appendChild(iconStyle);
+      `
+    document.head.appendChild(iconStyle)
     // Delete prev style
-    document.querySelector(`#${genStyleId(counter - 1)}`)?.remove()
+    document.querySelector(`#${genStyleId(styleApplicationCounter - 1)}`)?.remove()
   } else {
-    setTimeout(applyRotation, 1);
+    setTimeout(applyRotation, 1)
   }
-};
+}
 
 onMounted(() => {
-  applyRotation();
+  applyRotation()
 })
 
-defineExpose({applyRotation})
-
+defineExpose({ applyRotation })
 </script>
