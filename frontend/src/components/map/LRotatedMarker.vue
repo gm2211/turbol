@@ -21,12 +21,14 @@ const props = defineProps<{
   rotationAngle: number
 }>();
 
+let counter: number = 0
 const className: string = `rotated-icon-${props.iconId}`
+const genStyleId = (cnt: number) => `${className}-${cnt}-style`
 const applyRotation = () => {
   const element = document.querySelector(`.leaflet-marker-icon.${className}`) as any;
   if (element) {
-    const iconStyle = document.createElement('style', );
-    iconStyle.id="rotated-icon-style"
+    const iconStyle = document.createElement('style',);
+    iconStyle.id = genStyleId(++counter)
     const translation = element.style.transform.toString() || ""
     iconStyle.textContent = `
       .${className} {
@@ -36,10 +38,11 @@ const applyRotation = () => {
           rotate(${props.rotationAngle}deg) !important;
       }
       `;
-    document.querySelector(`#${iconStyle.id}`)?.remove()
     document.head.appendChild(iconStyle);
+    // Delete prev style
+    document.querySelector(`#${genStyleId(counter - 1)}`)?.remove()
   } else {
-    setTimeout(applyRotation, 10);
+    setTimeout(applyRotation, 1);
   }
 };
 

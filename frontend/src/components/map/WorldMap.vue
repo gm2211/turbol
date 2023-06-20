@@ -1,7 +1,14 @@
 <template>
   <v-col class="fill-height">
     <v-card class="fill-height my-card w-100">
-      <l-map v-model:zoom="zoom" v-model:center="mapCenter" :useGlobalLeaflet="false">
+      <l-map
+          ref="map"
+          v-model:zoom="zoom"
+          v-model:center="mapCenter"
+          @ready="onReady"
+          :marker-zoom-animation="false"
+          :useGlobalLeaflet="false"
+      >
         <l-tile-layer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             layer-type="base"
@@ -57,8 +64,17 @@ const planeIconSize = computed(() => {
 });
 const planeIconAnchor = computed(() => [planeIconSize.value[0] / 2, planeIconSize.value[1] / 2])
 const planeMarker = ref<LRotatedMarker>(undefined as LRotatedMarker);
+const map = ref(null as any)
+const onReady = () => {
+  map.value.leafletObject.on("zoomend", () => onZoomStart())
+  centerMap()
+}
+const onZoomStart = () => {
+  if (planeMarker.value) {
+    planeMarker.value.applyRotation()
+  }
+}
 
 watch(flightPath, () => centerMap())
-watch(zoom, () => planeMarker.value.applyRotation())
-centerMap()
+
 </script>
