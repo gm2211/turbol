@@ -12,7 +12,7 @@
 <script setup lang="ts">
 import { LIcon, LMarker } from '@vue-leaflet/vue-leaflet'
 import { onMounted } from 'vue'
-import { latLng, LatLng, Point } from 'leaflet'
+import { LatLng, Point } from 'leaflet'
 
 const props = defineProps<{
   iconId: number
