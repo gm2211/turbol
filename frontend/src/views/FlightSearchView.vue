@@ -20,7 +20,7 @@ import {computed, ref} from 'vue'
 import {useFlightsStore} from '@/stores/flights-store'
 import FlightSearchBox from '@/components/search/FlightSearchBox.vue'
 
-const searchBox = ref(undefined as any)
+const searchBox = ref<typeof FlightSearchBox>(undefined as any)
 const flightsStore = useFlightsStore()
 const flights = computed(() => {
     return flightsStore.getFlightsByRoute(searchBox.value?.selectedRoute.value)

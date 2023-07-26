@@ -1,34 +1,32 @@
 <template>
-  <v-col class="fill-height">
-    <v-card class="fill-height my-card w-100">
-      <l-map
-        ref="map"
-        v-model:zoom="zoom"
-        v-model:center="mapCenter"
-        @ready="onReady"
-        :marker-zoom-animation="false"
-        :useGlobalLeaflet="false"
-      >
-        <l-tile-layer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          layer-type="base"
-          name="OpenStreet Maps"
-        />
-        <l-polyline :lat-lngs="flightPath" color="red" :options="{ interactive: false }" />
-        <l-rotated-marker
-          ref="planeMarker"
-          v-if="flightPath.length > 0"
-          :icon-id="MathUtils.randomInt()"
-          :lat-lng="flightPath[flightPath.length - 1]"
-          :options="{ interactive: false }"
-          :icon-url="planeIconUrl.toString()"
-          :icon-size="planeIconSize"
-          :icon-anchor="planeIconAnchor"
-          :rotation-angle="planeRotationAngle"
-        />
-      </l-map>
-    </v-card>
-  </v-col>
+  <v-card class="fill-height my-card w-100">
+    <l-map
+      ref="map"
+      v-model:zoom="zoom"
+      v-model:center="mapCenter"
+      @ready="onReady"
+      :marker-zoom-animation="false"
+      :useGlobalLeaflet="false"
+    >
+      <l-tile-layer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        layer-type="base"
+        name="OpenStreet Maps"
+      />
+      <l-polyline :lat-lngs="flightPath" color="red" :options="{ interactive: false }" />
+      <l-rotated-marker
+        ref="planeMarker"
+        v-if="flightPath.length > 0"
+        :icon-id="MathUtils.randomInt()"
+        :lat-lng="flightPath[flightPath.length - 1]"
+        :options="{ interactive: false }"
+        :icon-url="planeIconUrl.toString()"
+        :icon-size="planeIconSize"
+        :icon-anchor="planeIconAnchor"
+        :rotation-angle="planeRotationAngle"
+      />
+    </l-map>
+  </v-card>
 </template>
 
 <script setup lang="ts">
@@ -41,25 +39,22 @@ import MathUtils from '@/util/math'
 import LRotatedMarker from '@/components/map/LRotatedMarker.vue'
 import { LatLngLiteral, PointTuple } from 'leaflet'
 
+const props = defineProps<{
+  flightPath: LatLngLiteral[]
+}>()
+
 const zoom = ref(4)
-const flightPath = ref([
-  { lat: 38.7994, lng: -55.6731 } as LatLngLiteral,
-  { lat: 40, lng: -56 } as LatLngLiteral,
-  { lat: 41, lng: -59 } as LatLngLiteral,
-  { lat: 41, lng: -90 } as LatLngLiteral,
-  { lat: 29, lng: -80 } as LatLngLiteral
-])
 const mapCenter = ref([38.7994, -55.6731] as PointTuple)
 const centerMap = () => {
-  if (flightPath.value.length > 0) {
-    const curPlanePosition: LatLngLiteral = flightPath.value[flightPath.value.length - 1]
+  if (props.flightPath.length > 0) {
+    const curPlanePosition: LatLngLiteral = props.flightPath[props.flightPath.length - 1]
     mapCenter.value = [curPlanePosition.lat, curPlanePosition.lng] as PointTuple
   }
 }
 const planeRotationAngle = computed(() => {
-  if (flightPath.value.length > 1) {
-    const prevPos: LatLngLiteral = flightPath.value[flightPath.value.length - 2]
-    const curPos: LatLngLiteral = flightPath.value[flightPath.value.length - 1]
+  if (props.flightPath.length > 1) {
+    const prevPos: LatLngLiteral = props.flightPath[props.flightPath.length - 2]
+    const curPos: LatLngLiteral = props.flightPath[props.flightPath.length - 1]
     return (
       (GeoUtils.calculateBearing(prevPos.lat, prevPos.lng, curPos.lat, curPos.lng) * 0.98) % 360
     )
@@ -89,5 +84,8 @@ const onZoomStart = () => {
   }
 }
 
-watch(flightPath, () => centerMap())
+watch(props.flightPath, () => {
+  console.log('flightPath changed')
+  centerMap()
+})
 </script>

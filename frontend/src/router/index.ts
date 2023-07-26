@@ -16,7 +16,12 @@ const router = createRouter({
     },
     {
       path: '/forecast',
-      name: 'forecast',
+      name: 'forecast-no-selection',
+      component: ForecastView
+    },
+    {
+      path: '/forecast/:flightNumber/:dateInEpochDays',
+      name: 'forecast-with-selection',
       component: ForecastView
     }
   ]
