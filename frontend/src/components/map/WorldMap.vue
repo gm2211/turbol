@@ -34,36 +34,35 @@
 <script setup lang="ts">
 import 'leaflet/dist/leaflet.css'
 import { LMap, LPolyline, LTileLayer } from '@vue-leaflet/vue-leaflet'
-import type { Ref, UnwrapRef } from 'vue'
 import { computed, ref, watch } from 'vue'
 import planeIcon from '../../assets/icons/plane-for-map.png'
 import GeoUtils from '@/util/geo'
 import MathUtils from '@/util/math'
 import LRotatedMarker from '@/components/map/LRotatedMarker.vue'
-import { LatLng, Point } from 'leaflet'
+import { LatLngLiteral, PointTuple } from 'leaflet'
 
 const zoom = ref(4)
-const flightPath: Ref<UnwrapRef<LatLng[]>> = ref(
-  [
-    [38.7994, -55.6731],
-    [40, -56],
-    [41, -59],
-    [41, -90],
-    [29, -80]
-  ].map(([lat, lng]) => new LatLng(lat, lng))
-)
-const mapCenter = ref(new Point(38.7994, -55.6731))
+const flightPath = ref([
+  { lat: 38.7994, lng: -55.6731 } as LatLngLiteral,
+  { lat: 40, lng: -56 } as LatLngLiteral,
+  { lat: 41, lng: -59 } as LatLngLiteral,
+  { lat: 41, lng: -90 } as LatLngLiteral,
+  { lat: 29, lng: -80 } as LatLngLiteral
+])
+const mapCenter = ref([38.7994, -55.6731] as PointTuple)
 const centerMap = () => {
   if (flightPath.value.length > 0) {
-    const lastPathElem: LatLng = flightPath.value[flightPath.value.length - 1]
-    mapCenter.value = new Point(lastPathElem.lat, lastPathElem.lng)
+    const curPlanePosition: LatLngLiteral = flightPath.value[flightPath.value.length - 1]
+    mapCenter.value = [curPlanePosition.lat, curPlanePosition.lng] as PointTuple
   }
 }
 const planeRotationAngle = computed(() => {
   if (flightPath.value.length > 1) {
-    const start = flightPath.value[flightPath.value.length - 2]
-    const dest = flightPath.value[flightPath.value.length - 1]
-    return (GeoUtils.calculateBearing(start.lat, start.lng, dest.lat, dest.lng) * 0.98) % 360
+    const prevPos: LatLngLiteral = flightPath.value[flightPath.value.length - 2]
+    const curPos: LatLngLiteral = flightPath.value[flightPath.value.length - 1]
+    return (
+      (GeoUtils.calculateBearing(prevPos.lat, prevPos.lng, curPos.lat, curPos.lng) * 0.98) % 360
+    )
   } else {
     return 0
   }
@@ -73,11 +72,13 @@ const planeIconSize = computed(() => {
   const baseSize = 10
   const increment = 2
   const size = baseSize + increment * zoom.value
-  return [Math.min(20, size), Math.min(20, size)]
+  return [Math.min(20, size), Math.min(20, size)] as PointTuple
 })
-const planeIconAnchor = computed(() => [planeIconSize.value[0] / 2, planeIconSize.value[1] / 2])
-const planeMarker = ref(undefined as any)
-const map = ref(null as any)
+const planeIconAnchor = computed(
+  () => [planeIconSize.value[0] / 2, planeIconSize.value[1] / 2] as PointTuple
+)
+const planeMarker = ref<typeof LRotatedMarker>(null as any)
+const map = ref<typeof LMap>(null as any)
 const onReady = () => {
   map.value.leafletObject.on('zoomend', () => onZoomStart())
   centerMap()
