@@ -113,6 +113,18 @@ resource "kubernetes_ingress_v1" "main-ingress" {
             }
           }
         }
+        path {
+          path      = "/ldm"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = module.infra.ldm_service_name
+              port {
+                number = module.infra.ldm_service_port
+              }
+            }
+          }
+        }
       }
     }
   }

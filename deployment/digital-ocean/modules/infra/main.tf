@@ -17,6 +17,15 @@ locals {
   cert_issuer_name        = "letsencrypt-prod"
   cert_issuer_secret_name = "letsencrypt-prod-secret"
   cert_issuer_email       = "turbol@gmeco.cc"
+  // LDM - weather server
+  ldm_service_name        = "ldm"
+  ldm_image_name          = "unidata/ldm-docker:6.13.16"
+  ldm_service_port        = 388
+  ldm_data_vol_name       = "ldm-data"
+  ldm_queue_vol_name      = "ldm-queues"
+  ldm_logs_vol_name       = "ldm-logs"
+  ldm_cron_vol_name       = "ldm-cron"
+  ldm_data_root_vol_name  = "ldm-data-root"
 }
 
 // DB
@@ -165,10 +174,213 @@ resource "helm_release" "nginx-ingress" {
   }
 }
 
-resource "null_resource" "ingresses-should-depend-on-this" {
-  depends_on = [
-    kubernetes_namespace.cert-manager,
-    kubernetes_manifest.install-cert-manager-issuer,
-    helm_release.nginx-ingress
-  ]
+resource "kubernetes_namespace" "ldm" {
+  metadata {
+    annotations = {
+      name = local.ldm_service_name
+    }
+
+    name = local.ldm_service_name
+  }
+}
+
+resource "kubernetes_deployment" "ldm" {
+  metadata {
+    name = local.ldm_service_name
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = local.ldm_service_name
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = local.ldm_service_name
+        }
+      }
+
+      spec {
+        container {
+          image = local.ldm_image_name
+          name  = local.ldm_service_name
+
+          resources {
+            limits = {
+              cpu    = "0.5"
+              memory = "512Mi"
+            }
+            requests = {
+              cpu    = "250m"
+              memory = "50Mi"
+            }
+          }
+
+          port {
+            container_port = local.ldm_service_port
+          }
+
+          volume_mount {
+            name       = local.ldm_data_vol_name
+            mount_path = "/home/ldm/var/data"
+          }
+
+          volume_mount {
+            name       = local.ldm_queue_vol_name
+            mount_path = "/home/ldm/var/queues"
+          }
+
+          volume_mount {
+            name       = local.ldm_logs_vol_name
+            mount_path = "/home/ldm/var/logs"
+          }
+
+          volume_mount {
+            name       = local.ldm_cron_vol_name
+            mount_path = "/var/spool/cron"
+          }
+
+          volume_mount {
+            name       = local.ldm_data_root_vol_name
+            mount_path = "/data"
+          }
+        }
+
+        volume {
+          name = local.ldm_data_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-data.metadata[0].name
+          }
+        }
+
+        volume {
+          name = local.ldm_queue_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-queues.metadata[0].name
+          }
+        }
+
+        volume {
+          name = local.ldm_logs_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-logs.metadata[0].name
+          }
+        }
+
+        volume {
+          name = local.ldm_cron_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-cron.metadata[0].name
+          }
+        }
+
+        volume {
+          name = local.ldm_data_root_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-data-root.metadata[0].name
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim" "ldm-data" {
+  metadata {
+    name      = "ldm-data"
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim" "ldm-queues" {
+  metadata {
+    name      = "ldm-queues"
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim" "ldm-logs" {
+  metadata {
+    name      = "ldm-logs"
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim" "ldm-cron" {
+  metadata {
+    name      = "ldm-cron"
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim" "ldm-data-root" {
+  metadata {
+    name      = "ldm-data-root"
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+resource "kubernetes_service" "ldm" {
+  metadata {
+    name      = local.ldm_service_name
+    namespace = kubernetes_namespace.ldm.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = local.ldm_service_name
+    }
+
+    port {
+      port        = local.ldm_service_port
+      target_port = local.ldm_service_port
+    }
+
+    type = "LoadBalancer"
+  }
 }

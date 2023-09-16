@@ -16,3 +16,9 @@ output "postgres_port" {
 output "postgres_password" {
   value = digitalocean_database_cluster.postgres.password
 }
+output "ldm_service_name" {
+  value = local.ldm_service_name
+}
+output "ldm_service_port" {
+  value = local.ldm_service_port
+}

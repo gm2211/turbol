@@ -26,7 +26,10 @@ class TestTransactionManagerFactory() extends StringUtils with ConfigSerializati
   )
   private val _stubTimeService = new StubTimeService()
   private val stores: TransactionalStores = TransactionalStores(
-    AirportsStoreImpl(), AppMetadataStoreImpl(_stubTimeService), RawSqlStoreImpl())
+    AirportsStoreImpl(),
+    AppMetadataStoreImpl(_stubTimeService),
+    RawSqlStoreImpl()
+  )
 
   val txnManager: TransactionManager = new TransactionManagerImpl(stores, dbTransactorProviderImpl)
   def stubTimeService: StubTimeService = _stubTimeService
