@@ -15,7 +15,7 @@ import WorldMap from '@/components/map/WorldMap.vue'
 import {ref, watch} from 'vue'
 import { LatLngLiteral } from 'leaflet'
 import { useRoute } from 'vue-router'
-import { FlightNumber } from '@/objects/flights/shared'
+import FlightNumber from '@/objects/flights/shared'
 import FlightSearchBox from '@/components/search/FlightSearchBox.vue'
 
 const flightPath = ref<LatLngLiteral[]>([
@@ -26,8 +26,7 @@ const flightPath = ref<LatLngLiteral[]>([
   { lat: 29, lng: -80 } as LatLngLiteral
 ])
 const route = useRoute()
-const flightNumber: FlightNumber | undefined = route.params.flightNumber as FlightNumber | undefined
-const dateInEpochDays: Number | undefined = Number.parseInt(route.params.dateInEpochDays) || undefined
+const flightNumber = ref<typeof FlightNumber>(route.params.flightNumber as any)
 const searchBox = ref<typeof FlightSearchBox>(undefined as any)
 
 watch(searchBox.value?.selectedRoute, updatedRoute => {
