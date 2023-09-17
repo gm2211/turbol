@@ -2,5 +2,7 @@
 *.terraform*
 local-dev-config
 **/generated-passwords.yml
-**/runtime.yml
+runtime.yml
+install.yml
+secrets.yml
 nohup.out
