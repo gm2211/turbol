@@ -15,13 +15,12 @@ class TestTransactionManagerFactory() extends StringUtils with ConfigSerializati
   private val dbTransactorProviderImpl: DBTransactorProviderImpl = new DBTransactorProviderImpl(
     Refreshable(
       DatabaseConfig(
-        adminUser = "postgres", // Default for embedded postgres
         databaseName = "postgres", // Default for embedded postgres
         hostname = "localhost", // Default for embedded postgres
         port = postgres.getPort
       )
     ),
-    Refreshable(AppSecrets("postgres", "") /* Default for embedded postgres */ ),
+    Refreshable(AppSecrets("postgres")/* Default for embedded postgres */ ),
     MoreExecutors.io("transactor-provider-io").taggedWith[DBTransactorProvider]
   )
   private val _stubTimeService = new StubTimeService()
