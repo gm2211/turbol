@@ -76,7 +76,7 @@ resource "kubernetes_ingress_v1" "main-ingress" {
       "certmanager.k8s.io/acme-dns01-provider"            = "digitalocean"
       "kubernetes.io/ingress.allow-http"                  = false
       "kubernetes.io/tls-acme"                            = true
-      "nginx.ingress.kubernetes.io/configuration-snippet" = "if ($request_uri !~* ^/(api|assets)) { rewrite ^/.*$ / break; }"
+      "nginx.ingress.kubernetes.io/configuration-snippet" = "if ($request_uri !~* ^/(api|assets|ldm)) { rewrite ^/.*$ / break; }"
     }
   }
 

@@ -19,7 +19,7 @@ locals {
   cert_issuer_email       = "turbol@gmeco.cc"
   // LDM - weather server
   ldm_service_name        = "ldm"
-  ldm_image_name          = "unidata/ldm-docker:6.13.16"
+  ldm_image_name          = "unidata/ldm-docker:6.14.5"
   ldm_service_port        = 388
   ldm_data_vol_name       = "ldm-data"
   ldm_queue_vol_name      = "ldm-queues"
@@ -34,7 +34,7 @@ resource "digitalocean_database_cluster" "postgres" {
   engine     = "pg"
   version    = "15"
   size       = "db-s-1vcpu-1gb"
-  region     = "nyc1"
+  region     = "nyc3"
   node_count = 1
 }
 
@@ -72,6 +72,14 @@ resource "helm_release" "external-dns" {
     value = "sync"
     # or upsert-only
   }
+  set {
+    name  = "resources.limits.cpu"
+    value = "200m"
+  }
+  set {
+    name  = "resources.limits.memory"
+    value = "256Mi"
+  }
 }
 
 // TLS certs
@@ -104,6 +112,30 @@ resource "helm_release" "cert-manager" {
   set {
     name  = "installCRDs"
     value = "true"
+  }
+  set {
+    name  = "resources.limits.cpu"
+    value = "200m"
+  }
+  set {
+    name  = "resources.limits.memory"
+    value = "256Mi"
+  }
+  set {
+    name  = "webhook.resources.limits.cpu"
+    value = "200m"
+  }
+  set {
+    name  = "webhook.resources.limits.memory"
+    value = "256Mi"
+  }
+  set {
+    name  = "cainjector.resources.limits.cpu"
+    value = "200m"
+  }
+  set {
+    name  = "cainjector.resources.limits.memory"
+    value = "256Mi"
   }
 }
 resource "kubernetes_secret" "docean-api-token-for-cert-manager" {
@@ -174,20 +206,9 @@ resource "helm_release" "nginx-ingress" {
   }
 }
 
-resource "kubernetes_namespace" "ldm" {
-  metadata {
-    annotations = {
-      name = local.ldm_service_name
-    }
-
-    name = local.ldm_service_name
-  }
-}
-
-resource "kubernetes_deployment" "ldm" {
+resource "kubernetes_stateful_set" "ldm" {
   metadata {
     name = local.ldm_service_name
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
 
   spec {
@@ -220,6 +241,11 @@ resource "kubernetes_deployment" "ldm" {
               cpu    = "250m"
               memory = "50Mi"
             }
+          }
+
+          env {
+            name  = "LDM_PORT"
+            value = local.ldm_service_port
           }
 
           port {
@@ -288,13 +314,13 @@ resource "kubernetes_deployment" "ldm" {
         }
       }
     }
+    service_name = ""
   }
 }
 
 resource "kubernetes_persistent_volume_claim" "ldm-data" {
   metadata {
     name      = "ldm-data"
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
   spec {
     access_modes = ["ReadWriteOnce"]
@@ -309,7 +335,6 @@ resource "kubernetes_persistent_volume_claim" "ldm-data" {
 resource "kubernetes_persistent_volume_claim" "ldm-queues" {
   metadata {
     name      = "ldm-queues"
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
   spec {
     access_modes = ["ReadWriteOnce"]
@@ -324,13 +349,12 @@ resource "kubernetes_persistent_volume_claim" "ldm-queues" {
 resource "kubernetes_persistent_volume_claim" "ldm-logs" {
   metadata {
     name      = "ldm-logs"
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
   spec {
     access_modes = ["ReadWriteOnce"]
     resources {
       requests = {
-        storage = "10Gi"
+        storage = "100Mi"
       }
     }
   }
@@ -339,13 +363,12 @@ resource "kubernetes_persistent_volume_claim" "ldm-logs" {
 resource "kubernetes_persistent_volume_claim" "ldm-cron" {
   metadata {
     name      = "ldm-cron"
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
   spec {
     access_modes = ["ReadWriteOnce"]
     resources {
       requests = {
-        storage = "10Gi"
+        storage = "20Mi"
       }
     }
   }
@@ -354,13 +377,12 @@ resource "kubernetes_persistent_volume_claim" "ldm-cron" {
 resource "kubernetes_persistent_volume_claim" "ldm-data-root" {
   metadata {
     name      = "ldm-data-root"
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
   spec {
     access_modes = ["ReadWriteOnce"]
     resources {
       requests = {
-        storage = "10Gi"
+        storage = "20Mi"
       }
     }
   }
@@ -368,7 +390,6 @@ resource "kubernetes_persistent_volume_claim" "ldm-data-root" {
 resource "kubernetes_service" "ldm" {
   metadata {
     name      = local.ldm_service_name
-    namespace = kubernetes_namespace.ldm.metadata[0].name
   }
 
   spec {
@@ -381,6 +402,6 @@ resource "kubernetes_service" "ldm" {
       target_port = local.ldm_service_port
     }
 
-    type = "LoadBalancer"
+    type = "ClusterIP"
   }
 }
