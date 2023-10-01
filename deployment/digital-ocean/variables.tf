@@ -6,5 +6,5 @@ variable docker_hub_password {
   sensitive = true
 }
 variable prod_app_version {
-  default = "1.17.0"
+  default = "1.18.0"
 }
