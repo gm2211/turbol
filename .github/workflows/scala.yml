@@ -55,8 +55,6 @@ jobs:
     needs: build
     outputs:
       should_deploy: ${{ steps.check_if_release.outputs.should_deploy }}
-      foo: '3'
-      bar: '3'
     steps:
       - uses: actions/checkout@v3
         with:
@@ -101,7 +99,6 @@ jobs:
         run: |
           tag=$(git describe --tag)
           echo "git tag: "$tag
-          echo "bar=10" >> "$GITHUB_OUTPUT"
           if [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]]; then
             echo "1" 
             echo "should_deploy=1" >> "$GITHUB_OUTPUT"
@@ -112,15 +109,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: publish
-#    if: ${{ needs.publish.outputs.should_deploy == 1 }}
+    if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
-      - name: Print output1
-        run: echo ${{ needs.publish.outputs.should_deploy }}
-      - name: Print output2
-        run: echo ${{ needs.publish.outputs.foo }}
-      - name: Print output3
-        run: echo ${{ needs.publish.outputs.bar }}
       - name: Write terraform creds
         run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
       - name: Install utils
