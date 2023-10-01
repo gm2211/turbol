@@ -55,6 +55,8 @@ jobs:
     needs: build
     outputs:
       should_deploy: ${{ steps.check_if_release.outputs.should_deploy }}
+      foo: '3'
+      bar: '3'
     steps:
       - uses: actions/checkout@v3
         with:
@@ -95,9 +97,11 @@ jobs:
           export DOCKER_BIN_NAME=$(which docker)
           sbt Docker/publish
       - name: Check if release commit
+        id: check_if_release
         run: |
           tag=$(git describe --tag)
           echo "git tag: "$tag
+          echo "bar=10" >> "$GITHUB_OUTPUT"
           if [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]]; then
             echo "1" 
             echo "should_deploy=1" >> "$GITHUB_OUTPUT"
@@ -111,10 +115,14 @@ jobs:
 #    if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
+      - name: Print output1
+        run: echo ${{ needs.publish.outputs.should_deploy }}
+      - name: Print output2
+        run: echo ${{ needs.publish.outputs.foo }}
+      - name: Print output3
+        run: echo ${{ needs.publish.outputs.bar }}
       - name: Write terraform creds
         run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
-      - name: Print out outputs
-        run: echo ${{ needs.job1.outputs.output1 }}
       - name: Install utils
         run: sudo apt-get update && sudo apt-get install -y curl wget git jq unzip apache2-utils
       - name: Install doctl
