@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     outputs:
-      deploy: ${{ steps.check_if_release.outputs.deploy }}
+      should_deploy: ${{ steps.check_if_release.outputs.should_deploy }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -100,21 +100,21 @@ jobs:
           echo "git tag: "$tag
           if [[ "$tag" =~ ^[0-9]+.[0-9]+.[0-9]+$ ]]; then
             echo "1" 
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            echo "::set-output name=deploy::true"
+            echo "should_deploy=1" >> "$GITHUB_OUTPUT"
           else
             echo "0" 
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            echo "::set-output name=deploy::false"
+            echo "should_deploy=0" >> "$GITHUB_OUTPUT"
           fi
   deploy:
     runs-on: ubuntu-latest
     needs: publish
-    if: needs.publish.outputs.deploy == 'true'
+#    if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
-      - name: write terraform creds
+      - name: Write terraform creds
         run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
+      - name: Print out outputs
+        run: echo ${{ needs.job1.outputs.output1 }}
       - name: Install utils
         run: sudo apt-get update && sudo apt-get install -y curl wget git jq unzip apache2-utils
       - name: Install doctl
