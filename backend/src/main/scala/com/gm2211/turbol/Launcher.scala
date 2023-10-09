@@ -48,11 +48,11 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
     val storageModule = StorageModule(configModule, envModule)
     val servicesModule = ServicesModule(storageModule)
     val appModule: AppModule = AppModule(
-      backgroundJobsModule = BackgroundJobsModule(storageModule, servicesModule),
-      configModule = configModule,
-      endpointsModule = EndpointsModule(servicesModule, configModule),
-      servicesModule = servicesModule,
-      storageModule = storageModule
+      BackgroundJobsModule(storageModule, servicesModule),
+      configModule,
+      EndpointsModule(servicesModule, configModule),
+      storageModule,
+      servicesModule
     )
     val appServer = AppServer.createServer(appModule)
 
