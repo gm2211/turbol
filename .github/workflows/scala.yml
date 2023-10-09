@@ -95,6 +95,7 @@ jobs:
           export DOCKER_BIN_NAME=$(which docker)
           sbt Docker/publish
       - name: Check if release commit
+        id: check_if_release
         run: |
           tag=$(git describe --tag)
           echo "git tag: "$tag
@@ -111,7 +112,7 @@ jobs:
     if: ${{ needs.publish.outputs.should_deploy == 1 }}
     steps:
       - uses: actions/checkout@v3
-      - name: write terraform creds
+      - name: Write terraform creds
         run: echo "credentials \"app.terraform.io\" { token = \"$TERRAFORM_CLOUD_TOKEN\" }" > ~/.terraformrc
       - name: Install utils
         run: sudo apt-get update && sudo apt-get install -y curl wget git jq unzip apache2-utils
@@ -133,8 +134,4 @@ jobs:
         run: |
           cd deployment/digital-ocean\
           && terraform init\
-          && terraform apply -auto-approve
-          command: |
-            cd deployment/digital-ocean\
-            && terraform init\
-            && terraform apply -auto-approve
+          && terraform apply --auto-approve
