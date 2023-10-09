@@ -1,3 +1,9 @@
+/*
+ * Copyright 2020 Giulio Mecocci
+ *
+ * All rights reserved.
+ */
+
 package com.gm2211.turbol.background
 
 import com.gm2211.turbol.background.airportdata.{AirportDataParser, AirportDataParserImpl}

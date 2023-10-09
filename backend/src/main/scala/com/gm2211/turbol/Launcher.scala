@@ -21,11 +21,18 @@ import java.nio.file.{Path, Paths}
 import scala.io.Source
 
 object Launcher extends IOApp with ConfigSerialization with OptionUtils with TryUtils with BackendLogging {
+  private val defaultPlainConfDir = "/etc/conf/plain"
+  private val defaultSecretsDir = "/etc/conf/secrets"
+
   override def run(args: List[String]): IO[ExitCode] = {
-    val installConfigPath: Path = readPathFromEnv("INSTALL_CONFIG_OVERRIDES_PATH", "install config path")
-    val appSecretsPath: Path = readPathFromEnv("APP_SECRETS_PATH", "app secrets path")
+    val installConfigPath: Path =
+      readPathFromEnv("INSTALL_CONFIG_OVERRIDES_PATH")
+        .getOrElse(Paths.get(s"$defaultPlainConfDir/install.yml"))
+    val appSecretsPath: Path = readPathFromEnv("APP_SECRETS_PATH")
+      .getOrElse(Paths.get(s"$defaultSecretsDir/install-secrets.yml"))
     val runtimeConfigPath: Path =
-      readPathFromEnv("RUNTIME_CONFIG_OVERRIDES_PATH", "runtime config path")
+      readPathFromEnv("RUNTIME_CONFIG_OVERRIDES_PATH")
+        .getOrElse(Paths.get(s"$defaultPlainConfDir/runtime.yml"))
 
     val install: InstallConfig = Source
       .fromFile(installConfigPath.toFile)
@@ -61,7 +68,8 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
       )
       .as(ExitCode.Success)
   }
-  private def readPathFromEnv(envVarName: String, envVarDescription: String) = {
-    Paths.get(sys.env.get(envVarName).orThrow("Cannot read " + envVarDescription + " from env"))
+  private def readPathFromEnv(envVarName: String): Option[Path] = {
+    val maybePath = sys.env.get(envVarName)
+    maybePath.map(Paths.get(_))
   }
 }
