@@ -17,14 +17,17 @@ locals {
   digital_ocean_k8s_cluster_ca = base64decode(
     data.digitalocean_kubernetes_cluster.k8s-turbol.kube_config[0].cluster_ca_certificate
   )
+  // Ingress
+  ingress_name      = "main-ingress"
   // App
-  be_app_port      = 8081
-  fe_app_port      = 9000
+  be_app_port       = 8081
+  fe_app_port       = 9000
   // Hostnames
-  prod_hostname    = local.domain
+  prod_hostname     = local.domain
+  prod_ldm_hostname = "ldm.${local.prod_hostname}"
   // Postgres
-  postgres_prod_db = "prod"
-  postgres_port    = 25060
+  postgres_prod_db  = "prod"
+  postgres_port     = 25060
 }
 
 // Modules
@@ -68,7 +71,7 @@ resource "digitalocean_database_db" "prod-db" {
 // different rewrite targets, we need 2 different ingresses.
 resource "kubernetes_ingress_v1" "main-ingress" {
   metadata {
-    name        = "main-ingress"
+    name        = local.ingress_name
     annotations = {
       "kubernetes.io/ingress.class"                       = "nginx"
       "certmanager.k8s.io/issuer"                         = module.infra.cert_issuer_name
@@ -76,15 +79,32 @@ resource "kubernetes_ingress_v1" "main-ingress" {
       "certmanager.k8s.io/acme-dns01-provider"            = "digitalocean"
       "kubernetes.io/ingress.allow-http"                  = false
       "kubernetes.io/tls-acme"                            = true
-      "nginx.ingress.kubernetes.io/configuration-snippet" = "if ($request_uri !~* ^/(api|assets|ldm)) { rewrite ^/.*$ / break; }"
+      "nginx.ingress.kubernetes.io/configuration-snippet" = "if ($request_uri !~* ^/(api|assets)) { rewrite ^/.*$ / break; }"
     }
   }
 
   spec {
     tls {
-      hosts       = [local.prod_hostname]
-      // Needs to be different than "local.certIssuerSecretName"
-      secret_name = "main-ingress-auth-tls"
+      hosts       = [local.prod_hostname, local.prod_ldm_hostname]
+      // Needs to be different than "module.infra.cert_issuer_name"
+      secret_name = "${local.ingress_name}-auth-tls"
+    }
+    rule {
+      host = local.prod_ldm_hostname
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = module.infra.ldm_service_name
+              port {
+                number = module.infra.ldm_service_port
+              }
+            }
+          }
+        }
+      }
     }
     rule {
       host = local.prod_hostname
@@ -109,18 +129,6 @@ resource "kubernetes_ingress_v1" "main-ingress" {
               name = module.prod.fe_service_name
               port {
                 number = local.fe_app_port
-              }
-            }
-          }
-        }
-        path {
-          path      = "/ldm"
-          path_type = "Prefix"
-          backend {
-            service {
-              name = module.infra.ldm_service_name
-              port {
-                number = module.infra.ldm_service_port
               }
             }
           }

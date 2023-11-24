@@ -21,11 +21,21 @@ locals {
   ldm_service_name        = "ldm"
   ldm_image_name          = "unidata/ldm-docker:6.14.5"
   ldm_service_port        = 388
+  ldm_home                = "/home/ldm"
   ldm_data_vol_name       = "ldm-data"
+  ldm_data_path           = "${local.ldm_home}/var/data"
   ldm_queue_vol_name      = "ldm-queues"
+  ldm_queue_path          = "${local.ldm_home}/var/queues"
   ldm_logs_vol_name       = "ldm-logs"
+  ldm_logs_path           = "${local.ldm_home}/var/logs"
   ldm_cron_vol_name       = "ldm-cron"
-  ldm_data_root_vol_name  = "ldm-data-root"
+  ldm_cron_path           = "/var/spool/cron"
+  ldm_etc_vol_name        = "ldm-etc"
+  ldm_etc_path            = "${local.ldm_home}/etc"
+  ldm_conf_path           = "${local.ldm_etc_path}/ldmd.conf"
+  ldm_data_root_vol_name  = "ldm-root-data"
+  ldm_data_root_path      = "/data"
+  read_write_access_mode  = "ReadWriteOnce"
 }
 
 // DB
@@ -212,7 +222,8 @@ resource "kubernetes_stateful_set" "ldm" {
   }
 
   spec {
-    replicas = 1
+    service_name = local.ldm_service_name
+    replicas     = 1
 
     selector {
       match_labels = {
@@ -228,6 +239,18 @@ resource "kubernetes_stateful_set" "ldm" {
       }
 
       spec {
+        #        init_container {
+        #          name    = "configure-ldm"
+        #          image   = "busybox"
+        #          command = [
+        #            "/bin/sh", "-c",
+        #            "echo 'REQUEST EXP \"^gtgn.*grb2\" <LDM-SERVER-IP>' >> ${local.ldm_conf_path} && echo 'EXP ^gtgn.t(....)z.edr.f(...).grb2 FILE ${local.ldm_data_path}/gtgn/%Y%m%d/gtgn.t\\1z.edr.f\\2.grb2' >> ${local.ldm_conf_path}"
+        #          ]
+        #          volume_mount {
+        #            name       = local.ldm_etc_vol_name
+        #            mount_path = local.ldm_etc_path
+        #          }
+        #        }
         container {
           image = local.ldm_image_name
           name  = local.ldm_service_name
@@ -254,27 +277,32 @@ resource "kubernetes_stateful_set" "ldm" {
 
           volume_mount {
             name       = local.ldm_data_vol_name
-            mount_path = "/home/ldm/var/data"
-          }
-
-          volume_mount {
-            name       = local.ldm_queue_vol_name
-            mount_path = "/home/ldm/var/queues"
-          }
-
-          volume_mount {
-            name       = local.ldm_logs_vol_name
-            mount_path = "/home/ldm/var/logs"
-          }
-
-          volume_mount {
-            name       = local.ldm_cron_vol_name
-            mount_path = "/var/spool/cron"
+            mount_path = local.ldm_data_path
           }
 
           volume_mount {
             name       = local.ldm_data_root_vol_name
-            mount_path = "/data"
+            mount_path = local.ldm_data_root_path
+          }
+
+          volume_mount {
+            name       = local.ldm_queue_vol_name
+            mount_path = local.ldm_queue_path
+          }
+
+          volume_mount {
+            name       = local.ldm_logs_vol_name
+            mount_path = local.ldm_logs_path
+          }
+
+          volume_mount {
+            name       = local.ldm_cron_vol_name
+            mount_path = local.ldm_cron_path
+          }
+
+          volume_mount {
+            name       = local.ldm_etc_vol_name
+            mount_path = local.ldm_etc_path
           }
         }
 
@@ -282,6 +310,13 @@ resource "kubernetes_stateful_set" "ldm" {
           name = local.ldm_data_vol_name
           persistent_volume_claim {
             claim_name = kubernetes_persistent_volume_claim.ldm-data.metadata[0].name
+          }
+        }
+
+        volume {
+          name = local.ldm_data_root_vol_name
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim.ldm-data-root.metadata[0].name
           }
         }
 
@@ -307,26 +342,53 @@ resource "kubernetes_stateful_set" "ldm" {
         }
 
         volume {
-          name = local.ldm_data_root_vol_name
+          name = local.ldm_etc_vol_name
           persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.ldm-data-root.metadata[0].name
+            claim_name = kubernetes_persistent_volume_claim.ldm-etc.metadata[0].name
           }
         }
       }
     }
-    service_name = ""
+  }
+}
+
+resource "kubernetes_cron_job_v1" "ldm-roll-disks" {
+  metadata {
+    name = "ldm-roll-disks"
+  }
+  spec {
+    schedule = "0 0 * * *"
+    job_template {
+      metadata {
+        name = "ldm-roll-disks"
+      }
+      spec {
+        template {
+          metadata {
+            name = "ldm-roll-disks"
+          }
+          spec {
+            container {
+              name    = "roll-disks"
+              image   = "busybox"
+              command = ["/bin/sh", "-c", "find ${local.ldm_data_path}/gtgn/ -type f -mtime +30 -exec rm {} +"]
+            }
+          }
+        }
+      }
+    }
   }
 }
 
 resource "kubernetes_persistent_volume_claim" "ldm-data" {
   metadata {
-    name      = "ldm-data"
+    name = local.ldm_data_vol_name
   }
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes = [local.read_write_access_mode]
     resources {
       requests = {
-        storage = "10Gi"
+        storage = "30Gi"
       }
     }
   }
@@ -334,10 +396,10 @@ resource "kubernetes_persistent_volume_claim" "ldm-data" {
 
 resource "kubernetes_persistent_volume_claim" "ldm-queues" {
   metadata {
-    name      = "ldm-queues"
+    name = local.ldm_queue_vol_name
   }
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes = [local.read_write_access_mode]
     resources {
       requests = {
         storage = "10Gi"
@@ -348,10 +410,10 @@ resource "kubernetes_persistent_volume_claim" "ldm-queues" {
 
 resource "kubernetes_persistent_volume_claim" "ldm-logs" {
   metadata {
-    name      = "ldm-logs"
+    name = local.ldm_logs_vol_name
   }
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes = [local.read_write_access_mode]
     resources {
       requests = {
         storage = "100Mi"
@@ -362,10 +424,10 @@ resource "kubernetes_persistent_volume_claim" "ldm-logs" {
 
 resource "kubernetes_persistent_volume_claim" "ldm-cron" {
   metadata {
-    name      = "ldm-cron"
+    name = local.ldm_cron_vol_name
   }
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes = [local.read_write_access_mode]
     resources {
       requests = {
         storage = "20Mi"
@@ -374,22 +436,37 @@ resource "kubernetes_persistent_volume_claim" "ldm-cron" {
   }
 }
 
-resource "kubernetes_persistent_volume_claim" "ldm-data-root" {
+resource "kubernetes_persistent_volume_claim" "ldm-etc" {
   metadata {
-    name      = "ldm-data-root"
+    name = local.ldm_etc_vol_name
   }
   spec {
-    access_modes = ["ReadWriteOnce"]
+    access_modes = [local.read_write_access_mode]
     resources {
       requests = {
-        storage = "20Mi"
+        storage = "50Mi"
       }
     }
   }
 }
+
+resource "kubernetes_persistent_volume_claim" "ldm-data-root" {
+  metadata {
+    name = local.ldm_data_root_vol_name
+  }
+  spec {
+    access_modes = [local.read_write_access_mode]
+    resources {
+      requests = {
+        storage = "10Mi"
+      }
+    }
+  }
+}
+
 resource "kubernetes_service" "ldm" {
   metadata {
-    name      = local.ldm_service_name
+    name = local.ldm_service_name
   }
 
   spec {
