@@ -27,22 +27,22 @@
 
 <script setup lang="ts">
 import '../../assets/style/navbar.css'
-import forecastIcon from '../../assets/icons/forecast.png'
+import windIcon from '../../assets/icons/wind.png'
 import planeIcon from '../../assets/icons/plane.png'
 import {ref} from 'vue'
 
 const rail = ref(true)
 const routes = [
   {
-    name: 'Search',
-    path: 'search',
+    name: 'LiveView',
+    path: 'live-view',
     icon: planeIcon,
-    iconOpacity: 0.58
+    iconOpacity: 0.7
   },
   {
-    name: 'Forecast',
-    path: 'forecast',
-    icon: forecastIcon,
+    name: 'Search',
+    path: 'search',
+    icon: windIcon,
     iconOpacity: 1
   }
 ]
