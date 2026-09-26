@@ -1,0 +1,20 @@
+[project]
+name = "turbol-data-pipeline"
+version = "0.1.0"
+description = "NOAA GTGN/GTG turbulence data fetch, decode, and route sampling prototype"
+requires-python = ">=3.12"
+dependencies = [
+    "cartopy>=0.26",
+    "cfgrib>=0.9.15",
+    "eccodes>=2.48",
+    "eccodeslib>=2.49",
+    "matplotlib>=3.11",
+    "numpy>=2.5",
+    "pyproj>=3.8",
+    "requests>=2.34",
+    "scipy>=1.18",
+    "xarray>=2026.7",
+]
+
+[tool.uv]
+package = false
