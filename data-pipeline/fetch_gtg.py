@@ -50,6 +50,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -102,14 +103,29 @@ def find_latest_complete_cycle():
     return None
 
 
+def curl(args: list[str], timeout: int, attempts: int = 4) -> bytes:
+    """Run curl over HTTP/1.1, retrying with backoff: NOMADS intermittently
+    drops or refuses requests (seen live on range fetches)."""
+    for attempt in range(attempts):
+        try:
+            result = subprocess.run(
+                ["curl", "--http1.1", "-s", "--fail", *args],
+                capture_output=True, timeout=timeout,
+            )
+            if result.returncode == 0 and result.stdout:
+                return result.stdout
+            reason = f"curl exit {result.returncode}"
+        except subprocess.TimeoutExpired:
+            reason = f"timeout after {timeout}s"
+        if attempt < attempts - 1:
+            delay = 2 ** (attempt + 1)
+            print(f"  {reason}; retrying in {delay}s", file=sys.stderr)
+            time.sleep(delay)
+    raise RuntimeError(f"curl failed after {attempts} attempts ({reason}): {args}")
+
+
 def fetch_text(url: str) -> str:
-    result = subprocess.run(
-        ["curl", "--http1.1", "-s", "--fail", url],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"failed to fetch {url}")
-    return result.stdout
+    return curl([url], timeout=30).decode()
 
 
 def parse_idx(idx_text: str):
@@ -130,16 +146,13 @@ def parse_idx(idx_text: str):
 def range_fetch(url: str, start: int, end: int, out_path: Path):
     """Append bytes [start, end] (inclusive) of url to out_path via
     HTTP Range request over HTTP/1.1."""
-    result = subprocess.run(
-        ["curl", "--http1.1", "-s", "--fail", "-r", f"{start}-{end}", url],
-        capture_output=True, timeout=60,
-    )
-    if result.returncode != 0 or not result.stdout:
-        raise RuntimeError(f"range fetch failed for {url} [{start}-{end}]")
+    data = curl(["-r", f"{start}-{end}", url], timeout=60)
+    if len(data) != end - start + 1:
+        raise RuntimeError(f"short range fetch for {url} [{start}-{end}]: got {len(data)} bytes")
     with open(out_path, "ab") as f:
-        f.write(result.stdout)
-    _byte_counter["total"] += len(result.stdout)
-    return len(result.stdout)
+        f.write(data)
+    _byte_counter["total"] += len(data)
+    return len(data)
 
 
 def fetch_hour(day_url: str, hh: str, fhour: int):

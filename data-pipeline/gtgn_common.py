@@ -29,9 +29,12 @@ README.md.
 """
 from pathlib import Path
 
+# pyproj must load before eccodes: on Linux the two wheels bundle clashing
+# shared libs, and importing eccodes first aborts the process
+# ("free(): invalid pointer") once a Proj is used.
+from pyproj import Proj
 import eccodes
 import numpy as np
-from pyproj import Proj
 
 DATA_DIR = Path(__file__).parent / "data"
 MISSING = 9999
