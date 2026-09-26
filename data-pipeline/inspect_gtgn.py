@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Print a summary of the cached GTGN GRIB2 file: message count, level
 ladder, param identity, grid shape/extent, and EDR stats at FL350."""
+import gtgn_common as gc  # first: loads pyproj before eccodes (see gtgn_common)
+
 import eccodes
 import numpy as np
-
-import gtgn_common as gc
 
 
 def main():
