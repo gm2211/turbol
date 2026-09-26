@@ -52,19 +52,31 @@ severe 0.44, extreme 0.79. Light and heavy aircraft thresholds are in
 Gotchas: download NOMADS with `curl --http1.1`, because its HTTP/2 responses
 have a malformed content-length header. Don't name a script `inspect.py`.
 
-## In flight when this was written
+## GTG forecast prototype (works, verified 2026-09-26)
 
-An agent was extending the prototype to use the GTG v4 forecast (4-D route
-sampling by estimated time over each point, plus a GTG-vs-GTGN check). If
-`data-pipeline/` has no `fetch_gtg.py` / `route_forecast.py`, that work did not
-land; redo it from the spec below.
+`fetch_gtg.py`, `inspect_gtg.py`, `route_forecast.py`, `plot_forecast.py`
+(details in `data-pipeline/README.md`, "Part 2").
+
+- Fetches only the EDR messages it needs, using HTTP Range requests from the
+  `.idx` files: F001–F007 at 8 altitude levels, about 59 MB instead of about
+  1 GB of full files.
+- Samples in 4-D: for each of 200 route points, it estimates the time over
+  that point, interpolates between the two nearest forecast hours, and uses
+  the nearest fetched altitude level.
+- JFK→LAX result (cycle 16z, departing 17:00 UTC): 94% smooth, 5% light,
+  0.5% moderate, max EDR 0.247.
+- GTG F001 vs GTGN at the same valid time, FL350 along the route:
+  correlation 0.79, mean absolute difference 0.008. GTGN caught a 0.25 spike
+  over Kansas that the forecast did not (max 0.17), which shows the nowcast's
+  observation blending adds value.
+- Known issue: the "worst bump" lands at 0h00m because it is the 100 ft level
+  at JFK. Applying cruise thresholds near the ground is questionable; ignore
+  or treat separately the levels below roughly 1,000–2,000 ft.
 
 ## Next steps
 
-1. GTG forecast in the prototype: fetch only needed messages for F001–F007;
-   per route point, compute the estimated time over it and sample the
-   matching forecast hour and level; report the worst bump and when it
-   happens.
+1. Fix the low-level worst-bump issue above, and blend GTGN into the first
+   hour of the forecast.
 2. Recalibrate the categories: the 2023 thresholds were written for the old
    13 km grid, and the 3 km data may show sharper peaks.
 3. Port into the Scala backend: `WeatherDataUpdater` pulls from NOMADS

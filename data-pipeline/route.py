@@ -79,6 +79,20 @@ def nearest_level_ft(target_ft):
     return int(arr[np.argmin(np.abs(arr - target_ft))])
 
 
+def climb_cruise_descent_target_ft(dist_km, total_km, cruise_ft=CRUISE_FT, ramp_km=RAMP_KM):
+    """Linear climb from ~0 to cruise_ft over the first ramp_km, cruise,
+    linear descent to ~0 over the last ramp_km. Shared with
+    route_forecast.py so both the nowcast and forecast route scripts use
+    the same flight profile."""
+    target_ft = np.full(len(dist_km), float(cruise_ft))
+    climb_mask = dist_km < ramp_km
+    target_ft[climb_mask] = cruise_ft * (dist_km[climb_mask] / ramp_km)
+    descent_start = total_km - ramp_km
+    descent_mask = dist_km > descent_start
+    target_ft[descent_mask] = cruise_ft * ((total_km - dist_km[descent_mask]) / ramp_km)
+    return np.clip(target_ft, 100, cruise_ft)
+
+
 def sample_field(path, level_ft, i_idx, j_idx):
     msg = gc.message_index_for_level_ft(level_ft)
     vals, lats, lons, level_m, missing = gc.read_message(path, msg)
@@ -104,13 +118,7 @@ def main():
     edr_fl350 = sample_field(path, CRUISE_FT, i_idx, j_idx)
 
     # --- Variant 2: climb/cruise/descent profile ----------------------
-    target_ft = np.full(len(dist_km), float(CRUISE_FT))
-    climb_mask = dist_km < RAMP_KM
-    target_ft[climb_mask] = CRUISE_FT * (dist_km[climb_mask] / RAMP_KM)
-    descent_start = total_km - RAMP_KM
-    descent_mask = dist_km > descent_start
-    target_ft[descent_mask] = CRUISE_FT * ((total_km - dist_km[descent_mask]) / RAMP_KM)
-    target_ft = np.clip(target_ft, 100, CRUISE_FT)
+    target_ft = climb_cruise_descent_target_ft(dist_km, total_km)
 
     # group points by nearest documented level so we only read each
     # GRIB message once

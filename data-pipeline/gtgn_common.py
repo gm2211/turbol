@@ -42,6 +42,26 @@ MISSING = 9999
 LEVELS_FT = [100] + list(range(1000, 50001, 1000))
 assert len(LEVELS_FT) == 51
 
+# Exact integer metre values GRIB stores for each of the 51 levels above
+# (scaledValueOfFirstFixedSurface), read directly from the GTGN file and
+# confirmed identical in the DAFS/GTG forecast file (same HRRR 3km grid
+# and level construction). Used to build exact .idx level-string matches
+# ("<N> m above mean sea level") when Range-fetching GTG messages, since
+# the idx text gives whole metres, not feet.
+LEVELS_M = [
+    30, 304, 609, 914, 1219, 1524, 1828, 2133, 2438, 2743, 3048, 3352,
+    3657, 3962, 4267, 4572, 4876, 5181, 5486, 5791, 6096, 6400, 6705,
+    7010, 7315, 7620, 7924, 8229, 8534, 8839, 9144, 9448, 9753, 10058,
+    10363, 10668, 10972, 11277, 11582, 11887, 12192, 12496, 12801, 13106,
+    13411, 13716, 14020, 14325, 14630, 14935, 15240,
+]
+assert len(LEVELS_M) == 51
+
+
+def level_m_for_ft(level_ft: int) -> int:
+    """Exact GRIB metre value for a documented level in feet."""
+    return LEVELS_M[LEVELS_FT.index(level_ft)]
+
 # HRRR/RAP CONUS Lambert Conformal projection, as read from the file.
 LCC_PARAMS = dict(proj="lcc", lat_1=38.5, lat_2=38.5, lat_0=38.5,
                    lon_0=-97.5, R=6371229, x_0=0, y_0=0)
@@ -90,6 +110,36 @@ def grid_projector():
     lon0, lat0 = 237.28048 - 360, 21.138124
     x0, y0 = p(lon0, lat0)
     return p, x0, y0
+
+
+def read_all_messages(path: Path):
+    """Read every GRIB message in a (small, subset) file. Returns a list
+    of dicts with vals/lats/lons/level_m/missing/forecast_hour/valid
+    metadata, in file order. Used for the small per-forecast-hour GTG
+    subset files fetch_gtg.py produces (a handful of messages each, not
+    the full 150+ MB originals)."""
+    out = []
+    with open(path, "rb") as f:
+        while True:
+            gid = eccodes.codes_grib_new_from_file(f)
+            if gid is None:
+                break
+            ni = eccodes.codes_get(gid, "Ni")
+            nj = eccodes.codes_get(gid, "Nj")
+            vals = eccodes.codes_get_values(gid).reshape(nj, ni)
+            lats = eccodes.codes_get_array(gid, "latitudes").reshape(nj, ni)
+            lons = eccodes.codes_get_array(gid, "longitudes").reshape(nj, ni)
+            missing = eccodes.codes_get(gid, "missingValue")
+            level_m = eccodes.codes_get(gid, "scaledValueOfFirstFixedSurface")
+            fhour = eccodes.codes_get(gid, "forecastTime")
+            data_date = eccodes.codes_get(gid, "dataDate")
+            data_time = eccodes.codes_get(gid, "dataTime")
+            eccodes.codes_release(gid)
+            lons = np.where(lons > 180, lons - 360, lons)
+            out.append(dict(vals=vals, lats=lats, lons=lons, level_m=level_m,
+                             missing=missing, forecast_hour=fhour,
+                             data_date=data_date, data_time=data_time))
+    return out
 
 
 def latlon_to_ij(lats, lons, p=None, x0=None, y0=None):

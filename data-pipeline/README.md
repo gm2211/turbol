@@ -156,6 +156,149 @@ here since the route is classified for a medium aircraft.)
   aircraft Light/Moderate threshold lines drawn (Severe/Extreme noted as
   off-scale/not reached in a caption, since the route never gets close).
 
+## Part 2: GTG v4 forecast (DAFS) -- "how bumpy will my flight be"
+
+Extends the prototype to NOAA's operational **GTG v4.0 forecast**, served
+via **DAFS** (Diagnostic Aviation Forecast System), to answer "how bumpy
+will my JFK->LAX flight departing ~1h from now be" using an actual
+4-D (space + time + altitude) forecast instead of a single nowcast
+snapshot.
+
+### Run
+
+```bash
+uv run fetch_gtg.py      # subset-fetch EDPARM messages for F001-F007, 8 coarse levels
+uv run inspect_gtg.py    # field survey + grid/level verification
+uv run route_forecast.py # 4-D route sampling + GTGN-vs-GTG sanity check
+uv run plot_forecast.py  # out/forecast_route_profile.png, out/forecast_fl350_map.png
+```
+
+### Directory layout discovered on NOMADS
+
+```
+https://nomads.ncep.noaa.gov/pub/data/nccf/com/dafs/prod/dafs.YYYYMMDD/dafs.tHHz.gtg.3km.conus.fFFF.grib2[.idx]
+```
+
+Unlike GTGN, there is **no per-hour subdirectory** -- all cycles/forecast
+hours for a day sit flat in `dafs.YYYYMMDD/`. Hourly cycles (t00z..t23z),
+forecast hours f000..f018, ~150-165 MB per full file, each with a small
+(~17 KB) `.idx` sidecar. `fetch_gtg.py` walks backwards from the current
+UTC hour to find the most recent cycle that has a complete f000..f018 set
+(checked via directory listing, not by downloading anything).
+
+### Fields found (from the `.idx`, confirmed against `dafs.t16z...f001.grib2.idx`, 205 messages)
+
+| Field | Messages | What it is | Used? |
+|---|---|---|---|
+| `MXEDPRM` | 1, "entire atmosphere" | column-max composite turbulence index | no (not per-level) |
+| `EDPARM` | 51, per-level | **combined/blended EDR forecast** -- discipline=0/category=19/number=30, identical GRIB2 identity to GTGN's own field | **yes** |
+| `CATEDR` | 51, per-level | clear-air-turbulence EDR component (one of the inputs blended into EDPARM) | no |
+| `MWTURB` | 51, per-level | mountain-wave-turbulence EDR component (the other blended input) | no |
+| `disc=0/cat=19/num=50` | 51, per-level | unnamed in eccodes' tables; range-fetched one 233 KB message to check -- values were exactly `{0, 9999}` (a binary flag/mask, not an EDR value) | no |
+
+`EDPARM` was chosen because it's explicitly the *combined* field (not a
+CAT/MWT component) and it's the same field name/param-id GTGN itself
+publishes, which is what makes the GTGN-vs-GTG comparison below
+apples-to-apples.
+
+### Subsetting method (no full-file downloads)
+
+For each needed forecast hour, `fetch_gtg.py`:
+1. Fetches the small `.idx` text file (`curl --http1.1`).
+2. Parses `msg#:byte_offset:date:PARAM:level:step` rows to find the
+   exact byte range of each wanted `EDPARM` message (matching level
+   strings like `"10668 m above mean sea level"` built from the exact
+   metre values in `gtgn_common.LEVELS_M`, since the idx gives whole
+   metres, not feet).
+3. Issues one **HTTP Range request per message**
+   (`curl --http1.1 -r start-end`) and appends the raw bytes to a small
+   local per-hour file (multiple concatenated GRIB2 messages is a
+   perfectly valid multi-message file eccodes reads sequentially).
+4. Caches per-hour files + a small JSON manifest; a second run detects
+   the cache and fetches nothing.
+
+Levels fetched -- a coarse ladder of **8 of the 51 available levels**
+(not the full 51, and not just FL350 alone, per the task's "cruise FL350
+plus a coarse ladder for climb/descent"):
+`[100, 5000, 10000, 15000, 20000, 25000, 30000, 35000]` ft. The
+climb/descent ramps (first/last 150 km) snap to the nearest of these;
+everything else uses FL350.
+
+Forecast hours fetched: **F001-F007**, matching the task's own estimate
+(JFK-LAX ~3974 km great circle / 830 km/h + 20 min climb/descent
+allowance = ~5.1-5.3 h flight, departure assumed at cycle-init + 1 h, so
+the flight spans forecast hour 1.0 at takeoff to ~6.1 at landing --
+F001-F007 covers that with one hour of margin).
+
+**Bytes downloaded this task**: 59.14 MB for the 7 forecast-hour subsets
+(GTG), + 28.4 MB for one additional GTGN comparison file (see sanity
+check below) = **~87.5 MB total, well under the 300 MB cap**. Re-running
+any script downloads 0 additional bytes (everything is cached).
+
+### Verified field facts (GTG forecast file)
+
+- Same grid as GTGN: Lambert Conformal, Ni x Nj = 1799 x 1059, Dx=Dy=3000m,
+  Latin1=Latin2=LaD=38.5, LoV=262.5, shapeOfTheEarth=6 -- **confirmed
+  identical** in `inspect_gtg.py`, so GTGN's projection code in
+  `gtgn_common.py` is reused as-is (no new projection math needed).
+- `EDPARM`: discipline=0/category=19/number=30, `typeOfFirstFixedSurface=102`,
+  same 51-level ladder (100 ft, then 1000-50000 ft/1000 ft) -- identical
+  construction to GTGN.
+- `forecastTime` (GRIB key) = the forecast hour (1..7 as fetched);
+  `dataDate`/`dataTime` = cycle init (20260926 / 1600 for our cycle).
+- Missing fraction at the 100 ft level is high (~62%, mostly water/coastal
+  areas) vs. <1% at cruise levels -- expected, since low-level turbulence
+  diagnostics are less meaningful/defined over open water.
+
+### Route forecast result (4-D sampling, JFK->LAX, cycle t16z, departure 17:00 UTC)
+
+- For each of 200 route points: estimated time-over-point = departure +
+  elapsed flight time (830 km/h cruise groundspeed, +20 min climb/descent
+  penalty accrued linearly over the first/last 150 km) -> converted to a
+  fractional GTG forecast hour -> **linearly interpolated in time**
+  between the two bracketing fetched hourly files -> altitude snapped to
+  the nearest coarse level -> nearest-grid-cell EDR lookup (same exact
+  Lambert-projection method as `route.py`).
+- **Max EDR: 0.247 m^(2/3)s^-1, ~0h00m after takeoff** (right at JFK
+  departure, 100 ft level, forecast hour F001 = the departure hour
+  itself) -- classifies as **Moderate** for a medium aircraft.
+- Category breakdown: Smooth 188/200 (94.0%), Light 10/200 (5.0%),
+  Moderate 1/200 (0.5%), Severe 0, Extreme 0, No data 1/200 (0.5%, at
+  LAX's 100 ft level, likely a coastal/water grid cell).
+- **Verdict**: "Some bumps likely, worst around 0h00m after takeoff --
+  keep your seatbelt fastened."
+- Away from the low-level departure/arrival points, the cruise-altitude
+  ride is smooth-to-light the whole way (see `out/forecast_route_profile.png`).
+
+### GTGN-vs-GTG sanity check
+
+Compared GTG **F001** (valid 2026-09-26T17:00Z, the departure hour) against
+a freshly fetched GTGN nowcast file with the **exact same valid time**
+(`gtgn.t1700z.3km.grib2` -- one extra, explicitly-permitted GTGN download),
+both sampled at FL350 along the 200 route points:
+
+- Correlation: **0.79**
+- Mean diff (GTG - GTGN): **-0.003** m^(2/3)s^-1 (GTG very slightly lower on average)
+- Mean absolute diff: **0.008** m^(2/3)s^-1
+- Max EDR: GTGN 0.250 vs. GTG F001 0.168 (GTGN's blended-in observations
+  produced a somewhat sharper local peak that the pure forecast smoothed out)
+
+This is the expected relationship: strongly correlated (both derive from
+the same GTG diagnostic algorithm and near-identical model state one hour
+out), with GTGN running a bit "hotter" at its peak because it blends in
+real PIREPs/NTDA radar observations that a pure forecast can't see yet.
+
+### Plots
+
+- `out/forecast_route_profile.png` -- EDR vs. time-after-departure for
+  the 4-D GTG forecast, with the medium-aircraft threshold lines and the
+  static GTGN FL350 curve overlaid for visual comparison (GTGN doesn't
+  itself have a forecast-hour axis; it's the single departure-time
+  snapshot plotted across the same points for shape comparison only).
+- `out/forecast_fl350_map.png` -- GTG FL350 field for the forecast hour
+  nearest mid-flight (F004, ~2h34m after takeoff), with the route and the
+  aircraft's estimated mid-flight position marked.
+
 ## Gotchas hit
 
 1. **`inspect.py` name collision** with the stdlib `inspect` module (used
@@ -171,3 +314,13 @@ here since the route is classified for a medium aircraft.)
    live file's own GRIB metadata over the PDF's stated grid resolution.
 5. Only one file was ever downloaded (politeness requirement); `fetch.py`
    caches it and all other scripts reuse the cached copy.
+6. **DAFS has no per-hour subdirectory** (unlike GTGN) -- files sit flat
+   in `dafs.YYYYMMDD/`; an early attempt to list `dafs.YYYYMMDD/HH/`
+   (mirroring the GTGN layout) 403'd.
+7. GRIB `.idx` files give level text in whole **metres**, not feet -- had
+   to reuse (and add, in `gtgn_common.LEVELS_M`) the exact integer metre
+   values already read off the GTGN file rather than recomputing
+   `ft * 0.3048` and hoping it matched the idx string exactly.
+8. Range-fetched one message of the unnamed `disc=0/cat=19/num=50` field
+   out of curiosity before deciding not to use it -- turned out to be a
+   binary 0/9999 flag, not a turbulence value.
