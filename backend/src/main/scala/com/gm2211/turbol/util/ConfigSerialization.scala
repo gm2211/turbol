@@ -8,7 +8,7 @@ package com.gm2211.turbol.util
 
 import com.gm2211.logging.BackendLogging
 import io.circe.derivation.Configuration
-import io.circe.{Decoder, Json, ParsingFailure}
+import io.circe.Decoder
 
 import java.io.File
 import scala.io.Source
@@ -31,7 +31,7 @@ trait ConfigSerialization extends BackendLogging {
       file.readAs(decodeYaml)
     }
   }
-    
+
   extension (source: Source) {
     def fromYaml[T: Decoder]: Try[T] = {
       def logFailureAndConvertToScala(message: String, failureMessage: String): Failure[T] = {
@@ -53,5 +53,5 @@ trait ConfigSerialization extends BackendLogging {
     }
   }
 
-  override def clazz: Class[_] = classOf[ConfigSerialization]
+  override def clazz: Class[?] = classOf[ConfigSerialization]
 }

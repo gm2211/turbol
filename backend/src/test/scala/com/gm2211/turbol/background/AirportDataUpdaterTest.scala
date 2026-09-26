@@ -6,7 +6,11 @@
 
 package com.gm2211.turbol.background
 
-import com.gm2211.turbol.background.airportdata.{AirportDataDownloader, AirportDataParserFactoryImpl, AirportDataUpdater}
+import com.gm2211.turbol.background.airportdata.{
+  AirportDataDownloader,
+  AirportDataParserFactoryImpl,
+  AirportDataUpdater
+}
 import com.gm2211.turbol.objects.internal.DatetimeUtc
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.util.DBUtils.doob

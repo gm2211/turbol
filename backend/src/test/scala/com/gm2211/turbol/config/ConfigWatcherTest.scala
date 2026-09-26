@@ -21,9 +21,9 @@ import java.util.concurrent.Executors
 final class ConfigWatcherTest extends AnyFunSuite with Matchers with CatsUtils {
   test("Refreshable config produced by watcher should call subscriber when watched config is updated") {
     val testPath: Path = Files.createTempFile("test", ".conf")
-    
+
     Files.writeString(testPath, 0.toString, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-    
+
     val refreshableConfig =
       ConfigWatcher.watchConfig[Int](testPath)
     var counter = 0

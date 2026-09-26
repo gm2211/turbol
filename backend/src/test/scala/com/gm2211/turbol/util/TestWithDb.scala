@@ -37,7 +37,7 @@ trait TestWithDb extends BaseTest {
         throw exception
       case _ => ()
     }
-    
+
     extraBeforeEach()
   }
 
@@ -45,7 +45,7 @@ trait TestWithDb extends BaseTest {
     super.afterAll()
     testTxnManagerFactory.close()
   }
-  
+
   def extraBeforeEach(): Unit = ()
 
   def txnManager: TransactionManager = {

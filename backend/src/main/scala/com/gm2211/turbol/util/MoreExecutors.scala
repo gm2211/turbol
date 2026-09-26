@@ -39,19 +39,19 @@ object MoreExecutors extends BackendLogging {
       task.run()
       CompletableFuture.completedFuture(result)
     }
-    override def submit(task: Runnable): Future[_] = {
+    override def submit(task: Runnable): Future[?] = {
       task.run()
       CompletableFuture.completedFuture(())
     }
-    override def invokeAll[T](tasks: util.Collection[_ <: Callable[T]]): util.List[Future[T]] =
+    override def invokeAll[T](tasks: util.Collection[? <: Callable[T]]): util.List[Future[T]] =
       tasks.asScala.map(task => submit(task)).toList.asJava
     override def invokeAll[T](
-      tasks: util.Collection[_ <: Callable[T]],
+      tasks: util.Collection[? <: Callable[T]],
       timeout: Long,
       unit: TimeUnit
     ): util.List[Future[T]] = invokeAll(tasks) // TODO: implement timeout
-    override def invokeAny[T](tasks: util.Collection[_ <: Callable[T]]): T = tasks.asScala.head.call()
-    override def invokeAny[T](tasks: util.Collection[_ <: Callable[T]], timeout: Long, unit: TimeUnit): T =
+    override def invokeAny[T](tasks: util.Collection[? <: Callable[T]]): T = tasks.asScala.head.call()
+    override def invokeAny[T](tasks: util.Collection[? <: Callable[T]], timeout: Long, unit: TimeUnit): T =
       tasks.asScala.head.call() // TODO: implement timeout
     override def execute(command: Runnable): Unit = command.run()
   }.toExecutionContext.toScheduler

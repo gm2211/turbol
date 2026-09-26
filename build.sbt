@@ -1,6 +1,5 @@
-import au.com.onegeek.sbtdotenv.SbtDotenv.autoImport.{envFileName, envFromFile}
 import scala.sys.process.*
-import com.typesafe.sbt.SbtGit
+import com.github.sbt.git.SbtGit
 import sbt.Keys.{libraryDependencies, resolvers}
 import sbt.{Compile, Def, Resolver}
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations.*
@@ -30,9 +29,6 @@ inThisBuild(
     scalaVersion := dependencies.versionOfScala,
     organization := "com.gm2211.turbol",
     envFileName := "backend/var/conf/run.env",
-    resolvers += Resolver.sbtPluginRepo("releases"),
-    resolvers ++= Resolver.sonatypeOssRepos("snapshots"),
-    resolvers += "Yahoo repo" at "https://dl.bintray.com/yahoo/maven/",
     publishArtifact := false,
     publish / skip := true,
     versionScheme := Some("semver-spec"),
@@ -49,10 +45,8 @@ inThisBuild(
       "-Wvalue-discard"
     ),
     Compile / javacOptions ++= Seq(
-      "-source",
-      "19",
-      "-target",
-      "19",
+      "--release",
+      "21",
       "-Xlint:unchecked",
       "-Xlint:deprecation",
       "-Xmx3500m",
@@ -151,7 +145,7 @@ lazy val backend = project
     moduleName := "turbol-backend",
     // Linting and formatting
     compile := (
-      (Compile / compile) dependsOn (Compile / scalafmtAll, Compile / scalafmtCheck)
+      (Compile / compile) dependsOn (Compile / scalafmtAll)
     ).value,
     // Deps
     libraryDependencies ++= dependencies.backendDeps.value,
@@ -159,7 +153,7 @@ lazy val backend = project
     // Docker
     dockerRepository := Some("docker.io"),
     dockerUsername := Some("gm2211"),
-    dockerBaseImage := "openjdk:19-jdk-bullseye",
+    dockerBaseImage := "eclipse-temurin:21-jre",
     Docker / packageName := "turbol",
     version := SbtGit.git.gitDescribedVersion.value.getOrElse(""),
     dockerAliases := Seq(
@@ -249,7 +243,7 @@ lazy val initialVcsChecks = {
 val releaseVersionTask: Def.Initialize[Task[String]] = Def.task {
   import sbtrelease.Version
   val releaseVersion = Version(version.value)
-    .map(v => v.bumpMinor.withoutQualifier.string)
+    .map(v => v.bumpMinor.withoutQualifier.unapply)
     .getOrElse {
       throw new IllegalArgumentException(s"Invalid version: ${version.value}")
     }

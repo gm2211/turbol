@@ -12,7 +12,7 @@ import com.gm2211.turbol.util.TryUtils
 import java.util.concurrent.atomic.AtomicReference
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
-import scala.util.{Try, boundary}
+import scala.util.{boundary, Try}
 
 trait Refreshable[T] {
   def update(t: T): Unit
@@ -61,7 +61,7 @@ final class RefreshableImpl[T](initial: T) extends Refreshable[T] with TryUtils 
 
     derived
   }
-  
+
   override def zipWith[U](other: Refreshable[U])(using executor: ExecutionContext): Refreshable[(T, U)] = {
     val derived = Refreshable((value.get, other.get))
 

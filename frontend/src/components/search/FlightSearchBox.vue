@@ -27,7 +27,7 @@ import AirportAutocomplete from '@/components/search/AirportAutocomplete.vue'
 import {computed, ref} from 'vue'
 import type {Airport} from '@/objects/airports/airports'
 
-const autoCompleteCss = 'justify-center v-col-2 font-weight-bold'
+const autoCompleteCss = 'justify-center v-col v-col--cols-2 font-weight-bold'
 const departureAirport = ref(undefined as any)
 const arrivalAirport = ref(undefined as any)
 const selectedRoute = computed(() => {

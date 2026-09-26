@@ -22,11 +22,11 @@ trait StringUtils {
       else if (string.head == charToStrip && string.last == charToStrip) string.tail.init
       else string
     }
-    
+
     def asResource: Source = {
       Source.fromURL(getClass.getClassLoader.getResource(string))
     }
-    
+
     def asPath: Path = {
       Paths.get(string)
     }

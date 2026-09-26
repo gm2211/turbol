@@ -6,6 +6,7 @@
 
 package com.gm2211.turbol.util
 
+import cats.effect.IO
 import com.gm2211.logging.BackendLogging
 import doobie.postgres.*
 import doobie.postgres.implicits.*
@@ -18,20 +19,18 @@ import doobie.util.update.Update0
 
 object DBUtils extends DBUtils // Allows .* imports
 trait DBUtils extends BackendLogging {
-  private val logHandler: LogHandler = new LogHandler({
-    case success @ Success(_, _, _, _) => log.debug("Successful query", unsafe("log-line", success))
-    case failure @ ProcessingFailure(_, _, _, _, _) => log.warn("Processing failure", unsafe("log-line", failure))
-    case failure @ ExecFailure(_, _, _, _) => log.warn("Execution failure", unsafe("log-line", failure))
-  })
+  /** Logs every statement run through a transactor; pass it when building one. */
+  val logHandler: LogHandler[IO] = {
+    case success @ Success(_, _, _, _, _) => IO(log.debug("Successful query", unsafe("log-line", success)))
+    case failure @ ProcessingFailure(_, _, _, _, _, _) =>
+      IO(log.warn("Processing failure", unsafe("log-line", failure)))
+    case failure @ ExecFailure(_, _, _, _, _) => IO(log.warn("Execution failure", unsafe("log-line", failure)))
+  }
 
   extension (fragment: Fragment) {
-    def updateWithLogger: Update0 = {
-      fragment.updateWithLogHandler(logHandler)
-    }
+    def updateWithLogger: Update0 = fragment.update
 
-    def queryWithLogger[T: Read]: Query0[T] = {
-      fragment.queryWithLogHandler[T](logHandler)
-    }
+    def queryWithLogger[T: Read]: Query0[T] = fragment.query[T]
   }
 
   extension (sc: StringContext) {

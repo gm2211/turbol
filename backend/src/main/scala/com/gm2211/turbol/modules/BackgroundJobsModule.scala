@@ -15,7 +15,7 @@ import scala.annotation.unused
 final class BackgroundJobsModule(val storageModule: StorageModule, val servicesModule: ServicesModule) {
   @unused lazy val airportDataDownloader: AirportDataDownloader = wire[AirportDataDownloaderImpl]
   @unused lazy val airportRowParser: AirportDataParserFactory = wire[AirportDataParserFactoryImpl]
-  
+
   // Jobs
   @unused lazy val airportDataUpdater: AirportDataUpdater = wire[AirportDataUpdater]
 }

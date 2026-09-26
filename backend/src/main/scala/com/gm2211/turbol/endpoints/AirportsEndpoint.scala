@@ -15,8 +15,7 @@ import io.circe.Json
 import io.circe.generic.auto.*
 import org.http4s.circe.*
 import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
-import org.http4s.dsl.io.*
-import org.http4s.{HttpRoutes, Request, Response}
+import org.http4s.{HttpRoutes, Request}
 
 final class AirportsEndpoint(airportsService: AirportsService) extends Endpoint with BackendSerialization {
   override val basePath: String = "/airports"

@@ -24,11 +24,11 @@ trait MyTryValues {
     }
 
     def value(implicit pos: source.Position): T = success.value
-    
+
     def assertSuccess(implicit pos: source.Position): Unit = ignoringRetValue {
       success
     }
-    
+
     def success(implicit pos: source.Position): Success[T] = {
       theTry match {
         case success: Success[T] => success

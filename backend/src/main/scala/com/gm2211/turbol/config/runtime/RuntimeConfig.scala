@@ -15,9 +15,7 @@ case class RuntimeConfig(
   logging: LoggingConfig = LoggingConfig()
 )
 
-
 object RuntimeConfig extends ConfigSerialization {
   given decoder: Decoder[RuntimeConfig] = ConfiguredDecoder.derived[RuntimeConfig]
   def default: RuntimeConfig = RuntimeConfig(DatabaseConfig(), LoggingConfig())
 }
-
