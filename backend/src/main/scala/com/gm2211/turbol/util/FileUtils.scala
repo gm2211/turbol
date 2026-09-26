@@ -50,7 +50,7 @@ trait FileUtils {
       lineWithIndexProcessor: (String, Int) => Unit,
       charset: Charset = StandardCharsets.UTF_8
     ): Try[Unit] = {
-      Using(Source.fromFile(file)(Codec(charset))) { source =>
+      Using(Source.fromFile(file)(using Codec(charset))) { source =>
         source.getLines().zipWithIndex.foreach(lineWithIndexProcessor.tupled)
       }
     }

@@ -7,7 +7,6 @@ orig_dir="$(pwd)"
 cd "${script_dir}" || exit
 
 # 1. Compiles the Vue.js app for production
-npm i npm-run-all
 npm install
 npm run build || exit
 

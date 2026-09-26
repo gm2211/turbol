@@ -5,7 +5,7 @@ import '../../assets/style/base.css'
   <v-app-bar color="var(--my-blue)">
     <v-row no-gutters>
       <v-col/>
-      <v-col class="v-col-md-auto mx-auto">
+      <v-col md="auto" class="mx-auto">
         <v-avatar style="min-height: 64px; width: 200px">
           <a style="height: 100%; width: 100%" href="/">
             <v-img :src="logo" cover alt="Turbol"/>

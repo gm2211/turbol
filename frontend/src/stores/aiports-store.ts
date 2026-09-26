@@ -1,8 +1,5 @@
 import { defineStore } from 'pinia'
-import type { FlightPlan, FlightPlanResponse } from '@/objects/flights/plans'
 import axios from 'axios'
-import type { FlightLocator, FlightNumber, FlightRoute } from '@/objects/flights/shared'
-import type { FlightSearchRequestByRoute, FlightSearchResponse } from '@/objects/flights/search'
 import type {
   Airport,
   AirportSearchRequest,

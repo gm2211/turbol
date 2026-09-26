@@ -8,7 +8,6 @@ package com.gm2211.turbol.util
 
 import cats.effect.IO
 import cats.effect.unsafe.IORuntime
-import com.gm2211.turbol.util.MoreExecutors.*
 
 import scala.concurrent.ExecutionContext
 

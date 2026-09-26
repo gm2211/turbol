@@ -6,7 +6,6 @@
 
 package com.gm2211.turbol.storage.stores
 
-import cats.*
 import com.gm2211.turbol.objects.internal.model.airports.ICAOCode
 import com.gm2211.turbol.objects.internal.storage.airports.AirportRow
 import com.gm2211.turbol.objects.internal.storage.capabilities.{CanReadDB, CanWriteToDB}

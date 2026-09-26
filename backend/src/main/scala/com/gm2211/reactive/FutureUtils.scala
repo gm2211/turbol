@@ -18,9 +18,9 @@ trait FutureUtils {
     def await(): T = Await.result(future, Duration.Inf)
     def await(duration: FiniteDuration): T = Await.result(future, duration)
     def handleSuccess(valueHandler: T => Unit)(executorService: ExecutorService): Unit =
-      future.foreach(valueHandler)(executorService.toExecutionContext)
+      future.foreach(valueHandler)(using executorService.toExecutionContext)
     def handleFailure(throwableHandler: Throwable => Unit)(executorService: ExecutorService): Unit = {
-      future.failed.foreach(throwableHandler)(executorService.toExecutionContext)
+      future.failed.foreach(throwableHandler)(using executorService.toExecutionContext)
     }
   }
 }

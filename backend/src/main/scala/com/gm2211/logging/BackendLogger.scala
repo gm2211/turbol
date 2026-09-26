@@ -10,20 +10,23 @@ import com.typesafe.scalalogging.Logger
 import org.slf4j.LoggerFactory
 
 trait BackendLogger {
-  def debug(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
+  def debug(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
   def debug(message: String, cause: Throwable)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
-  def info(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
+  def info(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
   def info(message: String, cause: Throwable)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
-  def info(message: String, cause: Throwable, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File)
+  def info(message: String, cause: Throwable, args: Arg[?]*)(implicit
+    line: sourcecode.Line,
+    file: sourcecode.File
+  )
     : Unit
-  def warn(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
+  def warn(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
   def warn(message: String, cause: Throwable)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
-  def error(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
+  def error(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
   def error(message: String, cause: Throwable)(implicit line: sourcecode.Line, file: sourcecode.File): Unit
 }
 
 final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogger {
-  override def debug(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
+  override def debug(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
     delegate.whenDebugEnabled {
       logWithArgs(delegate.debug(_), message, args)
     }
@@ -31,7 +34,7 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
     delegate.whenDebugEnabled {
       delegate.debug(message, cause)
     }
-  override def info(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
+  override def info(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
     delegate.whenInfoEnabled {
       logWithArgs(delegate.info(_), message, args)
     }
@@ -42,7 +45,7 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
   override def info(
     message: String,
     cause: Throwable,
-    args: Arg[_]*
+    args: Arg[?]*
   )(implicit
     line: sourcecode.Line,
     file: sourcecode.File
@@ -51,7 +54,7 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
       logWithArgs(delegate.info(_), message, args.appended(UnsafeArg("cause", cause)))
     }
   }
-  override def warn(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
+  override def warn(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
     delegate.whenWarnEnabled {
       logWithArgs(delegate.warn(_), message, args)
     }
@@ -59,7 +62,7 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
     delegate.whenWarnEnabled {
       delegate.warn(message, cause)
     }
-  override def error(message: String, args: Arg[_]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
+  override def error(message: String, args: Arg[?]*)(implicit line: sourcecode.Line, file: sourcecode.File): Unit =
     delegate.whenErrorEnabled {
       logWithArgs(delegate.error(_), message, args)
     }
@@ -71,13 +74,13 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
   private def logWithArgs(
     loggerMethod: String => Unit,
     message: => String,
-    args: => Seq[Arg[_]]
+    args: => Seq[Arg[?]]
   )(implicit
     line: sourcecode.Line,
     file: sourcecode.File
   ): Unit = {
-    val safeArgs: Seq[SafeArg[_]] = args.collect { case arg: SafeArg[_] => arg }
-    val unsafeArgs: Seq[UnsafeArg[_]] = args.collect { case arg: UnsafeArg[_] =>
+    val safeArgs: Seq[SafeArg[?]] = args.collect { case arg: SafeArg[_] => arg }
+    val unsafeArgs: Seq[UnsafeArg[?]] = args.collect { case arg: UnsafeArg[_] =>
       arg
     }
     val fileAndLineNum: String =
@@ -88,7 +91,7 @@ final class BackendLoggerImpl(private val delegate: Logger) extends BackendLogge
     )
   }
 
-  private def toString(args: Seq[Arg[_]]): String = {
+  private def toString(args: Seq[Arg[?]]): String = {
     val argsString = args
       .map(arg => s"${arg.name} -> ${arg.value}")
       .mkString(", ")
@@ -100,7 +103,7 @@ trait BackendLogging { self =>
   private val rawLogger: Logger = Logger(LoggerFactory.getLogger(clazz))
   protected val log: BackendLogger = new BackendLoggerImpl(rawLogger)
 
-  protected def clazz: Class[_] = self.getClass
+  protected def clazz: Class[?] = self.getClass
   def safe[T](name: String, value: T): SafeArg[T] = SafeArg(name, value)
   def unsafe[T](name: String, value: T): UnsafeArg[T] = UnsafeArg(name, value)
 }

@@ -11,11 +11,11 @@ object ExpressionUtils extends ExpressionUtils // Allows .* imports
 trait ExpressionUtils {
 
   given listConversion[T]: Conversion[T, Seq[T]] = Seq(_)
-  
+
   extension [T](value: T) {
     def ignoreRetValue(): Unit = ()
   }
-  
+
   def ignoringRetValue[T](value: => T): Unit = {
     value.asInstanceOf[Unit]
   }

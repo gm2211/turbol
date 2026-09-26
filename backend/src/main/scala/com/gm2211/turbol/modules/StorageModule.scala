@@ -11,7 +11,7 @@ import com.gm2211.turbol.objects.internal.storage.{RawSqlStore, RawSqlStoreImpl}
 import com.gm2211.turbol.storage.*
 import com.gm2211.turbol.storage.stores.{AirportsStore, AirportsStoreImpl, AppMetadataStore, AppMetadataStoreImpl}
 import com.gm2211.turbol.util.{MoreExecutors, Scheduler}
-import com.softwaremill.macwire.{Module, wire}
+import com.softwaremill.macwire.{wire, Module}
 import com.softwaremill.tagging.*
 
 import scala.annotation.unused

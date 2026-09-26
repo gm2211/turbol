@@ -13,9 +13,8 @@ import com.gm2211.reactive.*
 import com.gm2211.turbol.util.{ConfigSerialization, TryUtils}
 import com.sun.nio.file.SensitivityWatchEventModifier
 import io.circe.Decoder
-import retry.{RetryPolicies, retryingOnAllErrors}
+import retry.{retryingOnErrors, ResultHandler, RetryPolicies}
 
-import java.nio.file
 import java.nio.file.*
 import java.nio.file.StandardWatchEventKinds.*
 import java.nio.file.WatchEvent.Kind
@@ -30,23 +29,20 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
    * reloading it as necessary. Changes to the runtime config after the server has started will be propagated
    * throughout the server.
    */
-  def watchConfig[T](configPath: Path)
-    (using IORuntime)
-    (using Decoder[T])
-  : Refreshable[T] = {
+  def watchConfig[T](configPath: Path)(using
+    IORuntime
+  )(using
+    Decoder[T]
+  )
+    : Refreshable[T] = {
     val configDirPath = configPath.getParent
 
     val watchService: WatchService = FileSystems.getDefault.newWatchService()
-    configDirPath.register(watchService, Array[Kind[_]](ENTRY_MODIFY), SensitivityWatchEventModifier.HIGH)
+    configDirPath.register(watchService, Array[Kind[?]](ENTRY_MODIFY), SensitivityWatchEventModifier.HIGH)
 
     val configRef: Refreshable[T] = Refreshable(readConfig(configPath).get)
 
-    retryingOnAllErrors(
-      policy = RetryPolicies.constantDelay[IO](0.seconds),
-      onError = (error: Throwable, details: retry.RetryDetails) => {
-        IO.println(s"Failed to read config, will retry $error ${details}")
-      }
-    ) {
+    retryingOnErrors(
       IO.blocking {
         while (true) {
           Try {
@@ -70,7 +66,12 @@ object ConfigWatcher extends BackendLogging with ConfigSerialization with TryUti
           }.doOnFailure(exception => log.info("Unhandled error while monitoring config", exception))
         }
       }
-    }
+    )(
+      RetryPolicies.constantDelay[IO](0.seconds),
+      ResultHandler.retryOnAllErrors[IO, Unit] { (error, details) =>
+        IO.println(s"Failed to read config, will retry $error ${details}")
+      }
+    )
       .background
       .useForever
       .unsafeRunAndForget()

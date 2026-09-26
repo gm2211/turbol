@@ -26,7 +26,7 @@ class TestTransactionManagerFactory() extends StringUtils with ConfigSerializati
         port = postgres.getPort
       )
     ),
-    Refreshable(AppSecrets("postgres")/* Default for embedded postgres */ ),
+    Refreshable(AppSecrets("postgres") /* Default for embedded postgres */ ),
     MoreExecutors.io("transactor-provider-io").taggedWith[DBTransactorProvider]
   )
   private val _stubTimeService = new StubTimeService()

@@ -1,50 +1,50 @@
 import sbt.{Def, *}
 
 object dependencies {
-  val versionOfScala = "3.3.0-RC4"
+  val versionOfScala = "3.9.0"
 
   // Dependency injection
-  val macWireVersion = "2.5.8"
+  val macWireVersion = "2.6.7"
 
   // Functional
-  val fs2Version = "3.6.1"
-  val catsEffects = "3.4.8"
-  val catsCore = "2.9.0"
+  val fs2Version = "3.14.0"
+  val catsEffects = "3.7.1"
+  val catsCore = "2.13.0"
 
   // Guava
-  val guavaVersion = "30.1.1-jre"
+  val guavaVersion = "33.7.1-jre"
 
   // Http
-  val sttpVersion = "4.0.0-M1"
+  val sttpVersion = "4.0.27"
 
   // Logging
-  val logbackVersion = "1.4.6"
-  val scalaLoggingVersion = "3.9.5"
+  val logbackVersion = "1.6.4"
+  val scalaLoggingVersion = "3.9.6"
 
   // Retry logic
-  val catsRetryVersion = "3.1.0"
+  val catsRetryVersion = "4.0.0"
 
   // Reflection / macros
-  val lihaoyiSourcecodeVersion = "0.3.0"
+  val lihaoyiSourcecodeVersion = "0.4.4"
 
   // Storage
-  val embeddedPostgresVersion = "2.0.3"
-  val h2Version = "2.1.214"
-  val postgresVersion = "42.5.4"
-  val doobieVersion = "1.0.0-RC1"
+  val embeddedPostgresVersion = "2.2.2"
+  val h2Version = "2.5.252"
+  val postgresVersion = "42.7.13"
+  val doobieVersion = "1.0.0-RC12"
 
   // Serialization
-  val circeVersion = "0.14.5"
-  val circeYamlVersion = "0.14.2"
+  val circeVersion = "0.14.16"
+  val circeYamlVersion = "0.16.1"
 
   // Server
-  val http4sVersion = "0.23.18"
+  val http4sVersion = "0.23.37"
 
   // Utils
-  val apacheCommonsVersion = "2.11.0"
+  val apacheCommonsVersion = "2.22.0"
 
   // Test
-  val scalatestVersion = "3.2.15"
+  val scalatestVersion = "3.2.20"
 
   // Dependencies for JVM part of code
   val backendDeps = Def.setting(

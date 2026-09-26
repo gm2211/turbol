@@ -37,7 +37,7 @@ import planeIcon from '../../assets/icons/plane-for-map.png'
 import GeoUtils from '@/util/geo'
 import MathUtils from '@/util/math'
 import LRotatedMarker from '@/components/map/LRotatedMarker.vue'
-import { LatLngLiteral, PointTuple } from 'leaflet'
+import type { LatLngLiteral, PointTuple } from 'leaflet'
 
 const props = defineProps<{
   flightPath: LatLngLiteral[]

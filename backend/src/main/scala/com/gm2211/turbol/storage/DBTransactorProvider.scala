@@ -12,7 +12,7 @@ import com.gm2211.reactive.Refreshable
 import com.gm2211.turbol.config.runtime.DatabaseConfig
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.util.MoreExecutors.given
-import com.gm2211.turbol.util.{CatsUtils, MoreExecutors, Scheduler}
+import com.gm2211.turbol.util.{CatsUtils, DBUtils, MoreExecutors, Scheduler}
 import com.softwaremill.tagging.*
 import doobie.hikari.HikariTransactor
 
@@ -69,7 +69,8 @@ final class DBTransactorProviderImpl(
         connectionString,
         dbConfig.adminUser,
         appSecrets.dbAdminPassword,
-        ioExecutor
+        ioExecutor,
+        Some(DBUtils.logHandler)
       )
       _ <- Resource.pure { log.info("Initializing DB", unsafe("dbConfig", dbConfig)) }
     } yield transactor

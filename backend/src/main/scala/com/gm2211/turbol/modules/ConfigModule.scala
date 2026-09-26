@@ -11,7 +11,7 @@ import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.{DatabaseConfig, RuntimeConfig}
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.util.MoreExecutors
-import com.gm2211.turbol.util.MoreExecutors.{*, given}
+import com.gm2211.turbol.util.MoreExecutors.given
 import com.softwaremill.macwire.Module
 
 @Module
