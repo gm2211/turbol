@@ -270,6 +270,26 @@ any script downloads 0 additional bytes (everything is cached).
 - Away from the low-level departure/arrival points, the cruise-altitude
   ride is smooth-to-light the whole way (see `out/forecast_route_profile.png`).
 
+### Near-ground exclusion and first-hour GTGN blend (added 2026-09-27)
+
+The 0h00m "worst bump" above was the 100 ft level at JFK, where cruise
+thresholds don't really apply. `route_forecast.py` now:
+
+- Keeps points with target altitude below **2,000 ft** (`NEAR_GROUND_FT`)
+  out of the category breakdown and the worst bump, and reports their max
+  EDR on a separate line.
+- Blends the GTGN nowcast valid at departure into the **first hour**
+  (`BLEND_HOURS`): GTGN weight falls linearly from 1 at takeoff to 0 at
+  1h, sampled at the same snapped level as GTG. If the exact-time GTGN
+  file isn't published yet, it steps back 15 minutes at a time (up to 1h).
+
+Live run (cycle t04z 2026-09-27, departure 05:00 UTC, GTGN t0500z):
+35 points blended; 2 near-ground points (max 0.230, not categorised);
+en-route max EDR **0.222 at ~2h33m** over Kansas at FL350 (Moderate);
+198 en-route points: Smooth 94.4%, Light 5.1%, Moderate 0.5%.
+`out/forecast_route_profile.png` shows the blended curve, GTG alone for
+the first hour, and the near-ground points shaded.
+
 ### GTGN-vs-GTG sanity check
 
 Compared GTG **F001** (valid 2026-09-26T17:00Z, the departure hour) against

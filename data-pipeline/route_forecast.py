@@ -18,6 +18,18 @@ For each of the 200 great-circle route points we:
 Classification uses the same medium-aircraft EDR thresholds as route.py
 (0.15 / 0.20 / 0.44 / 0.79, from Figure 2 of the GTGN User Guide).
 
+Two refinements on top of the raw forecast:
+  - Near-ground points (target altitude below NEAR_GROUND_FT, i.e. the
+    takeoff roll / final approach) are sampled but kept out of the
+    category breakdown and the worst bump: the cruise EDR thresholds are
+    questionable there, and the 100 ft level was dominating the result.
+    Their max is reported separately.
+  - For the first BLEND_HOURS of the flight, EDR is a linear blend of the
+    GTGN nowcast valid at departure (weight 1 at takeoff, 0 at
+    BLEND_HOURS) and the GTG forecast. GTGN folds in live observations,
+    so it beats the forecast early on; the forecast takes over as the
+    nowcast ages.
+
 Also runs a GTGN-vs-GTG sanity check (task step 4): fetches (if not
 already cached) the single GTGN nowcast file whose valid time exactly
 matches the GTG F001 forecast valid time, and compares EDR at FL350
@@ -31,11 +43,14 @@ import numpy as np
 
 import gtgn_common as gc
 from route import (JFK, LAX, N_POINTS, CRUISE_FT, RAMP_KM, MEDIUM_THRESHOLDS,
-                    classify, great_circle_points, climb_cruise_descent_target_ft)
+                    classify, great_circle_points, climb_cruise_descent_target_ft, sample_field)
 from fetch_gtg import COARSE_LEVELS_FT, GTG_DIR
 
 CRUISE_SPEED_KMH = 830.0
 CLIMB_DESCENT_PENALTY_H = 20.0 / 60.0  # 20 min total, split 10/10 (task assumption)
+NEAR_GROUND_FT = 2000.0  # below this, cruise thresholds don't apply (see docstring)
+BLEND_HOURS = 1.0  # GTGN nowcast weight tapers from 1 to 0 over this much flight time
+GTGN_LOOKBACK_STEPS = 4  # if the exact-time GTGN file is missing, try up to 1h earlier
 
 
 def nearest_coarse_level_ft(target_ft):
@@ -71,27 +86,39 @@ def load_hour_levels(fhour):
 
 def fetch_matching_gtgn(target_dt):
     """Download (if not already cached) the single GTGN file whose valid
-    time matches target_dt exactly (rounded to the nearest 15 minutes),
-    for the sanity-check comparison. Reuses fetch.py's politeness
-    conventions (curl --http1.1, cache, one file)."""
+    time matches target_dt (rounded to the nearest 15 minutes), stepping
+    back 15 minutes at a time if that file isn't published. Used for the
+    first-hour blend and the sanity-check comparison. Reuses fetch.py's
+    politeness conventions (curl --http1.1, cache, one file)."""
     rounded_min = 15 * round(target_dt.minute / 15) % 60
     hour_carry = 1 if (target_dt.minute >= 53) else 0  # rounds 53-59 up into next hour
     dt = target_dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=hour_carry)
     dt = dt.replace(minute=rounded_min)
+    for step in range(GTGN_LOOKBACK_STEPS + 1):
+        try:
+            return fetch_gtgn_at(dt - timedelta(minutes=15 * step))
+        except RuntimeError as e:
+            print(f"  {e}")
+    raise RuntimeError(f"no GTGN file within {GTGN_LOOKBACK_STEPS * 15} min before {dt.isoformat()}")
+
+
+def fetch_gtgn_at(dt):
+    """Download (if not cached) the GTGN file valid at dt (a 15-minute mark)."""
     day_str = dt.strftime("%Y%m%d")
     hh = dt.strftime("%H")
-    fname = f"gtgn.t{hh}{rounded_min:02d}z.3km.grib2"
+    fname = f"gtgn.t{hh}{dt.minute:02d}z.3km.grib2"
     dest = gc.DATA_DIR / fname
     if dest.exists() and dest.stat().st_size > 0:
-        print(f"GTGN comparison file already cached: {dest.name}")
+        print(f"GTGN file already cached: {dest.name}")
         return dest, dt
     url = (f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/gtgn/prod/"
            f"gtgn.{day_str}/{hh}/{fname}")
-    print(f"Fetching GTGN comparison file: {url}")
+    print(f"Fetching GTGN file: {url}")
     tmp = dest.with_suffix(dest.suffix + ".part")
     result = subprocess.run(["curl", "--http1.1", "-s", "--fail", "-o", str(tmp), url], timeout=180)
     if result.returncode != 0 or not tmp.exists():
-        raise RuntimeError(f"GTGN comparison download failed for {url}")
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(f"GTGN download failed for {url}")
     tmp.rename(dest)
     print(f"Saved {dest} ({dest.stat().st_size/1e6:.1f} MB)")
     return dest, dt
@@ -123,7 +150,7 @@ def main():
     # Preload all fetched hours once.
     hour_cache = {h: load_hour_levels(h) for h in fetched_hours}
 
-    edr = np.full(N_POINTS, np.nan)
+    gtg_edr = np.full(N_POINTS, np.nan)
     for k in range(N_POINTS):
         h_lo = int(np.floor(fcst_hour_float[k]))
         h_hi = int(np.ceil(fcst_hour_float[k]))
@@ -141,16 +168,38 @@ def main():
         v_lo = lookup(h_lo)
         v_hi = lookup(h_hi) if h_hi != h_lo else v_lo
         if np.isnan(v_lo) or np.isnan(v_hi):
-            edr[k] = v_lo if not np.isnan(v_lo) else v_hi
+            gtg_edr[k] = v_lo if not np.isnan(v_lo) else v_hi
         else:
-            edr[k] = v_lo + frac * (v_hi - v_lo)
+            gtg_edr[k] = v_lo + frac * (v_hi - v_lo)
 
-    cats = [classify(v) for v in edr]
+    # --- Blend the GTGN nowcast (valid at departure) into the first hour ---
+    gtgn_path, gtgn_valid = fetch_matching_gtgn(departure)
+    gtgn_age_h = (departure - gtgn_valid).total_seconds() / 3600.0
+    gtgn_weight = np.clip(1.0 - elapsed_h / BLEND_HOURS, 0.0, 1.0)
+    gtgn_edr = np.full(N_POINTS, np.nan)
+    for lvl in np.unique(snapped_ft[gtgn_weight > 0]):
+        at_lvl = (snapped_ft == lvl) & (gtgn_weight > 0)
+        gtgn_edr[at_lvl] = sample_field(gtgn_path, int(lvl), i_idx, j_idx)[at_lvl]
+    blended = (gtgn_weight > 0) & ~np.isnan(gtgn_edr)
+    edr = gtg_edr.copy()
+    both = blended & ~np.isnan(gtg_edr)
+    edr[both] = gtgn_weight[both] * gtgn_edr[both] + (1.0 - gtgn_weight[both]) * gtg_edr[both]
+    only_gtgn = blended & np.isnan(gtg_edr)
+    edr[only_gtgn] = gtgn_edr[only_gtgn]
+    print(f"GTGN blend: {gtgn_path.name} (valid {gtgn_valid.isoformat()}, "
+          f"{gtgn_age_h * 60:.0f} min before departure) over the first {BLEND_HOURS:g}h, "
+          f"{blended.sum()} points blended")
+
+    near_ground = target_ft < NEAR_GROUND_FT
+    cats = ["Near ground" if ng else classify(v) for v, ng in zip(edr, near_ground)]
     order = ["Smooth", "Light", "Moderate", "Severe", "Extreme", "No data"]
     counts = {c: cats.count(c) for c in order}
-    n = N_POINTS
-    max_idx = int(np.nanargmax(edr))
+    n = int((~near_ground).sum())
+    en_route_edr = np.where(near_ground, np.nan, edr)
+    max_idx = int(np.nanargmax(en_route_edr))
     max_edr = float(edr[max_idx])
+    near_ground_max = (float(np.nanmax(edr[near_ground]))
+                       if (near_ground & ~np.isnan(edr)).any() else None)
     worst_elapsed_h = elapsed_h[max_idx]
     worst_h = int(worst_elapsed_h)
     worst_m = int(round((worst_elapsed_h - worst_h) * 60))
@@ -159,7 +208,10 @@ def main():
     print(f"Max EDR: {max_edr:.3f} m^(2/3)s^-1, ~{worst_h}h{worst_m:02d}m after takeoff, "
           f"over lat {lats[max_idx]:.2f} lon {lons[max_idx]:.2f} "
           f"(dist {dist_km[max_idx]:.0f} km from JFK, target level {int(snapped_ft[max_idx])} ft)")
-    print("Category breakdown (medium aircraft):")
+    if near_ground_max is not None:
+        print(f"Near ground (< {NEAR_GROUND_FT:.0f} ft, {int(near_ground.sum())} points, not categorised): "
+              f"max EDR {near_ground_max:.3f}")
+    print(f"Category breakdown (medium aircraft, {n} en-route points):")
     for c in order:
         pct = 100.0 * counts[c] / n
         print(f"  {c:8s}: {counts[c]:3d}/{n} ({pct:5.1f}%)")
@@ -182,11 +234,16 @@ def main():
 
     np.savez(gc.DATA_DIR / "route_forecast_samples.npz",
              lats=lats, lons=lons, dist_km=dist_km, total_km=total_km,
-             edr=edr, target_ft=snapped_ft, elapsed_h=elapsed_h,
+             edr=edr, gtg_edr=gtg_edr, gtgn_edr=gtgn_edr, gtgn_weight=gtgn_weight,
+             near_ground=near_ground, target_ft=snapped_ft, elapsed_h=elapsed_h,
              fcst_hour_float=fcst_hour_float)
     summary = {
         "cycle_init_utc": manifest["cycle_init_utc"], "departure_utc": manifest["departure_utc"],
         "max_edr": max_edr, "worst_time_after_departure": f"{worst_h}h{worst_m:02d}m",
+        "near_ground_ft": NEAR_GROUND_FT, "near_ground_points": int(near_ground.sum()),
+        "near_ground_max_edr": near_ground_max,
+        "gtgn_blend": {"file": gtgn_path.name, "valid_utc": gtgn_valid.isoformat(),
+                       "blend_hours": BLEND_HOURS, "points_blended": int(blended.sum())},
         "category_counts": counts,
         "category_pct": {c: round(100.0 * counts[c] / n, 1) for c in order},
         "verdict": verdict, "thresholds_medium_aircraft": MEDIUM_THRESHOLDS,
@@ -197,8 +254,7 @@ def main():
 
     # --- Sanity check: GTGN nowcast vs GTG F001 forecast, both at FL350 ---
     print("\n=== Sanity check: GTGN nowcast vs GTG forecast, FL350, same valid time ===")
-    f001_valid = cycle_init + timedelta(hours=1)  # = departure
-    gtgn_path, gtgn_valid = fetch_matching_gtgn(f001_valid)
+    f001_valid = cycle_init + timedelta(hours=1)  # = departure; GTGN file fetched above
     print(f"GTG F001 valid: {f001_valid.isoformat()}   GTGN file valid: {gtgn_valid.isoformat()} "
           f"({gtgn_path.name})")
 

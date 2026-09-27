@@ -69,18 +69,16 @@ have a malformed content-length header. Don't name a script `inspect.py`.
   correlation 0.79, mean absolute difference 0.008. GTGN caught a 0.25 spike
   over Kansas that the forecast did not (max 0.17), which shows the nowcast's
   observation blending adds value.
-- Known issue: the "worst bump" lands at 0h00m because it is the 100 ft level
-  at JFK. Applying cruise thresholds near the ground is questionable; ignore
-  or treat separately the levels below roughly 1,000–2,000 ft.
+- Near-ground points (< 2,000 ft) are kept out of the worst bump and the
+  categories, and the GTGN nowcast is blended into the first hour
+  (done 2026-09-27; live run: en-route max 0.222 at 2h33m, Moderate).
 
 ## Next steps
 
-1. Fix the low-level worst-bump issue above, and blend GTGN into the first
-   hour of the forecast.
-2. Recalibrate the categories: the 2023 thresholds were written for the old
+1. Recalibrate the categories: the 2023 thresholds were written for the old
    13 km grid, and the 3 km data may show sharper peaks.
-3. Port into the Scala backend: `WeatherDataUpdater` pulls from NOMADS
+2. Port into the Scala backend: `WeatherDataUpdater` pulls from NOMADS
    (NetCDF-Java reads GRIB2), and `FlightsEndpoint` returns a bumpiness
    verdict per route.
-4. Simplify deployment: the Kubernetes setup in `deployment/digital-ocean` is
+3. Simplify deployment: the Kubernetes setup in `deployment/digital-ocean` is
    overkill; one small droplet with Docker Compose is enough.
