@@ -28,7 +28,15 @@ def plot_profile():
                                     gridspec_kw={"height_ratios": [3, 1]})
 
     ax1.plot(elapsed_h, edr, color="tab:blue", linewidth=1.5,
-              label="GTG forecast (4-D: altitude + forecast hour along route)")
+              label="Forecast used (GTG 4-D, blended with GTGN nowcast in the first hour)")
+    blend = samples["gtgn_weight"] > 0
+    ax1.plot(elapsed_h[blend], samples["gtg_edr"][blend], color="tab:blue", linewidth=1,
+              linestyle="--", alpha=0.6, label="GTG forecast alone (first hour)")
+    near_ground = samples["near_ground"]
+    for idx in np.where(near_ground)[0]:
+        ax1.axvspan(max(elapsed_h[idx] - 0.02, 0), elapsed_h[idx] + 0.02, color="0.85", zorder=0)
+    if near_ground.any():
+        ax1.plot([], [], color="0.85", linewidth=6, label="Near ground (not categorised)")
     ax1.plot(elapsed_h, gtgn_fl350, color="tab:purple", linewidth=1.2, linestyle=":",
               label="GTGN nowcast, FL350, static snapshot at departure (comparison only)")
 
