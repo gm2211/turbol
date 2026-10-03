@@ -95,7 +95,7 @@ def plot_profile():
     ax1.set_ylabel("EDR (m$^{2/3}$ s$^{-1}$)")
     ax1.set_title("GTGN EDR along JFK -> LAX route\n"
                    "Threshold lines = medium/large-aircraft categories "
-                   "(GTGN User Guide, Figure 2)")
+                   "(calibrated against PIREPs, calibrate.py)")
     ax1.legend(loc="upper left", fontsize=9)
     ax1.set_xlim(0, dist_km.max())
 

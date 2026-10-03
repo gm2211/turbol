@@ -1,5 +1,18 @@
 # GTGN turbulence nowcast prototype
 
+Quick start (needs [uv](https://docs.astral.sh/uv/) and curl; about 90 MB
+download, under a minute):
+
+```bash
+cd data-pipeline
+uv sync
+uv run fetch_gtg.py && uv run route_forecast.py   # how bumpy is JFK->LAX departing ~1h after the latest forecast
+uv run plot_forecast.py                           # out/forecast_route_profile.png, out/forecast_fl350_map.png
+```
+
+`route_forecast.py` prints the worst bump, the category breakdown and a
+one-line passenger verdict.
+
 Prototype proving NOAA's operational GTGN (Graphical Turbulence Guidance
 Nowcast) data can be downloaded, decoded, and sampled along a flight route.
 See `../HANDOFF.md` for project context. `data/` and `out/` are gitignored.
@@ -110,7 +123,11 @@ Two variants are sampled and saved to `data/route_samples.npz` /
 
 ## Turbulence categories (medium aircraft)
 
-Thresholds transcribed from **Figure 2** of the GTGN "Semi-Operational"
+**Current thresholds (recalibrated 2026-10-03, see "Category
+recalibration" below): Light 0.12, Moderate 0.14, Severe 0.44, Extreme
+0.79.** The guide values below are kept in `route.GUIDE_THRESHOLDS`.
+
+Original thresholds transcribed from **Figure 2** of the GTGN "Semi-Operational"
 Data Feed User Guide PDF (`/Users/gmecocci/Downloads/GTGN Semi-Operational
 Data Feed User Guide.pdf`, page 2), table "Estimated EDR Threshold * 100",
 row **"Medium (Large)"** (ICAO 15,500-300,000 lbs MTOW, e.g. A320, B737,
@@ -126,6 +143,51 @@ MD80):
 (For reference, the guide also lists Light-aircraft thresholds
 13/16/36/64 and Heavy-aircraft thresholds 17/24/54/96, EDR*100 -- not used
 here since the route is classified for a medium aircraft.)
+
+## Category recalibration (`calibrate.py`, 2026-10-03)
+
+The guide thresholds were written for the old 13.5 km grid. `calibrate.py`
+checks them against what pilots actually reported:
+
+```bash
+uv run calibrate.py collect   # PIREPs + matching GTGN/GTG files (~5 GB streamed, each file deleted after use)
+uv run calibrate.py analyze   # thresholds, bootstrap intervals, out/calibration.png
+```
+
+Method: every CONUS PIREP with a turbulence intensity at or above 2,000 ft
+from the window NOMADS still holds (2026-10-02 00:00 to 2026-10-03 13:13
+UTC: 2,230 reports, 72% from medium aircraft), matched to the GTGN file
+within 7.5 min and to the GTG forecast at 2 h lead within 30 min. EDR is the
+max over the reported altitude or layer +-1,000 ft, at the report's grid
+cell (also computed for 10/20/40 km neighbourhoods). For each boundary the
+threshold maximises the Peirce skill score (POD - POFD), the usual GTG
+verification score. LGT-MOD counts as light-or-worse and is left out of the
+moderate fit.
+
+| Point sample | Light: best (90% CI) | PSS new / guide | Moderate: best (90% CI) | PSS new / guide |
+|---|---|---|---|---|
+| GTGN nowcast | 0.125 (0.115-0.125) | 0.28 / 0.24 | 0.135 (0.125-0.135) | 0.32 / 0.19 |
+| GTG forecast, 2 h lead | 0.110 (0.095-0.125) | 0.25 / 0.13 | 0.130 (0.110-0.130) | 0.24 / 0.07 |
+
+Findings:
+
+- Point-sampled 3 km EDR runs **lower** than the guide thresholds, not
+  higher: the median EDR at moderate PIREPs is 0.16 (GTGN) and 0.13 (GTG).
+  With the guide's 0.20, the forecast flagged only **11%** of moderate
+  PIREPs as moderate; with 0.14 it flags **44%** (false alarms on light-or-
+  smooth reports rise from 4% to 23%).
+- The guide values are about right only for a 20-40 km neighbourhood max
+  (GTGN best thresholds 0.145-0.155 light, 0.185-0.205 moderate), which is
+  roughly the footprint of the old 13.5 km grid. Skill is about the same
+  either way, so the route keeps point sampling and uses the new values.
+- Light and Moderate sit close together (0.12 vs 0.14): GTG separates
+  "bumpy" from "smooth" much better than it separates light from moderate.
+- Severe and Extreme stay at the guide's 0.44 / 0.79: only 9 MOD-SEV or SEV
+  reports in the window, too few to fit.
+- Caveats: one ~37 h autumn window; PIREPs are voluntary and over-represent
+  bumpy air. Re-run both commands on another day to check stability.
+
+![calibration](out/calibration.png) (generated locally; `out/` is gitignored)
 
 ## Route result (JFK -> LAX, FL350 cruise, gtgn.t1745z.3km.grib2)
 
