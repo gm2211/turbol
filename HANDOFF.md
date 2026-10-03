@@ -75,8 +75,10 @@ have a malformed content-length header. Don't name a script `inspect.py`.
 
 ## Next steps
 
-1. Recalibrate the categories: the 2023 thresholds were written for the old
-   13 km grid, and the 3 km data may show sharper peaks.
+1. ~~Recalibrate the categories~~ done 2026-10-03 (`calibrate.py`, README
+   "Category recalibration"): against 2,230 PIREPs, point-sampled 3 km EDR
+   runs lower than the guide, so Light/Moderate moved from 0.15/0.20 to
+   0.12/0.14. Severe/Extreme unchanged (too few severe PIREPs).
 2. Port into the Scala backend: `WeatherDataUpdater` pulls from NOMADS
    (NetCDF-Java reads GRIB2), and `FlightsEndpoint` returns a bumpiness
    verdict per route.

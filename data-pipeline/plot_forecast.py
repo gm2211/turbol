@@ -57,7 +57,7 @@ def plot_profile():
 
     ax1.set_ylabel("EDR (m$^{2/3}$ s$^{-1}$)")
     ax1.set_title("GTG v4 forecast EDR along JFK -> LAX, by time after departure\n"
-                   "Threshold lines = medium/large-aircraft categories (GTGN User Guide, Figure 2)")
+                   "Threshold lines = medium/large-aircraft categories (calibrated against PIREPs)")
     ax1.legend(loc="upper right", fontsize=8)
     ax1.set_xlim(0, elapsed_h.max())
 

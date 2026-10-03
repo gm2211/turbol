@@ -16,7 +16,7 @@ For each of the 200 great-circle route points we:
      inspect_gtg.py).
 
 Classification uses the same medium-aircraft EDR thresholds as route.py
-(0.15 / 0.20 / 0.44 / 0.79, from Figure 2 of the GTGN User Guide).
+(0.12 / 0.14 / 0.44 / 0.79, calibrated against PIREPs by calibrate.py).
 
 Two refinements on top of the raw forecast:
   - Near-ground points (target altitude below NEAR_GROUND_FT, i.e. the

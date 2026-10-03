@@ -9,17 +9,17 @@ Two variants:
      FL350 to ~0 over the last 150 km -- each point sampled at its
      nearest documented level.
 
-Turbulence categories (medium/large aircraft, e.g. A320/737) are read
-from Figure 2 of the GTGN "Semi-Operational" Data Feed User Guide
-(gtgn-info@rap.ucar.edu), "Estimated EDR Threshold * 100":
-  Medium (Large) row: Light=15, Moderate=20, Severe=44, Extreme=79
-  (values are EDR*100, i.e. divide by 100 for EDR in m^(2/3) s^-1).
-So for a medium aircraft:
-  EDR <  0.15         -> Smooth / None
-  0.15 <= EDR < 0.20   -> Light
-  0.20 <= EDR < 0.44   -> Moderate
+Turbulence categories (medium/large aircraft, e.g. A320/737), calibrated
+against 2,230 PIREPs for the 3 km grid sampled at a single grid cell
+(calibrate.py; README "Category recalibration"):
+  EDR <  0.12          -> Smooth / None
+  0.12 <= EDR < 0.14   -> Light
+  0.14 <= EDR < 0.44   -> Moderate
   0.44 <= EDR < 0.79   -> Severe
   EDR >= 0.79          -> Extreme
+Severe/Extreme keep the GTGN User Guide's Figure 2 values (too few severe
+PIREPs to fit them). The guide's full Medium (Large) row, 0.15 / 0.20 /
+0.44 / 0.79, is kept as GUIDE_THRESHOLDS for comparison.
 """
 import json
 
@@ -34,13 +34,25 @@ N_POINTS = 200
 CRUISE_FT = 35000
 RAMP_KM = 150.0  # climb/descent distance at each end
 
-# Medium/large-aircraft EDR thresholds (*100 in the guide -> /100 here).
-# Source: GTGN User Guide, Figure 2, "AC weight class" = "Medium (Large)".
-MEDIUM_THRESHOLDS = {
+# Medium/large-aircraft EDR thresholds from the GTGN User Guide, Figure 2,
+# "AC weight class" = "Medium (Large)" (EDR*100 in the guide -> /100 here).
+# Written for the old 13.5 km grid.
+GUIDE_THRESHOLDS = {
     "Light": 0.15,
     "Moderate": 0.20,
     "Severe": 0.44,
     "Extreme": 0.79,
+}
+
+# Recalibrated for the 3 km grid against PIREPs (calibrate.py, 2026-10-03):
+# the Light and Moderate cuts maximise the Peirce skill score (POD - POFD)
+# for point-sampled GTGN and GTG F002. With the guide values the forecast
+# caught only 11% of moderate PIREPs; with these, 44%.
+MEDIUM_THRESHOLDS = {
+    "Light": 0.12,
+    "Moderate": 0.14,
+    "Severe": GUIDE_THRESHOLDS["Severe"],
+    "Extreme": GUIDE_THRESHOLDS["Extreme"],
 }
 
 
@@ -178,8 +190,8 @@ def main():
         "category_pct_fl350": {c: round(100.0 * counts[c] / n, 1) for c in order},
         "verdict": verdicts[worst],
         "thresholds_medium_aircraft": MEDIUM_THRESHOLDS,
-        "thresholds_source": "GTGN Semi-Operational Data Feed User Guide, Figure 2, "
-                              "'Medium (Large)' row, EDR*100 values divided by 100",
+        "thresholds_source": "Light/Moderate calibrated against PIREPs (calibrate.py); "
+                              "Severe/Extreme from the GTGN User Guide, Figure 2",
     }
     with open(gc.DATA_DIR / "route_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
