@@ -34,6 +34,12 @@ import {ref} from 'vue'
 const rail = ref(true)
 const routes = [
   {
+    name: 'Live map',
+    path: '/map',
+    icon: forecastIcon,
+    iconOpacity: 1
+  },
+  {
     name: 'Search',
     path: 'search',
     icon: planeIcon,

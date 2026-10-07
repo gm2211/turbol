@@ -148,6 +148,7 @@ lazy val backend = project
       (Compile / compile) dependsOn (Compile / scalafmtAll)
     ).value,
     // Deps
+    resolvers += dependencies.unidataResolver,
     libraryDependencies ++= dependencies.backendDeps.value,
     libraryDependencies ++= dependencies.backendTestDeps.value,
     // Docker

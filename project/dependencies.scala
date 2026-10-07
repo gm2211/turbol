@@ -43,6 +43,10 @@ object dependencies {
   // Utils
   val apacheCommonsVersion = "2.22.0"
 
+  // Weather data (GRIB2 decoding, incl. JPEG2000-packed GTG/GTGN messages)
+  val netcdfJavaVersion = "5.11.0"
+  val unidataResolver = "Unidata" at "https://artifacts.unidata.ucar.edu/repository/unidata-all/"
+
   // Test
   val scalatestVersion = "3.2.20"
 
@@ -80,6 +84,8 @@ object dependencies {
       "io.circe" %% "circe-generic" % circeVersion,
       "io.circe" %% "circe-literal" % circeVersion,
       "io.circe" %% "circe-yaml" % circeYamlVersion,
+      // Weather data
+      "edu.ucar" % "grib" % netcdfJavaVersion,
       // Server
       "org.http4s" %% "http4s-ember-client" % http4sVersion,
       "org.http4s" %% "http4s-ember-server" % http4sVersion,
