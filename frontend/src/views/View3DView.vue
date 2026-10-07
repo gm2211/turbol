@@ -6,7 +6,8 @@
       <div class="panel-title">3D turbulence</div>
       <div class="muted">{{ selectedFrameLabel }}</div>
       <div class="muted" v-if="volume">
-        {{ voxelCount.toLocaleString() }} rough blocks shown · {{ Math.round(volume.cellKm) }} km grid
+        {{ voxelCount.toLocaleString() }} rough blocks shown · {{ Math.round(volume.cellKm) }} km
+        grid
       </div>
       <div class="muted" v-else-if="loadingVolume">Loading the turbulence volume…</div>
       <div class="d-flex align-center ga-2 mt-2">
@@ -23,12 +24,18 @@
         <v-btn color="#10324f" :loading="loadingFlight" @click="loadFlight">Show</v-btn>
       </div>
       <div class="muted mt-1" v-if="flightLabel">{{ flightLabel }}</div>
-      <v-alert v-if="error" type="warning" variant="tonal" density="compact" class="mt-2">{{ error }}</v-alert>
-      <div class="hint mt-1">Drag to pan · right-drag or Ctrl+drag to tilt and rotate · click for the column</div>
+      <v-alert v-if="error" type="warning" variant="tonal" density="compact" class="mt-2">{{
+        error
+      }}</v-alert>
+      <div class="hint mt-1">
+        Drag to pan · right-drag or Ctrl+drag to tilt and rotate · click for the column
+      </div>
     </div>
 
     <div class="panel glass-panel top-right controls">
-      <div class="text-caption">Flight level: <b>{{ flightLevel(levelFt) }}</b></div>
+      <div class="text-caption">
+        Flight level: <b>{{ flightLevel(levelFt) }}</b>
+      </div>
       <v-slider
         v-model="levelFt"
         :min="1000"
@@ -84,8 +91,19 @@
     </div>
 
     <div class="panel glass-panel right-profile" v-if="column">
-      <v-btn icon="mdi-close" size="x-small" variant="text" theme="dark" class="close" @click="column = undefined" />
-      <ColumnProfile :column="column" :level-ft="levelFt" :window="windowFt >= 60000 ? 45000 : windowFt" />
+      <v-btn
+        icon="mdi-close"
+        size="x-small"
+        variant="text"
+        theme="dark"
+        class="close"
+        @click="column = undefined"
+      />
+      <ColumnProfile
+        :column="column"
+        :level-ft="levelFt"
+        :window="windowFt >= 60000 ? 45000 : windowFt"
+      />
     </div>
 
     <div class="bottom-left">
@@ -98,7 +116,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Deck, type Layer, type PickingInfo, WebMercatorViewport } from '@deck.gl/core'
-import { BitmapLayer, LineLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer } from '@deck.gl/layers'
+import {
+  BitmapLayer,
+  LineLayer,
+  PathLayer,
+  ScatterplotLayer,
+  SolidPolygonLayer
+} from '@deck.gl/layers'
 import { TileLayer } from '@deck.gl/geo-layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
 import { CubeGeometry } from '@luma.gl/engine'
@@ -245,7 +269,11 @@ function buildLayers(): Layer[] {
       tileSize: 256,
       renderSubLayers: (props) => {
         const [[west, south], [east, north]] = props.tile.boundingBox
-        return new BitmapLayer(props, { data: undefined, image: props.data, bounds: [west, south, east, north] })
+        return new BitmapLayer(props, {
+          data: undefined,
+          image: props.data,
+          bounds: [west, south, east, north]
+        })
       }
     })
   ]
@@ -339,6 +367,8 @@ function buildLayers(): Layer[] {
         widthUnits: 'pixels',
         capRounded: true,
         billboard: true,
+        // Drawn over the voxels so the route stays visible where it flies through rough air.
+        parameters: { depthCompare: 'always' },
         updateTriggers: { getPath: exaggeration.value }
       })
     )
@@ -358,6 +388,7 @@ function buildLayers(): Layer[] {
         lineWidthMinPixels: 2,
         stroked: true,
         billboard: true,
+        parameters: { depthCompare: 'always' },
         updateTriggers: { getPosition: exaggeration.value }
       })
     )
@@ -384,16 +415,35 @@ function render() {
   deck?.setProps({ layers: buildLayers() })
 }
 
-async function onClick(info: PickingInfo) {
+// Deck's onClick didn't fire in Chromium with deck.gl 9.4 (its click recognizer waits on the double-click-drag one),
+// so clicks are picked by hand, ignoring clicks that end a drag.
+let downAt: [number, number] = [0, 0]
+function onPointerDown(e: PointerEvent) {
+  downAt = [e.offsetX, e.offsetY]
+}
+
+function onCanvasClick(e: MouseEvent) {
+  if (!deck || Math.hypot(e.offsetX - downAt[0], e.offsetY - downAt[1]) > 4) return
+  const info = deck.pickObject({ x: e.offsetX, y: e.offsetY, radius: 2, layerIds: ['voxels'] })
+  const v = info?.object as Voxel | undefined
+  const ground = deck.getViewports()[0]?.unproject([e.offsetX, e.offsetY])
+  const [lon, lat] = v ? [v.lon, v.lat] : (ground ?? [])
+  showColumn(lat, lon)
+}
+
+async function showColumn(lat?: number, lon?: number) {
   const frame = selectedFrame.value
   if (!frame) return
-  const v = info.object as Voxel | undefined
-  const [lon, lat] = v ? [v.lon, v.lat] : (info.coordinate ?? [])
   if (lat === undefined || lon === undefined) return
   try {
     column.value = await fetchColumn(frame.id, lat, lon)
   } catch (e) {
+    // Usually a newer nowcast replaced this frame: reload the frames, then retry on the new one.
     console.warn('column fetch failed', e)
+    status.value = await fetchStatus().catch(() => status.value)
+    const latest = selectedFrame.value
+    if (latest && latest.id !== frame.id)
+      column.value = await fetchColumn(latest.id, lat, lon).catch(() => undefined)
   }
 }
 
@@ -441,7 +491,14 @@ function flyTo(south: number, west: number, north: number, east: number) {
     { padding: Math.min(width, height) * 0.2 }
   )
   deck.setProps({
-    initialViewState: { longitude, latitude, zoom: zoom - 0.3, pitch: 55, bearing: -15, maxPitch: 85 }
+    initialViewState: {
+      longitude,
+      latitude,
+      zoom: zoom - 0.3,
+      pitch: 55,
+      bearing: -15,
+      maxPitch: 85
+    }
   })
 }
 
@@ -471,7 +528,8 @@ async function loadFlight() {
     flightLabel.value = `${r.iataCallsign ?? r.callsign}: ${r.origin.code} → ${r.destination.code}, cruise ${flightLevel(
       analysis.value.cruiseAltitudeFt
     )}`
-    levelFt.value = Math.round((lookup.live?.altitudeFt ?? analysis.value.cruiseAltitudeFt) / 1000) * 1000
+    levelFt.value =
+      Math.round((lookup.live?.altitudeFt ?? analysis.value.cruiseAltitudeFt) / 1000) * 1000
     const lats = analysis.value.points.map((p) => p.lat)
     const lons = analysis.value.points.map((p) => p.lon)
     flyTo(Math.min(...lats), Math.min(...lons), Math.max(...lats), Math.max(...lons))
@@ -493,12 +551,20 @@ let statusTimer: number | undefined
 onMounted(async () => {
   deck = new Deck({
     parent: mapEl.value,
-    initialViewState: { longitude: -97, latitude: 36.5, zoom: 3.7, pitch: 55, bearing: -15, maxPitch: 85 },
+    initialViewState: {
+      longitude: -97,
+      latitude: 36.5,
+      zoom: 3.7,
+      pitch: 55,
+      bearing: -15,
+      maxPitch: 85
+    },
     controller: true,
     layers: buildLayers(),
-    onClick,
     getTooltip: tooltip
   })
+  mapEl.value!.addEventListener('pointerdown', onPointerDown)
+  mapEl.value!.addEventListener('click', onCanvasClick)
   try {
     status.value = await fetchStatus()
   } catch (e) {

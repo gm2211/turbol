@@ -56,6 +56,9 @@
             Follow live
           </v-btn>
         </span>
+        <v-btn size="small" color="#10324f" variant="tonal" class="ml-2" :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`">
+          View in 3D
+        </v-btn>
       </div>
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-3" density="compact">{{ error }}</v-alert>
     </v-card>

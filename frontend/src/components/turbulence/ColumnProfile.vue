@@ -23,17 +23,24 @@
           :y="y(b.top)"
           :width="barWidth"
           :height="Math.max(y(b.bottom) - y(b.top) - 0.5, 0.5)"
-          :fill="b.level.category === 'NoData' ? 'rgba(200, 200, 200, 0.4)' : categoryColors[b.level.category]"
+          :fill="
+            b.level.category === 'NoData'
+              ? 'rgba(200, 200, 200, 0.4)'
+              : categoryColors[b.level.category]
+          "
           :fill-opacity="b.level.category === 'Smooth' ? 0.35 : 0.9"
         >
           <title>
-            {{ flightLevel(b.levelFt) }}: {{ categoryLabels[b.level.category] }}{{ b.level.edr !== undefined ? ` (EDR ${b.level.edr.toFixed(2)})` : '' }}
+            {{ flightLevel(b.levelFt) }}: {{ categoryLabels[b.level.category]
+            }}{{ b.level.edr !== undefined ? ` (EDR ${b.level.edr.toFixed(2)})` : '' }}
           </title>
         </rect>
       </g>
       <g v-for="t in ticks" :key="t">
         <line :x1="axisX - 4" :x2="axisX" :y1="y(t)" :y2="y(t)" stroke="rgba(255, 255, 255, 0.5)" />
-        <text :x="axisX - 7" :y="y(t) + 3.5" text-anchor="end" class="tick">{{ tickLabel(t) }}</text>
+        <text :x="axisX - 7" :y="y(t) + 3.5" text-anchor="end" class="tick">
+          {{ tickLabel(t) }}
+        </text>
       </g>
       <rect
         :x="axisX - 2"
@@ -44,8 +51,17 @@
         stroke="white"
         stroke-dasharray="3 2"
       />
-      <line :x1="axisX - 6" :x2="axisX + barWidth + 6" :y1="y(levelFt)" :y2="y(levelFt)" stroke="white" stroke-width="2" />
-      <text :x="axisX + barWidth + 8" :y="y(levelFt) + 4" class="fl">{{ flightLevel(levelFt) }}</text>
+      <line
+        :x1="axisX - 6"
+        :x2="axisX + barWidth + 6"
+        :y1="y(levelFt)"
+        :y2="y(levelFt)"
+        stroke="white"
+        stroke-width="2"
+      />
+      <text :x="axisX + barWidth + 8" :y="y(levelFt) + 4" class="fl">
+        {{ flightLevel(levelFt) }}
+      </text>
     </svg>
   </div>
 </template>
@@ -70,7 +86,8 @@ const barWidth = 56
 const maxFt = 45000
 const y = (ft: number) => 8 + (1 - Math.min(ft, maxFt) / maxFt) * (height - 16)
 const ticks = [0, 10000, 20000, 30000, 40000]
-const tickLabel = (ft: number) => (ft === 0 ? 'SFC' : ft >= 18000 ? `FL${ft / 100}` : `${ft / 1000}k ft`)
+const tickLabel = (ft: number) =>
+  ft === 0 ? 'SFC' : ft >= 18000 ? `FL${ft / 100}` : `${ft / 1000}k ft`
 
 /** Each level drawn from halfway to the level below up to halfway to the level above. */
 const bands = computed(() => {
@@ -79,20 +96,39 @@ const bands = computed(() => {
     const prev = levels[i - 1]?.levelFt
     const next = levels[i + 1]?.levelFt
     const bottom = prev === undefined ? 0 : (prev + level.levelFt) / 2
-    const top = next === undefined ? Math.min(level.levelFt + 1000, maxFt) : (next + level.levelFt) / 2
+    const top =
+      next === undefined ? Math.min(level.levelFt + 1000, maxFt) : (next + level.levelFt) / 2
     return { levelFt: level.levelFt, level, bottom, top }
   })
 })
 
-const rank: Record<TurbulenceCategory, number> = { NoData: -1, Smooth: 0, Light: 1, Moderate: 2, Severe: 3, Extreme: 4 }
+const rank: Record<TurbulenceCategory, number> = {
+  NoData: -1,
+  Smooth: 0,
+  Light: 1,
+  Moderate: 2,
+  Severe: 3,
+  Extreme: 4
+}
 function worst(levels: ColumnLevel[]): TurbulenceCategory {
-  return levels.reduce<TurbulenceCategory>((w, l) => (rank[l.category] > rank[w] ? l.category : w), 'NoData')
+  return levels.reduce<TurbulenceCategory>(
+    (w, l) => (rank[l.category] > rank[w] ? l.category : w),
+    'NoData'
+  )
 }
 const worstAbove = computed(() =>
-  worst(props.column.levels.filter((l) => l.levelFt > props.levelFt && l.levelFt <= props.levelFt + props.window))
+  worst(
+    props.column.levels.filter(
+      (l) => l.levelFt > props.levelFt && l.levelFt <= props.levelFt + props.window
+    )
+  )
 )
 const worstBelow = computed(() =>
-  worst(props.column.levels.filter((l) => l.levelFt < props.levelFt && l.levelFt >= props.levelFt - props.window))
+  worst(
+    props.column.levels.filter(
+      (l) => l.levelFt < props.levelFt && l.levelFt >= props.levelFt - props.window
+    )
+  )
 )
 const atLevel = computed(() => {
   const nearest = [...props.column.levels].sort(

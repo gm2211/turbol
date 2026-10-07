@@ -126,7 +126,10 @@ function popupHtml(a: AircraftView): string {
     `${flightLevel(a.altitudeFt)} · ${Math.round(a.groundSpeedKts ?? 0)} kt<br/>` +
     `Turbulence now: <b style="color:${categoryColors[a.category]}">${categoryLabels[a.category]}</b>${edr}` +
     `<br/><a href="/follow/${a.hex}">Follow live</a>` +
-    (a.callsign ? ` · <a href="/analyze?q=${encodeURIComponent(a.callsign)}">Analyze flight</a>` : '') +
+    (a.callsign
+      ? ` · <a href="/analyze?q=${encodeURIComponent(a.callsign)}">Analyze flight</a>` +
+        ` · <a href="/3d?q=${encodeURIComponent(a.callsign)}">3D</a>`
+      : '') +
     `</div>`
   )
 }
