@@ -1,20 +1,16 @@
 # Running turbol locally
 
-Needs Docker (for Postgres), JDK 21, sbt and Node 22.
+Needs Docker, JDK 21+ and Node 22+ (sbt is optional: `./sbtw` is used if it's missing).
 
 ```bash
-# 1. Postgres (airport search lives there)
-docker compose -f dev/docker-compose.yml up -d
-
-# 2. Backend on :8081 (first start downloads the latest GTG-N nowcast in ~15 s,
-#    then the 18-hour GTG forecast in ~2 min; both are cached in var/data/turbulence)
-dev/run-backend.sh
-
-# 3. Frontend on :5173 (talks to the backend on :8081)
-cd frontend && npm ci && npm run dev
+./run.sh
 ```
 
-Open http://localhost:5173.
+It starts Postgres in Docker, runs `npm ci` when the frontend's dependencies changed, then runs the backend on :8081 and the frontend on :5173. Open http://localhost:5173. Ctrl-C stops everything (`KEEP_DB=1 ./run.sh` leaves Postgres running).
+
+The first start builds the backend, downloads the latest GTG-N nowcast (~15 s) and then the 18-hour GTG forecast (~2 min); both are cached in `var/data/turbulence`.
+
+To run the pieces separately: `docker compose -f dev/docker-compose.yml up -d`, `dev/run-backend.sh`, and `cd frontend && npm run dev`.
 
 ## Data sources
 
