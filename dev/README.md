@@ -22,7 +22,7 @@ Open http://localhost:5173.
 | --- | --- | --- |
 | Turbulence now | NOAA GTG-N nowcast via NOMADS (`gtgn/prod`) | every 15 min, 3 km, CONUS, 51 levels |
 | Turbulence ahead | NOAA GTG v4 forecast via NOMADS (`dafs/prod`) | hourly cycles, F001-F018, 12 levels fetched by HTTP Range |
-| Live aircraft | [adsb.lol](https://api.adsb.lol) | keyless, ODbL; 250 nm circles cached 30 s |
+| Live aircraft | [adsb.lol](https://api.adsb.lol) | keyless, ODbL; 250 nm circles cached 90 s, throttled to 24 requests/min |
 | Basemap | Esri World Light Gray Canvas | keyless |
 
 All of them are free and need no API key. Turbulence coverage is the contiguous US and nearby (the GTG grid).
@@ -33,3 +33,6 @@ All of them are free and need no API key. Turbulence coverage is the contiguous 
 - `GET /api/turbulence/tiles/{frameId}/{levelFt}/{z}/{x}/{y}.png`: map overlay tiles
 - `GET /api/turbulence/point?lat=..&lon=..&alt=..[&time=epochSeconds]`: EDR and category at a point
 - `GET /api/live/aircraft?south=..&west=..&north=..&east=..`: live aircraft with the turbulence each one is in
+- `GET /api/flights/lookup?q=UA1517`: route (adsbdb) and live position for a flight number or callsign
+- `POST /api/flights/analyze`: turbulence forecast along a flight, gate to gate
+- `GET /api/live/flights/{hex}/stream`: server-sent events, one update every 10 s for a followed flight

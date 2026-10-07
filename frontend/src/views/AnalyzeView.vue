@@ -52,6 +52,9 @@
         {{ lookup.route.origin.code }} → {{ lookup.route.destination.code }}
         <span v-if="lookup.live">
           · <b class="text-green-darken-2">in the air now</b> at {{ flightLevel(lookup.live.altitudeFt) }}
+          <v-btn size="small" color="green" variant="tonal" class="ml-2" :to="`/follow/${lookup.live.hex}`">
+            Follow live
+          </v-btn>
         </span>
       </div>
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-3" density="compact">{{ error }}</v-alert>

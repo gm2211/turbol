@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LiveMapView from '@/views/LiveMapView.vue'
 import AnalyzeView from '@/views/AnalyzeView.vue'
+import FollowView from '@/views/FollowView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -18,6 +19,11 @@ const router = createRouter({
       path: '/analyze',
       name: 'analyze',
       component: AnalyzeView
+    },
+    {
+      path: '/follow/:hex?',
+      name: 'follow',
+      component: FollowView
     }
   ]
 })

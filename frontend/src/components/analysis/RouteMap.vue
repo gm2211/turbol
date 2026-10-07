@@ -8,7 +8,7 @@ import L from 'leaflet'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Place, RoutePoint } from '@/api/flights'
 import type { AircraftView } from '@/api/turbulence'
-import { categoryColors, flightLevel } from '@/api/turbulence'
+import { categoryColors, flightLevel, tileUrl } from '@/api/turbulence'
 import { planeIcon } from '@/components/turbulence/planeIcon'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 
@@ -20,15 +20,31 @@ const props = defineProps<{
   trail?: [number, number][]
   worst?: [number, number]
   follow?: boolean
+  overlay?: { frameId: string; levelFt: number }
 }>()
 
 const mapEl = ref<HTMLDivElement>()
 let map: L.Map | undefined
 const layers = L.layerGroup()
 let fitted = false
+let overlayLayer: L.TileLayer | undefined
+let overlayKey = ''
+
+/** Optional turbulence tiles (e.g. the nowcast at the followed aircraft's altitude). */
+function drawOverlay() {
+  if (!map) return
+  const key = props.overlay ? `${props.overlay.frameId}/${props.overlay.levelFt}` : ''
+  if (key === overlayKey) return
+  overlayKey = key
+  if (overlayLayer) map.removeLayer(overlayLayer)
+  overlayLayer = props.overlay
+    ? L.tileLayer(tileUrl(props.overlay.frameId, props.overlay.levelFt), { opacity: 0.7, maxNativeZoom: 9 }).addTo(map)
+    : undefined
+}
 
 function draw() {
   if (!map) return
+  drawOverlay()
   layers.clearLayers()
   // One polyline per run of same-category points, so the route reads like a turbulence ribbon.
   const pts = props.points
@@ -70,7 +86,7 @@ function draw() {
 }
 
 watch(
-  () => [props.points, props.aircraft, props.trail],
+  () => [props.points, props.aircraft, props.trail, props.overlay],
   () => {
     if (!props.follow) fitted = false
     draw()
@@ -78,7 +94,7 @@ watch(
 )
 
 onMounted(() => {
-  map = L.map(mapEl.value!, { worldCopyJump: true }).setView([39.5, -97], props.follow ? 7 : 4)
+  map = L.map(mapEl.value!, { worldCopyJump: true }).setView([39.5, -97], props.follow ? 6 : 4)
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
   layers.addTo(map)
   draw()

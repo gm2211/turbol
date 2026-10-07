@@ -18,7 +18,12 @@ import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 import java.time.Instant
 import scala.util.Try
 
-final case class FlightLookup(query: String, callsign: Option[String], route: Option[FlightRoute], live: Option[AircraftView])
+final case class FlightLookup(
+  query: String,
+  callsign: Option[String],
+  route: Option[FlightRoute],
+  live: Option[AircraftView]
+)
 
 final case class AnalyzeRequest(
   origin: Place,
