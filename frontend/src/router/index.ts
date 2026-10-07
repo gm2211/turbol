@@ -1,8 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import FlightsSearchView from '../views/FlightSearchView.vue'
-import ForecastView from "@/views/ForecastView.vue";
 import LiveMapView from '@/views/LiveMapView.vue'
-
+import AnalyzeView from '@/views/AnalyzeView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -17,19 +15,9 @@ const router = createRouter({
       component: LiveMapView
     },
     {
-      path: '/search',
-      name: 'search',
-      component: FlightsSearchView
-    },
-    {
-      path: '/forecast',
-      name: 'forecast-no-selection',
-      component: ForecastView
-    },
-    {
-      path: '/forecast/:flightNumber/:dateInEpochDays',
-      name: 'forecast-with-selection',
-      component: ForecastView
+      path: '/analyze',
+      name: 'analyze',
+      component: AnalyzeView
     }
   ]
 })

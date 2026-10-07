@@ -10,7 +10,6 @@ import cats.effect.IO
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.generic.auto.*
-import io.circe.Encoder
 import org.http4s.circe.*
 import org.http4s.headers.{`Cache-Control`, `Content-Type`}
 import org.http4s.{CacheDirective, HttpRoutes, MediaType}
@@ -36,8 +35,6 @@ final case class PointTurbulence(
 )
 
 object TurbulenceEndpoint {
-  given Encoder[EdrSource] = Encoder.encodeString.contramap(_.toString)
-
   def frameId(frame: EdrFrame): String = frame.kind match {
     case FrameKind.Nowcast => s"n${frame.validTime.getEpochSecond}"
     case FrameKind.Forecast => s"f${frame.issued.getEpochSecond}-${frame.validTime.getEpochSecond}"
@@ -49,7 +46,7 @@ object TurbulenceEndpoint {
 
 /** GTGN/GTG data for the map: what's loaded, map tiles per frame and level, and point queries. */
 final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer) extends Endpoint with BackendSerialization {
-  import TurbulenceEndpoint.{*, given}
+  import TurbulenceEndpoint.*
 
   private object LatParam extends QueryParamDecoderMatcher[Double]("lat")
   private object LonParam extends QueryParamDecoderMatcher[Double]("lon")

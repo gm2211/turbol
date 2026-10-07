@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.modules
 
-import com.gm2211.turbol.endpoints.{AirportsEndpoint, FrontendConfigEndpoint, LiveEndpoint, TurbulenceEndpoint}
+import com.gm2211.turbol.endpoints.{AirportsEndpoint, FlightsEndpoint, FrontendConfigEndpoint, LiveEndpoint, TurbulenceEndpoint}
 import com.softwaremill.macwire.{wire, Module}
 
 import scala.annotation.unused
@@ -17,5 +17,7 @@ class EndpointsModule(servicesModule: ServicesModule, @unused configModule: Conf
   lazy val frontendConfigEndpoint: FrontendConfigEndpoint = wire[FrontendConfigEndpoint]
   lazy val turbulenceEndpoint: TurbulenceEndpoint =
     TurbulenceEndpoint(servicesModule.turbulenceStore, servicesModule.tileRenderer)
+  lazy val flightsEndpoint: FlightsEndpoint =
+    FlightsEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
   lazy val liveEndpoint: LiveEndpoint = LiveEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
 }
