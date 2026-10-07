@@ -22,7 +22,7 @@ Open http://localhost:5173.
 | --- | --- | --- |
 | Turbulence now | NOAA GTG-N nowcast via NOMADS (`gtgn/prod`) | every 15 min, 3 km, CONUS, 51 levels |
 | Turbulence ahead | NOAA GTG v4 forecast via NOMADS (`dafs/prod`) | hourly cycles, F001-F018, 12 levels fetched by HTTP Range |
-| Live aircraft | [adsb.lol](https://api.adsb.lol) | keyless, ODbL; 250 nm circles cached 90 s, throttled to 24 requests/min |
+| Live aircraft | [adsb.lol](https://api.adsb.lol) | keyless, ODbL; 250 nm circles cached 60 s (180 s for a whole-country view, positions dead-reckoned), throttled to 24 requests/min |
 | Basemap | Esri World Light Gray Canvas | keyless |
 
 All of them are free and need no API key. Turbulence coverage is the contiguous US and nearby (the GTG grid).

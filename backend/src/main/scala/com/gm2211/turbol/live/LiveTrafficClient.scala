@@ -55,7 +55,7 @@ object LiveTrafficClient {
 
   /**
    * adsb.lol rate-limits per client: measured ~22 requests at 1/s before a 429, so every call goes through this token
-   * bucket (burst of 15, then one request every 2.5 s, i.e. 24/min sustained).
+   * bucket (burst of 15, then one request every 2.5 s, i.e. 24/min sustained). Map-cell fetches are background calls.
    */
   private object Throttle {
     private val capacity = 15.0
@@ -63,16 +63,19 @@ object LiveTrafficClient {
     private var tokens = capacity
     private var last = System.currentTimeMillis()
 
-    def acquire(): Unit = synchronized {
-      val now = System.currentTimeMillis()
-      tokens = math.min(capacity, tokens + (now - last) / refillMs)
-      last = now
-      if (tokens < 1) {
-        Thread.sleep(((1 - tokens) * refillMs).toLong)
-        last = System.currentTimeMillis()
-        tokens = 1
-      }
-      tokens -= 1
+    /** Background callers keep `reserve` tokens free so a followed flight or a lookup never queues behind the map. */
+    def acquire(reserve: Double): Unit = {
+      var waitMs = 0L
+      while ({
+        waitMs = synchronized {
+          val now = System.currentTimeMillis()
+          tokens = math.min(capacity, tokens + (now - last) / refillMs)
+          last = now
+          if (tokens >= 1 + reserve) { tokens -= 1; 0L }
+          else ((1 + reserve - tokens) * refillMs).toLong.max(1L)
+        }
+        waitMs > 0
+      }) Thread.sleep(waitMs)
     }
 
     def backOff(ms: Long): Unit = synchronized {
@@ -81,8 +84,8 @@ object LiveTrafficClient {
     }
   }
 
-  private def adsbLolGet(url: String): String = {
-    Throttle.acquire()
+  private def adsbLolGet(url: String, background: Boolean = false): String = {
+    Throttle.acquire(if (background) 3.0 else 0.0)
     try Http.getString(url, attempts = 1)
     catch {
       case e: RuntimeException if Option(e.getMessage).exists(_.startsWith("HTTP 429")) =>
@@ -92,7 +95,7 @@ object LiveTrafficClient {
   }
 
   def aircraftAround(lat: Double, lon: Double, radiusNm: Int): (Instant, Seq[LiveAircraft]) =
-    parseAircraftList(adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm"))
+    parseAircraftList(adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = true))
 
   def byHex(hex: String): Option[LiveAircraft] =
     parseAircraftList(adsbLolGet(s"$adsbLol/hex/${enc(hex.toLowerCase)}"))._2.headOption

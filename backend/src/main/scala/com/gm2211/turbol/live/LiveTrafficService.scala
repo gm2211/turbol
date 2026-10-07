@@ -7,6 +7,7 @@
 package com.gm2211.turbol.live
 
 import com.gm2211.logging.BackendLogging
+import com.gm2211.turbol.turbulence.RouteAnalyzer
 import com.google.common.cache.{Cache, CacheBuilder}
 
 import java.time.{Duration, Instant}
@@ -43,7 +44,7 @@ final class LiveTrafficService extends BackendLogging {
     def fetchedAt(c: Cell): Instant = Option(cells.get(c)).fold(Instant.EPOCH)(_._1)
     // Never-fetched and oldest cells first (so the edges of a wide view fill in), then closest to the centre.
     val stale = wanted
-      .filter(c => Duration.between(fetchedAt(c), now).compareTo(cellTtl) > 0)
+      .filter(c => Duration.between(fetchedAt(c), now).compareTo(ttlFor(wanted.size)) > 0)
       .sortBy(c => (fetchedAt(c), math.abs(c.lat - centerLat) + math.abs(c.lon - centerLon)))
     // Fetch in the background (adsb.lol is throttled, see LiveTrafficClient); wait briefly so a first view isn't empty.
     val queued = stale.filter(c => inFlight.add(c)).take(maxFetchesPerRequest)
@@ -58,7 +59,10 @@ final class LiveTrafficService extends BackendLogging {
       }
     }
     Try(Await.result(Future.sequence(fetched), firstResponseWait)): Unit
-    val all = wanted.flatMap(c => Option(cells.get(c))).flatMap(_._2)
+    // Dead-reckon each aircraft from its last report, so positions from older cells still line up on the map.
+    val all = wanted.flatMap(c => Option(cells.get(c))).flatMap { case (fetched, aircraft) =>
+      aircraft.map(a => extrapolate(a, Duration.between(fetched, now).toMillis / 1000.0 + a.seenSecondsAgo))
+    }
     val inBox = all
       .filter(a => a.lat >= south && a.lat <= north && a.lon >= west && a.lon <= east)
       .groupBy(_.hex)
@@ -77,7 +81,17 @@ object LiveTrafficService {
   val cellRadiusNm = 250 // adsb.lol's maximum
   val maxFetchesPerRequest = 20
   private val firstResponseWait = 4.seconds
-  private val cellTtl = Duration.ofSeconds(90)
+  // A whole-country view is more cells than the API budget refreshes quickly, but planes there are a few pixels wide.
+  private def ttlFor(cellsInView: Int): Duration =
+    if (cellsInView > 24) Duration.ofSeconds(180) else Duration.ofSeconds(60)
+
+  private[live] def extrapolate(a: LiveAircraft, ageSeconds: Double): LiveAircraft =
+    (a.groundSpeedKts, a.trackDeg) match {
+      case (Some(gs), Some(track)) if !a.onGround && ageSeconds > 1 && ageSeconds < 300 =>
+        val (lat, lon) = RouteAnalyzer.destination(a.lat, a.lon, track, gs * 1.852 * ageSeconds / 3600)
+        a.copy(lat = lat, lon = lon)
+      case _ => a
+    }
   private val maxCells = 120
 
   /** Lattice cell centres covering a bounding box; longitude spacing widens with latitude to keep cells ~square. */
