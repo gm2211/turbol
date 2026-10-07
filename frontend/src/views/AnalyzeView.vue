@@ -1,6 +1,6 @@
 <template>
   <div class="analyze-page">
-    <v-card class="pa-4 mb-3">
+    <v-card class="glass pa-4 mb-3">
       <v-tabs v-model="mode" density="compact" class="mb-3">
         <v-tab value="flight">Flight number</v-tab>
         <v-tab value="route">Route</v-tab>
@@ -43,7 +43,7 @@
           />
         </v-col>
         <v-col cols="12" md="1">
-          <v-btn color="primary" size="large" :loading="loading" block @click="analyze">Analyze</v-btn>
+          <v-btn color="#10324f" size="large" :loading="loading" block @click="analyze">Analyze</v-btn>
         </v-col>
       </v-row>
       <div v-if="lookup?.route" class="mt-3 text-body-2">
@@ -63,7 +63,7 @@
     <template v-if="analysis">
       <v-row density="compact">
         <v-col cols="12" md="4">
-          <v-card class="pa-4 fill-height">
+          <v-card class="glass pa-4 fill-height">
             <div class="text-overline">Forecast verdict</div>
             <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" class="mb-2" label>
               Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
@@ -105,7 +105,7 @@
           </v-card>
         </v-col>
         <v-col cols="12" md="8">
-          <v-card class="pa-2 map-card">
+          <v-card class="glass pa-2 map-card">
             <RouteMap
               :points="analysis.points"
               :origin="analyzedOrigin"
@@ -116,7 +116,7 @@
           </v-card>
         </v-col>
       </v-row>
-      <v-card class="pa-4 mt-3">
+      <v-card class="glass pa-4 mt-3">
         <div class="text-subtitle-2 mb-2">Turbulence timeline</div>
         <TimelineBar
           :segments="analysis.segments"
@@ -283,7 +283,7 @@ onMounted(async () => {
 .stats span {
   display: block;
   font-size: 11px;
-  color: #64748b;
+  color: var(--my-text-muted);
   text-transform: uppercase;
 }
 .cat-row {
@@ -301,6 +301,6 @@ onMounted(async () => {
   border-radius: 2px;
 }
 .muted {
-  color: #64748b;
+  color: var(--my-text-muted);
 }
 </style>

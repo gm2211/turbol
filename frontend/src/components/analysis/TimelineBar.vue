@@ -41,7 +41,7 @@ const total = computed(() => Math.max(props.segments.at(-1)?.endMinute ?? 1, 1))
   height: 18px;
   border-radius: 9px;
   overflow: hidden;
-  background: #e2e8f0;
+  background: var(--my-grey);
 }
 .seg {
   position: absolute;
@@ -53,13 +53,13 @@ const total = computed(() => Math.max(props.segments.at(-1)?.endMinute ?? 1, 1))
   top: -2px;
   bottom: -2px;
   width: 3px;
-  background: #0f172a;
+  background: var(--my-blue-solid);
 }
 .ticks {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #475569;
+  color: var(--my-text-muted);
   margin-top: 2px;
 }
 </style>

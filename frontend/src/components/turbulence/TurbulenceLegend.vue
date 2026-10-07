@@ -1,5 +1,5 @@
 <template>
-  <div class="legend">
+  <div class="legend glass-panel">
     <div class="legend-title">{{ title }}</div>
     <div v-for="c in categories" :key="c" class="legend-row">
       <span class="swatch" :style="{ background: categoryColors[c] }" />
@@ -17,12 +17,9 @@ const categories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe
 
 <style scoped>
 .legend {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
   line-height: 18px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 .legend-title {
   font-weight: 600;
