@@ -38,3 +38,6 @@ poetry.lock
 # vim
 *.swp
 *.swo
+
+# turbulence data cache (TURBOL_DATA_DIR)
+/var/data/

@@ -61,6 +61,11 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
     appServer
       .use(_ =>
         for {
+          _ <- appModule
+            .backgroundJobsModule
+            .turbulenceDataUpdater
+            .runForever(MoreExecutors.fixed("turbulence-data", 1).executionContext)
+            .start
           _ <-
             appModule.backgroundJobsModule.airportDataUpdater.runForever(MoreExecutors.fixed("bg", 1).executionContext)
           _ <- IO.never

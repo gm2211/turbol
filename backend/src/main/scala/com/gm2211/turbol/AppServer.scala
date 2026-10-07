@@ -40,7 +40,9 @@ object AppServer extends BackendLogging {
       LazyList[Endpoint](
         appModule.endpointsModule.airportsEndpoint,
         FlightsEndpoint,
-        appModule.endpointsModule.frontendConfigEndpoint
+        appModule.endpointsModule.frontendConfigEndpoint,
+        appModule.endpointsModule.turbulenceEndpoint,
+        appModule.endpointsModule.liveEndpoint
       )
         .map(endpoint => s"/api/${endpoint.basePath.dropWhile(_ == '/')}" -> endpoint.routes)
         .toList
