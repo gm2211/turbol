@@ -6,7 +6,7 @@ import '../../assets/style/base.css'
     <v-row no-gutters>
       <v-col/>
       <v-col md="auto" class="mx-auto">
-        <v-avatar style="min-height: 64px; width: 200px">
+        <v-avatar variant="text" rounded="0" style="min-height: 64px; width: 200px">
           <a style="height: 100%; width: 100%" href="/">
             <v-img :src="logo" cover alt="Turbol"/>
           </a>
