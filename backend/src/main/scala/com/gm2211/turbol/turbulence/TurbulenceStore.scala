@@ -6,12 +6,18 @@
 
 package com.gm2211.turbol.turbulence
 
+import io.circe.Encoder
+
 import java.time.{Duration, Instant}
 import java.util.concurrent.atomic.AtomicReference
 
 /** Where a sampled EDR value came from. */
 enum EdrSource {
   case Nowcast, Forecast, Blend, NoData
+}
+
+object EdrSource {
+  given Encoder[EdrSource] = Encoder.encodeString.contramap(_.toString)
 }
 
 final case class EdrSample(edr: Double, source: EdrSource)

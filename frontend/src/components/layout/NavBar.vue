@@ -40,16 +40,10 @@ const routes = [
     iconOpacity: 1
   },
   {
-    name: 'Search',
-    path: 'search',
+    name: 'Analyze a flight',
+    path: '/analyze',
     icon: planeIcon,
     iconOpacity: 0.58
-  },
-  {
-    name: 'Forecast',
-    path: 'forecast',
-    icon: forecastIcon,
-    iconOpacity: 1
   }
 ]
 </script>

@@ -15,6 +15,14 @@ export interface TurbulenceStatus {
   nowcast?: FrameInfo
   forecast: FrameInfo[]
   coverage: { south: number; west: number; north: number; east: number }
+  thresholds: Record<AircraftClass, Thresholds>
+}
+
+export interface Thresholds {
+  light: number
+  moderate: number
+  severe: number
+  extreme: number
 }
 
 export interface AircraftView {
