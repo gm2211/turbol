@@ -24,6 +24,12 @@ const router = createRouter({
       path: '/follow/:hex?',
       name: 'follow',
       component: FollowView
+    },
+    {
+      path: '/3d',
+      name: '3d',
+      // deck.gl is large: load it only when the 3D view opens.
+      component: () => import('@/views/View3DView.vue')
     }
   ]
 })

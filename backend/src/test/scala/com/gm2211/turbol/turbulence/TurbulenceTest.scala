@@ -30,6 +30,42 @@ class TurbulenceTest extends BaseTest {
     reference.foreach { case (lat, lon, expected) => LambertGrid.nearestIndex(lat, lon) shouldBe expected }
   }
 
+  test("grid coordinates map back to the lat/lon they came from") {
+    reference.foreach { case (lat, lon, _) =>
+      val (fi, fj) = LambertGrid.fractionalIndex(lat, lon)
+      val (lat2, lon2) = LambertGrid.latLonAt(fi, fj)
+      lat2 shouldBe lat +- 1e-6
+      lon2 shouldBe lon +- 1e-6
+    }
+  }
+
+  test("3D volume drops lone rough points but always shows severe ones") {
+    val frame = uniformFrame(FrameKind.Nowcast, Instant.EPOCH, Map(30000 -> 0.05, 35000 -> 0.05))
+    val index = LambertGrid.nearestIndex(39.0, -98.0)
+    frame.levels(30000).data.put(index, EdrLayer.encode(0.30f)) // Moderate, 1 of 64 points: hidden
+    frame.levels(35000).data.put(index, EdrLayer.encode(0.50f)) // Severe: always shown
+    val volume = VolumeSampler().volume("test", frame, 8)
+    volume.voxels.length shouldBe 4
+    volume.voxels(0) / 100.0 shouldBe 39.0 +- 0.2
+    volume.voxels(1) / 100.0 shouldBe -98.0 +- 0.2
+    volume.levelsFt(volume.voxels(2)) shouldBe 35000
+    EdrLayer.decode(volume.voxels(3).toByte) shouldBe 0.50 +- 0.003
+  }
+
+  test("3D volume shows a block whose rough patch covers a quarter of it") {
+    val frame = uniformFrame(FrameKind.Nowcast, Instant.EPOCH, Map(35000 -> 0.05))
+    val (fi, fj) = LambertGrid.fractionalIndex(39.0, -98.0)
+    val (i0, j0) = ((fi.toInt / 8) * 8, (fj.toInt / 8) * 8)
+    for {
+      j <- j0 until j0 + 4
+      i <- i0 until i0 + 4
+    } // 16 of the block's 64 points
+      frame.levels(35000).data.put(j * LambertGrid.nx + i, EdrLayer.encode(0.30f))
+    val volume = VolumeSampler().volume("test", frame, 8)
+    volume.voxels.length shouldBe 4
+    EdrLayer.decode(volume.voxels(3).toByte) shouldBe 0.30 +- 0.003
+  }
+
   test("locations outside the grid have no index") {
     LambertGrid.nearestIndex(51.47, -0.45) shouldBe -1 // London
     LambertGrid.nearestIndex(-33.9, 151.2) shouldBe -1 // Sydney

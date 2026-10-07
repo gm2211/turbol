@@ -56,6 +56,17 @@ object LambertGrid {
     if (i < 0 || i >= nx || j < 0 || j >= ny) -1 else j * nx + i
   }
 
+  /** Lat/lon of fractional grid coordinates: the inverse of [[fractionalIndex]]. */
+  def latLonAt(fi: Double, fj: Double): (Double, Double) = {
+    val x = x0 + fi * dx
+    val y = rho0 - (y0 + fj * dx)
+    val rho = signum(n) * sqrt(x * x + y * y)
+    val theta = atan2(x, y)
+    val lat = toDegrees(2 * atan(pow(earthRadius * f / rho, 1 / n)) - Pi / 2)
+    val lon = toDegrees(centralMeridian + theta / n)
+    (lat, lon)
+  }
+
   /** Approximate coverage, for cheap "is this anywhere near CONUS" checks. */
   val boundingBox: (Double, Double, Double, Double) = (21.1, -134.1, 52.7, -60.9) // south, west, north, east
 }

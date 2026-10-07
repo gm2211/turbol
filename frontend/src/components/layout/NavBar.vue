@@ -50,6 +50,12 @@ const routes = [
     path: '/follow',
     icon: planeIcon,
     iconOpacity: 1
+  },
+  {
+    name: '3D view',
+    path: '/3d',
+    icon: forecastIcon,
+    iconOpacity: 0.58
   }
 ]
 </script>

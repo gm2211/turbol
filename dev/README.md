@@ -27,6 +27,8 @@ All of them are free and need no API key. Turbulence coverage is the contiguous 
 
 - `GET /api/turbulence/status`: loaded nowcast and forecast frames
 - `GET /api/turbulence/tiles/{frameId}/{levelFt}/{z}/{x}/{y}.png`: map overlay tiles
+- `GET /api/turbulence/volume/{frameId}?step=6`: the 3D view's voxels (rough blocks per level, gzipped JSON)
+- `GET /api/turbulence/column/{frameId}?lat=..&lon=..`: EDR and category at every level above a point
 - `GET /api/turbulence/point?lat=..&lon=..&alt=..[&time=epochSeconds]`: EDR and category at a point
 - `GET /api/live/aircraft?south=..&west=..&north=..&east=..`: live aircraft with the turbulence each one is in
 - `GET /api/flights/lookup?q=UA1517`: route (adsbdb) and live position for a flight number or callsign
