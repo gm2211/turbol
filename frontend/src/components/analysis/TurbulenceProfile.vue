@@ -17,7 +17,7 @@
       :opacity="p.nearGround ? 0.35 : 0.9"
     />
     <!-- altitude -->
-    <polyline :points="altitudeLine" fill="none" stroke="#1e3a8a" stroke-width="1.5" opacity="0.6" />
+    <polyline :points="altitudeLine" fill="none" stroke="var(--my-blue-solid)" stroke-width="1.5" opacity="0.6" />
     <line :x1="padL" :x2="W - padR" :y1="H - padB" :y2="H - padB" stroke="#94a3b8" />
     <text :x="padL" :y="H - 4" class="lbl">0</text>
     <text :x="W - padR" :y="H - 4" text-anchor="end" class="lbl">{{ formatDuration(maxMinute) }}</text>
@@ -72,6 +72,6 @@ const thresholdLines = computed(() => [
 }
 .lbl {
   font-size: 11px;
-  fill: #475569;
+  fill: var(--my-text-muted);
 }
 </style>

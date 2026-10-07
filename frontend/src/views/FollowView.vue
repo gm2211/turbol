@@ -1,6 +1,6 @@
 <template>
   <div class="follow-page">
-    <v-card v-if="!hex" class="pa-4">
+    <v-card v-if="!hex" class="glass pa-4">
       <div class="text-h6 mb-2">Follow a flight live</div>
       <v-row density="compact" align="center">
         <v-col cols="12" md="5">
@@ -14,7 +14,7 @@
           />
         </v-col>
         <v-col cols="12" md="2">
-          <v-btn color="primary" size="large" :loading="finding" @click="find">Follow</v-btn>
+          <v-btn color="#10324f" size="large" :loading="finding" @click="find">Follow</v-btn>
         </v-col>
       </v-row>
       <v-alert v-if="error" type="warning" variant="tonal" density="compact" class="mt-3">{{ error }}</v-alert>
@@ -23,7 +23,7 @@
 
     <v-row v-else density="compact" class="fill">
       <v-col cols="12" md="4">
-        <v-card class="pa-4 fill-height">
+        <v-card class="glass pa-4 fill-height">
           <div class="d-flex align-center justify-space-between">
             <div class="text-h5 font-weight-bold">{{ a?.callsign ?? hex }}</div>
             <v-chip :color="connected ? 'green' : 'grey'" size="small" variant="flat">
@@ -85,7 +85,7 @@
         </v-card>
       </v-col>
       <v-col cols="12" md="8">
-        <v-card class="pa-2 map-card">
+        <v-card class="glass pa-2 map-card">
           <RouteMap
             :points="update?.ahead?.points ?? []"
             :destination="update?.usingRoute ? update.route?.destination : undefined"
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
 .now-box {
   border-left: 6px solid;
   padding: 6px 12px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 6px;
 }
 .stats {
@@ -271,10 +271,10 @@ onBeforeUnmount(() => {
 .stats span {
   display: block;
   font-size: 11px;
-  color: #64748b;
+  color: var(--my-text-muted);
   text-transform: uppercase;
 }
 .muted {
-  color: #64748b;
+  color: var(--my-text-muted);
 }
 </style>

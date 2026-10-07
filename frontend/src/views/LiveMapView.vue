@@ -2,7 +2,7 @@
   <div class="map-page">
     <div ref="mapEl" class="map" />
 
-    <div class="panel top-left">
+    <div class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
       <div class="muted">
         {{ aircraftCount.toLocaleString() }} aircraft in view
@@ -14,7 +14,7 @@
       <div class="muted" v-else>Turbulence data loading…</div>
     </div>
 
-    <div class="panel top-right controls">
+    <div class="panel glass-panel top-right controls">
       <v-select
         v-model="levelFt"
         :items="levelItems"
@@ -22,6 +22,7 @@
         density="compact"
         hide-details
         variant="outlined"
+        theme="dark"
         class="mb-3"
       />
       <div class="text-caption mb-1">
@@ -35,7 +36,8 @@
         :disabled="frames.length < 2"
         hide-details
         density="compact"
-        color="primary"
+        theme="dark"
+        color="var(--my-accent)"
       />
     </div>
 
@@ -199,10 +201,7 @@ onBeforeUnmount(() => {
 .panel {
   position: absolute;
   z-index: 1000;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 8px;
   padding: 10px 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   font-size: 13px;
 }
 .panel-title {
@@ -210,7 +209,7 @@ onBeforeUnmount(() => {
   font-size: 15px;
 }
 .muted {
-  color: #475569;
+  color: rgba(255, 255, 255, 0.75);
 }
 .top-left {
   top: 12px;
