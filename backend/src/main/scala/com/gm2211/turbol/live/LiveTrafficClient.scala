@@ -84,13 +84,15 @@ object LiveTrafficClient {
     }
   }
 
-  private def adsbLolGet(url: String, background: Boolean = false): String = {
+  /** Background calls give up on a 429; a person is waiting on foreground ones, so they retry once after the back-off. */
+  private def adsbLolGet(url: String, background: Boolean = false, retry: Boolean = true): String = {
     Throttle.acquire(if (background) 3.0 else 0.0)
     try Http.getString(url, attempts = 1)
     catch {
       case e: RuntimeException if Option(e.getMessage).exists(_.startsWith("HTTP 429")) =>
         Throttle.backOff(15000)
-        throw e
+        if (background || !retry) throw e
+        adsbLolGet(url, background, retry = false)
     }
   }
 
