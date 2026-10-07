@@ -53,14 +53,57 @@ object LiveTrafficClient {
 
   private def enc(s: String): String = URLEncoder.encode(s, StandardCharsets.UTF_8)
 
+  /**
+   * adsb.lol rate-limits per client: measured ~22 requests at 1/s before a 429, so every call goes through this token
+   * bucket (burst of 15, then one request every 2.5 s, i.e. 24/min sustained). Map-cell fetches are background calls.
+   */
+  private object Throttle {
+    private val capacity = 15.0
+    private val refillMs = 2500.0
+    private var tokens = capacity
+    private var last = System.currentTimeMillis()
+
+    /** Background callers keep `reserve` tokens free so a followed flight or a lookup never queues behind the map. */
+    def acquire(reserve: Double): Unit = {
+      var waitMs = 0L
+      while ({
+        waitMs = synchronized {
+          val now = System.currentTimeMillis()
+          tokens = math.min(capacity, tokens + (now - last) / refillMs)
+          last = now
+          if (tokens >= 1 + reserve) { tokens -= 1; 0L }
+          else ((1 + reserve - tokens) * refillMs).toLong.max(1L)
+        }
+        waitMs > 0
+      }) Thread.sleep(waitMs)
+    }
+
+    def backOff(ms: Long): Unit = synchronized {
+      tokens = -ms / refillMs
+      last = System.currentTimeMillis()
+    }
+  }
+
+  /** Background calls give up on a 429; a person is waiting on foreground ones, so they retry once after the back-off. */
+  private def adsbLolGet(url: String, background: Boolean = false, retry: Boolean = true): String = {
+    Throttle.acquire(if (background) 3.0 else 0.0)
+    try Http.getString(url, attempts = 1)
+    catch {
+      case e: RuntimeException if Option(e.getMessage).exists(_.startsWith("HTTP 429")) =>
+        Throttle.backOff(15000)
+        if (background || !retry) throw e
+        adsbLolGet(url, background, retry = false)
+    }
+  }
+
   def aircraftAround(lat: Double, lon: Double, radiusNm: Int): (Instant, Seq[LiveAircraft]) =
-    parseAircraftList(Http.getString(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", attempts = 2))
+    parseAircraftList(adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = true))
 
   def byHex(hex: String): Option[LiveAircraft] =
-    parseAircraftList(Http.getString(s"$adsbLol/hex/${enc(hex.toLowerCase)}", attempts = 2))._2.headOption
+    parseAircraftList(adsbLolGet(s"$adsbLol/hex/${enc(hex.toLowerCase)}"))._2.headOption
 
   def byCallsign(callsign: String): Seq[LiveAircraft] =
-    parseAircraftList(Http.getString(s"$adsbLol/callsign/${enc(callsign.toUpperCase)}", attempts = 2))._2
+    parseAircraftList(adsbLolGet(s"$adsbLol/callsign/${enc(callsign.toUpperCase)}"))._2
 
   /**
    * ICAO callsigns to try for what a person typed: "UAL1" as is; an IATA flight number like "UA1" or "ua 1" expanded

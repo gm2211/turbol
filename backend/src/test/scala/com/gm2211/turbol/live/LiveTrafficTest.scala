@@ -52,6 +52,14 @@ class LiveTrafficTest extends BaseTest {
     }
   }
 
+  test("dead-reckons stale positions along the track") {
+    val a = LiveTrafficClient.parseAircraftList(adsbLol)._2.head.copy(lat = 40.0, lon = -100.0, trackDeg = Some(90.0))
+    val moved = LiveTrafficService.extrapolate(a, 60) // 485.8 kt for a minute is ~15 km east
+    moved.lat shouldBe 40.0 +- 0.01
+    haversineKm(40.0, -100.0, moved.lat, moved.lon) shouldBe 15.0 +- 0.2
+    LiveTrafficService.extrapolate(a, 600) shouldBe a // too old to guess
+  }
+
   private def haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double = {
     val dLat = math.toRadians(lat2 - lat1)
     val dLon = math.toRadians(lon2 - lon1)

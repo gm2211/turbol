@@ -44,6 +44,12 @@ const routes = [
     path: '/analyze',
     icon: planeIcon,
     iconOpacity: 0.58
+  },
+  {
+    name: 'Follow a flight',
+    path: '/follow',
+    icon: planeIcon,
+    iconOpacity: 1
   }
 ]
 </script>

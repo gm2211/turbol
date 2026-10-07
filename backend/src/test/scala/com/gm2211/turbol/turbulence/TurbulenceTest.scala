@@ -68,7 +68,8 @@ class TurbulenceTest extends BaseTest {
   // eccodes in data-pipeline: EDR at FL350 over JFK/LAX/central US for gtgn.20261007 t0030z.
   test("decodes a real GTGN file") {
     val cwd = Paths.get(sys.props.getOrElse("user.dir", ".")).toAbsolutePath
-    val dir = Seq(cwd, cwd.getParent).map(_.resolve("data-pipeline").resolve("data")).find(Files.isDirectory(_)).getOrElse(cwd)
+    val dir =
+      Seq(cwd, cwd.getParent).map(_.resolve("data-pipeline").resolve("data")).find(Files.isDirectory(_)).getOrElse(cwd)
     val sample: Option[Path] =
       if (!Files.isDirectory(dir)) None
       else Files.list(dir).iterator().asScala.find(_.getFileName.toString.matches("gtgn\\.t\\d{4}z\\.3km\\.grib2"))

@@ -6,7 +6,13 @@
 
 package com.gm2211.turbol.modules
 
-import com.gm2211.turbol.endpoints.{AirportsEndpoint, FlightsEndpoint, FrontendConfigEndpoint, LiveEndpoint, TurbulenceEndpoint}
+import com.gm2211.turbol.endpoints.{
+  AirportsEndpoint,
+  FlightsEndpoint,
+  FrontendConfigEndpoint,
+  LiveEndpoint,
+  TurbulenceEndpoint
+}
 import com.softwaremill.macwire.{wire, Module}
 
 import scala.annotation.unused
