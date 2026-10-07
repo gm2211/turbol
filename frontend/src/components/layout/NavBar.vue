@@ -16,8 +16,8 @@
           class="pl-0"
       >
         <template v-slot:prepend>
-          <v-avatar size="40">
-            <v-img :src="route.icon" :style="`opacity: ${route.iconOpacity}`"/>
+          <v-avatar size="40" variant="text">
+            <v-img :src="route.icon" :cover="false" :style="`opacity: ${route.iconOpacity}`"/>
           </v-avatar>
         </template>
       </v-list-item>
