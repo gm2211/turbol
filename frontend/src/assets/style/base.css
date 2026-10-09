@@ -7,16 +7,20 @@
     --my-blue-solid: rgb(16, 50, 79);
     --my-accent: rgb(91, 143, 178);
     --my-text-muted: rgba(20, 30, 40, 0.72);
+    /* The glass cards and map panels, a little more opaque than the original my-card and navbar. */
+    --glass-gradient-1: rgba(91, 143, 178, 0.3);
+    --glass-gradient-2: rgba(4, 36, 65, 0.4);
+    --glass-panel-bg: rgba(24, 39, 52, 0.7);
 }
 
-/* The same translucent gradient as .my-card, for cards that size to their content. */
+/* The .my-card gradient, for cards that size to their content. */
 .v-card.glass {
-    background: linear-gradient(0deg, var(--bg-gradient-1) 0%, var(--bg-gradient-2) 100%);
+    background: linear-gradient(0deg, var(--glass-gradient-1) 0%, var(--glass-gradient-2) 100%);
 }
 
 /* Panels floating over a map: the navbar's translucent dark blue. */
 .glass-panel {
-    background: var(--my-blue-transparent);
+    background: var(--glass-panel-bg);
     color: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(6px);
     border-radius: 8px;
