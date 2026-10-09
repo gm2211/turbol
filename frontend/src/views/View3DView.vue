@@ -453,7 +453,7 @@ function tooltip(info: PickingInfo) {
   return {
     html: `<b>${flightLevel(v.levelFt)}</b> · ${categoryLabels[v.category]} (EDR ${v.edr.toFixed(2)})`,
     style: {
-      background: 'rgba(24, 39, 52, 0.85)', // --my-blue-transparent, a bit more opaque to read over voxels
+      background: 'rgba(24, 39, 52, 0.92)', // --glass-panel-bg, more opaque to read over voxels
       color: 'rgba(255, 255, 255, 0.95)',
       borderRadius: '8px',
       padding: '6px 10px',
