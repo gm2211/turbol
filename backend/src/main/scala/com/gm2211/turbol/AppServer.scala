@@ -11,7 +11,7 @@ import cats.effect.{IO, Resource}
 import com.comcast.ip4s.{ipv4, Port}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.config.install.InstallConfig
-import com.gm2211.turbol.endpoints.Endpoint
+import com.gm2211.turbol.endpoints.{Endpoint, StaticFrontend}
 import com.gm2211.turbol.modules.AppModule
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.{CORS, ErrorHandling, RequestLogger, ResponseLogger}
@@ -46,7 +46,9 @@ object AppServer extends BackendLogging {
       )
         .map(endpoint => s"/api/${endpoint.basePath.dropWhile(_ == '/')}" -> endpoint.routes)
         .toList
-    val router: MyHttpApp = Router[IO](endpoints*).orNotFound
+    // In production the backend also serves the built frontend (see Dockerfile); locally Vite does.
+    val frontend = sys.env.get("TURBOL_STATIC_DIR").map(dir => "/" -> StaticFrontend.routes(dir)).toList
+    val router: MyHttpApp = Router[IO](endpoints ++ frontend*).orNotFound
     val port = Port.fromInt(install.server.port).get
     val decorators: List[MyHttpApp => MyHttpApp] = LazyList
       .empty[MyHttpApp => MyHttpApp]

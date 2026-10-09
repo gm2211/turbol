@@ -1,0 +1,38 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# One Docker web service (API + frontend, built from ./Dockerfile) and a Postgres database.
+services:
+  - type: web
+    name: turbol
+    runtime: docker
+    plan: free
+    branch: develop
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/config
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: turbol-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: turbol-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: turbol-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: turbol-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: turbol-db
+          property: password
+
+databases:
+  - name: turbol-db
+    plan: free
+    databaseName: turbol
+    user: turbol

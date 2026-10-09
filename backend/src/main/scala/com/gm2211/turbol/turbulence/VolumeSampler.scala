@@ -88,4 +88,10 @@ final class VolumeSampler {
 
 object VolumeSampler {
   val minShare: Double = 0.25
+
+  /**
+   * Finest block size the API serves. Step 3 needs a few hundred MB of heap to serialise the nowcast, so small
+   * deployments (render.yaml, 512 MB) raise it with TURBOL_MIN_VOLUME_STEP.
+   */
+  val minStep: Int = sys.env.get("TURBOL_MIN_VOLUME_STEP").flatMap(_.toIntOption).getOrElse(3)
 }
