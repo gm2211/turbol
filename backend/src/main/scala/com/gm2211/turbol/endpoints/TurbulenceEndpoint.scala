@@ -111,7 +111,7 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
         case GET -> Root / "volume" / id :? StepParam(step) =>
           frame(id) match {
             case Some(f) =>
-              val s = step.getOrElse(6).max(3).min(24)
+              val s = step.getOrElse(6).max(VolumeSampler.minStep).min(24)
               IO.blocking(volumes.volume(id, f, s)).flatMap { v =>
                 Ok(v.toJson).map(_.putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour))))
               }
