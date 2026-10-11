@@ -1,9 +1,17 @@
 <template>
-  <svg ref="svgEl" :viewBox="`0 0 ${W} ${H}`" class="profile">
+  <svg ref="svgEl" :viewBox="`0 0 ${W} ${H}`" class="profile" :style="{ height: `${H}px` }">
     <!-- threshold lines -->
     <g v-for="t in thresholdLines" :key="t.label">
       <line :x1="padL" :x2="W - padR" :y1="y(t.value)" :y2="y(t.value)" :stroke="t.color" stroke-dasharray="4 4" />
-      <text :x="W - padR - 4" :y="y(t.value) - 3" text-anchor="end" class="lbl" :fill="t.color">{{ t.label }}</text>
+      <text
+        :x="t.label === 'light' ? padL + 4 : W - padR - 4"
+        :y="y(t.value) - 3"
+        :text-anchor="t.label === 'light' ? 'start' : 'end'"
+        class="lbl"
+        :fill="t.color"
+      >
+        {{ t.label }}
+      </text>
     </g>
     <!-- EDR bars -->
     <rect
@@ -30,7 +38,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { type RoutePoint, formatDuration } from '@/api/flights'
 import { categoryColors, flightLevel } from '@/api/turbulence'
 
-const props = defineProps<{ points: RoutePoint[]; light: number; moderate: number }>()
+const props = withDefaults(
+  defineProps<{ points: RoutePoint[]; light: number; moderate: number; height?: number }>(),
+  { height: 200 }
+)
 // Viewbox width follows the rendered width so labels keep their proportions.
 const svgEl = ref<SVGSVGElement>()
 const W = ref(800)
@@ -40,7 +51,7 @@ onMounted(() => {
   observer.observe(svgEl.value!)
 })
 onBeforeUnmount(() => observer?.disconnect())
-const H = 200
+const H = props.height
 const padL = 8
 const padR = 8
 const padB = 18
@@ -68,10 +79,9 @@ const thresholdLines = computed(() => [
 <style scoped>
 .profile {
   width: 100%;
-  height: 200px;
 }
 .lbl {
-  font-size: 11px;
-  fill: var(--my-text-muted);
+  font-size: 12px;
+  fill: #334155;
 }
 </style>

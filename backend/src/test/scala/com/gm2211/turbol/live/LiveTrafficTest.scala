@@ -71,4 +71,22 @@ class LiveTrafficTest extends BaseTest {
       math.cos(math.toRadians(lat1)) * math.cos(math.toRadians(lat2)) * math.pow(math.sin(dLon / 2), 2)
     2 * 6371 * math.asin(math.sqrt(a))
   }
+
+  test("matches a live aircraft to its route only when it is flying that leg") {
+    val mdwSrq = FlightRoute(
+      "SWA2767",
+      Some("WN2767"),
+      Some("Southwest Airlines"),
+      Place("MDW", "Chicago Midway", 41.786, -87.7524),
+      Place("SRQ", "Sarasota Bradenton", 27.3954, -82.5544)
+    )
+    def at(lat: Double, lon: Double, track: Double) =
+      LiveAircraft("abb1de", Some("SWA2767"), None, None, None, lat, lon, Some(35000), false, None, Some(track), None, 0)
+    // Real adsb.lol report from 2026-10-11 22:41Z: same callsign, near the MDW-SRQ line, but heading NE on an
+    // earlier leg while MDW→SRQ had not departed yet.
+    mdwSrq.isFlownBy(at(37.956693, -87.568678, 58.89)) shouldBe false
+    mdwSrq.isFlownBy(at(37.956693, -87.568678, 160)) shouldBe true
+    mdwSrq.isFlownBy(at(36.0, -100.0, 160)) shouldBe false // far off the route
+    mdwSrq.isFlownBy(at(27.6, -82.4, 0)) shouldBe true // on approach, any heading
+  }
 }

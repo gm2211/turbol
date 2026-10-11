@@ -8,6 +8,36 @@ behaviors:
     description: >-
       The map shows a translucent turbulence overlay for a chosen frame and flight level, drawn from
       tiles rendered by the backend.
+  - id: fast-first-paint
+    description: >-
+      The map with its turbulence overlay paints in under a second on a warm server; aircraft are
+      not on that path and may fill in afterwards.
+    source:
+      text: too slow - 40s to fully load - should take under 1s - if we want to gradually populate aircrafts, that's ok
+  - id: flights-toggle
+    description: >-
+      The map opens with turbulence only. A "Show all flights" toggle (off by default, remembered
+      per browser) adds every airborne aircraft in view.
+    source:
+      text: starting with just the map with turbulence, then having a toggle to show all flights
+  - id: add-flight-by-number
+    description: >-
+      A field on the map adds a specific flight by flight number or callsign: it is drawn highlighted
+      and labelled, kept up to date, removable, and kept in the page URL. Flights that are not
+      airborne get a message instead.
+    source:
+      text: the ability to add a specific flight number right here
+  - id: smooth-forecast-scrub
+    description: >-
+      Moving the forecast time slider swaps between preloaded hours without waiting for tiles, and a
+      play button steps through the hours. Hours are preloaded in the background only on a good
+      connection (no Data Saver, 4G-class, about 2 Mbps or more where the browser reports it); cached
+      hours drop out as they pass or a newer nowcast or forecast cycle replaces them.
+    source:
+      text: >-
+        sliding through future times should be smoother / maybe we could async preload and cache
+        future data (with invalidation as time moves on and we need to update from GTG to GTGN to
+        what's current) and maybe we only do this when we detect a good and fast internet connection
   - id: live-aircraft-with-turbulence
     description: >-
       Airborne aircraft in view are shown with the turbulence category they are flying through right
@@ -15,7 +45,8 @@ behaviors:
   - id: wide-views-fill-in
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to
-      refresh. Aircraft from older data are dead-reckoned so they line up with fresher ones.
+      refresh: the map polls every few seconds until the view is complete. Aircraft from older data
+      are dead-reckoned so they line up with fresher ones.
   - id: edr-on-hover
     description: >-
       Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and

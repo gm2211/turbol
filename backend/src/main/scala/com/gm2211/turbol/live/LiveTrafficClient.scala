@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.live
 
-import com.gm2211.turbol.turbulence.Http
+import com.gm2211.turbol.turbulence.{Http, RouteAnalyzer}
 import io.circe.{ACursor, HCursor, Json}
 import io.circe.parser.parse
 
@@ -40,7 +40,31 @@ final case class FlightRoute(
   airline: Option[String],
   origin: Place,
   destination: Place
-)
+) {
+
+  /**
+   * Whether a live aircraft with this callsign is actually flying this route. Airlines reuse a flight number for
+   * every leg of the day (WN2767 can be STL→MDW, then MDW→SRQ) while adsbdb keeps one route per callsign, so the
+   * aircraft must sit near the origin→destination great circle and, unless it is already close in, head for the
+   * destination.
+   */
+  def isFlownBy(a: LiveAircraft): Boolean = {
+    import RouteAnalyzer.{angleDiff, bearing, greatCircleKm}
+    val totalKm = greatCircleKm(origin.lat, origin.lon, destination.lat, destination.lon)
+    val toGoKm = greatCircleKm(a.lat, a.lon, destination.lat, destination.lon)
+    val detourKm = greatCircleKm(origin.lat, origin.lon, a.lat, a.lon) + toGoKm - totalKm
+    val headingForDestination =
+      toGoKm < FlightRoute.approachKm ||
+        a.trackDeg.forall(track => angleDiff(bearing(a.lat, a.lon, destination.lat, destination.lon), track) < 90)
+    detourKm < math.max(FlightRoute.minDetourKm, 0.25 * totalKm) && headingForDestination
+  }
+}
+
+object FlightRoute {
+  /** Within this distance of the destination an aircraft can be on any heading (vectoring, holds, approach). */
+  val approachKm = 80.0
+  private val minDetourKm = 150.0
+}
 
 /**
  * Keyless public data sources:

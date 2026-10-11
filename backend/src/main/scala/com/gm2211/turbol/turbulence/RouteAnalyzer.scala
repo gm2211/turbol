@@ -77,6 +77,20 @@ object RouteAnalyzer {
     2 * earthRadiusKm * asin(min(1.0, sqrt(a)))
   }
 
+  /** Initial great-circle bearing from point 1 to point 2, in degrees clockwise from north. */
+  def bearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double = {
+    val (p1, p2, dl) = (toRadians(lat1), toRadians(lat2), toRadians(lon2 - lon1))
+    val y = sin(dl) * cos(p2)
+    val x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
+    (toDegrees(atan2(y, x)) + 360) % 360
+  }
+
+  /** Smallest angle between two headings, 0..180. */
+  def angleDiff(a: Double, b: Double): Double = {
+    val d = abs(a - b) % 360
+    if (d > 180) 360 - d else d
+  }
+
   /** Point at fraction f along the great circle (spherical interpolation). */
   def intermediate(lat1: Double, lon1: Double, lat2: Double, lon2: Double, f: Double): (Double, Double) = {
     val (p1, l1, p2, l2) = (toRadians(lat1), toRadians(lon1), toRadians(lat2), toRadians(lon2))
