@@ -43,6 +43,12 @@ enum FrameKind {
 final case class EdrFrame(kind: FrameKind, validTime: Instant, issued: Instant, levels: SortedMap[Int, EdrLayer]) {
   val levelsFt: Vector[Int] = levels.keys.toVector
 
+  /** Stable id for URLs: a new nowcast or forecast cycle gets a new id, so its map tiles can be cached forever. */
+  val id: String = kind match {
+    case FrameKind.Nowcast => s"n${validTime.getEpochSecond}"
+    case FrameKind.Forecast => s"f${issued.getEpochSecond}-${validTime.getEpochSecond}"
+  }
+
   /** EDR at a location and altitude, linearly interpolated between the two nearest levels. NaN when no data. */
   def edrAt(lat: Double, lon: Double, altitudeFt: Double): Double =
     edrAtIndex(LambertGrid.nearestIndex(lat, lon), altitudeFt)

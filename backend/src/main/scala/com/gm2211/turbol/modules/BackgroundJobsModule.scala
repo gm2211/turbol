@@ -19,5 +19,8 @@ final class BackgroundJobsModule(val storageModule: StorageModule, val servicesM
 
   // Jobs
   @unused lazy val airportDataUpdater: AirportDataUpdater = wire[AirportDataUpdater]
-  lazy val turbulenceDataUpdater: TurbulenceDataUpdater = TurbulenceDataUpdater(servicesModule.turbulenceStore)
+  lazy val turbulenceDataUpdater: TurbulenceDataUpdater = TurbulenceDataUpdater(
+    servicesModule.turbulenceStore,
+    onNewFrames = _.foreach(servicesModule.tileRenderer.prewarm(_))
+  )
 }

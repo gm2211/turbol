@@ -48,7 +48,8 @@ object TurbulenceDataUpdater {
 final class TurbulenceDataUpdater(
   store: TurbulenceStore,
   dataDir: Path = TurbulenceDataUpdater.defaultDataDir,
-  forecastRefreshEvery: Duration = Duration.ofHours(3)
+  forecastRefreshEvery: Duration = Duration.ofHours(3),
+  onNewFrames: Seq[EdrFrame] => Unit = _ => ()
 ) extends BackgroundJob
     with BackendLogging {
   import TurbulenceDataUpdater.*
@@ -74,7 +75,9 @@ final class TurbulenceDataUpdater(
       .maxByOption(_.getFileName.toString.toLong)
       .foreach { dir =>
         val valid = Instant.ofEpochSecond(dir.getFileName.toString.toLong)
-        store.setNowcast(EdrFrame(FrameKind.Nowcast, valid, valid, mapLayers(dir)))
+        val frame = EdrFrame(FrameKind.Nowcast, valid, valid, mapLayers(dir))
+        store.setNowcast(frame)
+        Try(onNewFrames(Seq(frame))): Unit
         log.info("Loaded cached GTGN nowcast", safe("valid", valid))
       }
     subdirs(forecastDir)
@@ -82,7 +85,9 @@ final class TurbulenceDataUpdater(
       .maxByOption(_.getFileName.toString.toLong)
       .foreach { dir =>
         val issued = Instant.ofEpochSecond(dir.getFileName.toString.toLong)
-        store.setForecast(loadForecastHours(dir, issued))
+        val frames = loadForecastHours(dir, issued)
+        store.setForecast(frames)
+        Try(onNewFrames(frames)): Unit
         log.info("Loaded cached GTG forecast", safe("issued", issued))
       }
   }
@@ -114,6 +119,7 @@ final class TurbulenceDataUpdater(
     candidates.iterator.map(file => Try(fetchNowcast(file)).toOption).collectFirst { case Some(frame) =>
       store.setNowcast(frame)
       log.info("Updated GTGN nowcast", safe("valid", frame.validTime), safe("levels", frame.levels.size))
+      Try(onNewFrames(Seq(frame))): Unit
       subdirs(nowcastDir)
         .filterNot(_.getFileName.toString == frame.validTime.getEpochSecond.toString)
         .foreach(deleteRecursively)
@@ -155,6 +161,7 @@ final class TurbulenceDataUpdater(
         }.toVector
         Files.writeString(cycleDir.resolve(completeMarker), cycle.gribUrl(0)): Unit
         store.setForecast(frames)
+        Try(onNewFrames(frames)): Unit
         log.info("Updated GTG forecast", safe("init", cycle.initTime), safe("hours", frames.size))
         subdirs(forecastDir).filterNot(_ == cycleDir).foreach(deleteRecursively)
       }

@@ -7,7 +7,8 @@
 package com.gm2211.turbol.endpoints
 
 import cats.effect.IO
-import com.gm2211.turbol.live.{LiveAircraft, LiveFlightTracker, LiveFlightUpdate, LiveTrafficClient, LiveTrafficService}
+import com.gm2211.turbol.live.{CellSnapshot, LiveAircraft, LiveFlightTracker, LiveFlightUpdate, LiveTrafficClient, LiveTrafficService}
+import com.google.common.cache.{Cache, CacheBuilder}
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.Encoder
@@ -15,7 +16,9 @@ import io.circe.generic.auto.*
 import io.circe.generic.semiauto.deriveEncoder
 import fs2.Stream
 import org.http4s.circe.*
-import org.http4s.{HttpRoutes, ServerSentEvent}
+import org.http4s.headers.`Content-Type`
+import org.http4s.server.middleware.GZip
+import org.http4s.{HttpRoutes, MediaType, ServerSentEvent}
 
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -35,12 +38,13 @@ final case class AircraftView(
   verticalRateFpm: Option[Int],
   aircraftClass: AircraftClass,
   edr: Option[Double],
-  category: TurbulenceCategory
+  category: TurbulenceCategory,
+  /** Epoch ms of the position report, so clients can dead-reckon it to the present. */
+  positionTime: Long
 )
 
-final case class TrafficResponse(aircraft: Seq[AircraftView], updated: Instant, complete: Boolean)
-
 object LiveEndpoint {
+  /** `now` is when `a` was fetched: its position is `a.seenSecondsAgo` older than that. */
   def view(store: TurbulenceStore, a: LiveAircraft, now: Instant): AircraftView = {
     val aircraftClass = AircraftClass.fromAdsb(a.category, a.typeCode)
     val edr = a.altitudeFt.filterNot(_ => a.onGround) match {
@@ -61,7 +65,8 @@ object LiveEndpoint {
       a.verticalRateFpm,
       aircraftClass,
       Option(edr).filterNot(_.isNaN),
-      Thresholds.classify(edr, aircraftClass)
+      Thresholds.classify(edr, aircraftClass),
+      now.toEpochMilli - (a.seenSecondsAgo * 1000).toLong
     )
   }
 }
@@ -75,6 +80,16 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
   private given Encoder[LiveFlightUpdate] = deriveEncoder
 
   private val tracker = LiveFlightTracker(store, traffic)
+
+  // Keyed by cell, fetch time and nowcast: a refetch or a new nowcast (new turbulence per aircraft) re-encodes.
+  private val cellJsonCache: Cache[(LiveTrafficService.Cell, Instant, String), String] =
+    CacheBuilder.newBuilder().maximumSize(500).build()
+
+  private def cellJson(c: CellSnapshot, nowcastId: String): String =
+    cellJsonCache.get(
+      (c.cell, c.fetchedAt, nowcastId),
+      () => c.aircraft.filterNot(_.onGround).map(view(store, _, c.fetchedAt).toJson.deepDropNullValues.noSpaces).mkString(",")
+    )
   private val updateEvery = 10.seconds
 
   private object South extends QueryParamDecoderMatcher[Double]("south")
@@ -83,13 +98,18 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
   private object East extends QueryParamDecoderMatcher[Double]("east")
 
   override val basePath: String = "/live"
-  override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
+  // Gzip JSON only: the flight stream is server-sent events, which must not be buffered.
+  override val routes: HttpRoutes[IO] = GZip(
+    HttpRoutes.of[IO] {
+    // Built from each cell's pre-encoded JSON: the instance has a tenth of a CPU, and encoding a whole-country view
+    // (~5,000 aircraft, ~900 KB) per request took 20+ s there. Clients dead-reckon, dedupe and crop to their viewport.
     case GET -> Root / "aircraft" :? South(south) +& West(west) +& North(north) +& East(east) =>
-      IO.blocking(traffic.aircraftIn(south, west, north, east)).flatMap { snapshot =>
-        val now = Instant.now()
-        val aircraft = snapshot.aircraft.filterNot(_.onGround).map(view(store, _, now))
-        Ok(TrafficResponse(aircraft, snapshot.updated, snapshot.complete).toJson.deepDropNullValues)
-      }
+      IO.blocking {
+        val traffic0 = traffic.cellsIn(south, west, north, east)
+        val nowcast = store.current.nowcast.fold("")(_.id)
+        val aircraft = traffic0.cells.map(c => cellJson(c, nowcast)).filter(_.nonEmpty).mkString(",")
+        s"""{"aircraft":[$aircraft],"complete":${traffic0.complete},"serverTime":${Instant.now().toEpochMilli}}"""
+      }.flatMap(json => Ok(json).map(_.withContentType(`Content-Type`(MediaType.application.json))))
 
     // Server-sent events: one update about the followed flight every 10 s, until the client disconnects.
     case GET -> Root / "flights" / hex / "stream" =>
@@ -111,5 +131,7 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
         case Some(a) => Ok(view(store, a, Instant.now()).toJson.deepDropNullValues)
         case None => NotFound(s"$hex is not being tracked right now")
       }
-  }
+    },
+    isZippable = _.contentType.exists(_.mediaType == MediaType.application.json)
+  )
 }

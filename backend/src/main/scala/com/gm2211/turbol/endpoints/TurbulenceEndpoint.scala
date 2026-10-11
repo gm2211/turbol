@@ -38,10 +38,10 @@ final case class ColumnLevel(levelFt: Int, edr: Option[Double], category: Turbul
 final case class TurbulenceColumn(frameId: String, lat: Double, lon: Double, levels: Seq[ColumnLevel])
 
 object TurbulenceEndpoint {
-  def frameId(frame: EdrFrame): String = frame.kind match {
-    case FrameKind.Nowcast => s"n${frame.validTime.getEpochSecond}"
-    case FrameKind.Forecast => s"f${frame.issued.getEpochSecond}-${frame.validTime.getEpochSecond}"
-  }
+  def frameId(frame: EdrFrame): String = frame.id
+
+  /** Tile URLs may name this instead of a frame id, so the map can request tiles before it has fetched the status. */
+  val latestNowcast = "latest"
 
   def frameInfo(frame: EdrFrame): FrameInfo =
     FrameInfo(frameId(frame), frame.kind.toString.toLowerCase, frame.validTime, frame.issued, frame.levelsFt)
@@ -64,7 +64,8 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
   override val basePath: String = "/turbulence"
   private def frame(id: String): Option[EdrFrame] = {
     val data = store.current
-    (data.nowcast.toSeq ++ data.forecast).find(f => frameId(f) == id)
+    if (id == latestNowcast) data.nowcast
+    else (data.nowcast.toSeq ++ data.forecast).find(f => frameId(f) == id)
   }
 
   // The 3D volume is a few MB of JSON that compresses ~3x; PNG tiles are already compressed.
@@ -83,12 +84,14 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
           Ok(status.toJson.deepDropNullValues)
 
         case GET -> Root / "tiles" / id / IntVar(level) / IntVar(z) / IntVar(x) / TileY(y) =>
-          frame(id).flatMap(_.nearestLayer(level)) match {
-            case Some(layer) if z >= 0 && z <= 12 =>
-              IO.blocking(tiles.render(s"$id/${layer.levelFt}", layer, z, x, y)).flatMap { png =>
+          frame(id).flatMap(f => f.nearestLayer(level).map(f -> _)) match {
+            case Some((f, layer)) if z >= 0 && z <= 12 =>
+              // A frame id names immutable data; "latest" moves every 15 minutes.
+              val maxAge = if (id == latestNowcast) 1.minute else 7.days
+              IO.blocking(tiles.render(s"${frameId(f)}/${layer.levelFt}", layer, z, x, y)).flatMap { png =>
                 Ok(png).map(
                   _.withContentType(`Content-Type`(MediaType.image.png))
-                    .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour)))
+                    .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))
                 )
               }
             case _ => NotFound("frame or level not loaded")
