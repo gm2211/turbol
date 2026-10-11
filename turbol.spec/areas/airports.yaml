@@ -1,0 +1,7 @@
+id: airports
+name: Airports
+behaviors:
+  - id: search-airports
+    description: >-
+      Searching by name, code or keyword returns matching airports with their location, large airports
+      first, up to the requested limit.

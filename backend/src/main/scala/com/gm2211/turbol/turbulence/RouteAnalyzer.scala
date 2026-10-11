@@ -48,7 +48,8 @@ final case class RouteAnalysis(
   points: Seq[RoutePoint],
   segments: Seq[Segment],
   summary: RouteSummary,
-  dataSources: DataSources
+  dataSources: DataSources,
+  aircraftType: Option[String] = None
 )
 
 final case class DataSources(

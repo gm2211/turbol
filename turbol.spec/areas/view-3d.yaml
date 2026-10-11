@@ -1,0 +1,16 @@
+id: view-3d
+name: 3D view
+prose: A 3D view of the turbulence volume, with routes and flight levels in context.
+behaviors:
+  - id: volume-voxels
+    description: >-
+      The 3D view draws a loaded frame's turbulence as voxels by category, with a translucent sheet at
+      the chosen flight level.
+  - id: route-visible-through-voxels
+    description: A route drawn in the 3D view stays visible where it passes through rough air.
+  - id: click-shows-column
+    description: >-
+      Clicking a point shows the turbulence column there, level by level. If a newer nowcast replaced
+      the frame, the view reloads frames and retries.
+  - id: loads-on-demand
+    description: The 3D library loads only when the 3D view is opened, keeping other pages light.
