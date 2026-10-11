@@ -24,3 +24,7 @@ RENDER_API_KEY=rnd_... deployment/render/deploy.sh
 It creates both on the free plan (or reuses them), deploys `develop`, waits until it's live and prints the URL. Alternatively, in the dashboard choose New > Blueprint and pick this repository. Pushes to `develop` redeploy.
 
 Both use Render's free plans. The free web service sleeps after 15 idle minutes and its disk is wiped, so the first request after a nap waits for the backend to start and the forecast takes about 2 more minutes to reload. The app fits in the free 512 MB (about 470 MB used with every 3D frame loaded). Switch the service to `starter` to keep it awake.
+
+## Spec
+
+Product intent lives in [turbol.spec](turbol.spec), a [Specify](https://github.com/gm2211/specify) behavioral spec with stable `area/behavior` IDs. Agents follow [AGENTS.md](AGENTS.md). Browse it with `specify view`; before a PR, run `specify spec check --spec turbol.spec --base origin/develop`. CI runs the same check: a PR must change the spec or carry a `Spec review: <reason>` line in its description.
