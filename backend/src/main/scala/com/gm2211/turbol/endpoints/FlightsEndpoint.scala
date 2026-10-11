@@ -104,9 +104,9 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
     }.find { case (_, route, live) => route.isDefined || live.isDefined }
     found match {
       case Some((callsign, route, live)) =>
-        val (onRoute, elsewhere) = live.partition(a => route.forall(_.isFlownBy(a)))
+        val flying = (a: LiveAircraft) => route.forall(_.isFlownBy(a))
         val view = (a: LiveAircraft) => LiveEndpoint.view(store, a, now)
-        FlightLookup(query, Some(callsign), route, onRoute.map(view), elsewhere.map(view))
+        FlightLookup(query, Some(callsign), route, live.filter(flying).map(view), live.filterNot(flying).map(view))
       case None => FlightLookup(query, None, None, None)
     }
   }
