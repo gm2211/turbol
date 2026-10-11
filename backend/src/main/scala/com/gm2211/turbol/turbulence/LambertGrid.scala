@@ -56,6 +56,24 @@ object LambertGrid {
     if (i < 0 || i >= nx || j < 0 || j >= ny) -1 else j * nx + i
   }
 
+  /**
+   * The projection split into its latitude-only and longitude-only parts, so a map tile can compute 256 of each instead
+   * of 65,536 full projections: `nearestIndex(rhoAt(lat), sin(thetaAt(lon)), cos(thetaAt(lon)))` equals
+   * `nearestIndex(lat, lon)` for 0 <= lat <= 89.
+   */
+  def rhoAt(lat: Double): Double = earthRadius * f / pow(tan(Pi / 4 + toRadians(lat) / 2), n)
+  def thetaAt(lon: Double): Double = {
+    var dLon = toRadians(lon) - centralMeridian
+    if (dLon > Pi) dLon -= 2 * Pi
+    if (dLon < -Pi) dLon += 2 * Pi
+    n * dLon
+  }
+  def nearestIndex(rho: Double, sinTheta: Double, cosTheta: Double): Int = {
+    val i = rint((rho * sinTheta - x0) / dx).toInt
+    val j = rint((rho0 - rho * cosTheta - y0) / dx).toInt
+    if (i < 0 || i >= nx || j < 0 || j >= ny) -1 else j * nx + i
+  }
+
   /** Lat/lon of fractional grid coordinates: the inverse of [[fractionalIndex]]. */
   def latLonAt(fi: Double, fj: Double): (Double, Double) = {
     val x = x0 + fi * dx

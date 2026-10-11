@@ -40,12 +40,21 @@ export interface AircraftView {
   aircraftClass: AircraftClass
   edr?: number
   category: TurbulenceCategory
+  /** Epoch ms of the position report (live traffic and lookups). */
+  positionTime?: number
 }
 
 export interface TrafficResponse {
   aircraft: AircraftView[]
-  updated: string
+  /** False while the server is still fetching parts of the view: poll again soon. */
   complete: boolean
+}
+
+export interface Bounds {
+  south: number
+  west: number
+  north: number
+  east: number
 }
 
 export const categoryColors: Record<TurbulenceCategory, string> = {
@@ -72,15 +81,70 @@ export async function fetchStatus(): Promise<TurbulenceStatus> {
   return (await axios.get('/api/turbulence/status')).data
 }
 
-export async function fetchTraffic(bounds: {
-  south: number
-  west: number
-  north: number
-  east: number
-}): Promise<TrafficResponse> {
-  return (await axios.get('/api/live/aircraft', { params: bounds })).data
+/** Where an aircraft is now, dead-reckoned along its track from a report `ageSeconds` old. */
+export function deadReckon(a: AircraftView, ageSeconds: number): AircraftView {
+  if (
+    a.onGround ||
+    a.groundSpeedKts == null ||
+    a.trackDeg == null ||
+    ageSeconds <= 1 ||
+    ageSeconds >= 300
+  )
+    return a
+  const R = 6371
+  const d = (a.groundSpeedKts * 1.852 * ageSeconds) / 3600 / R
+  const brg = (a.trackDeg * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lon1 = (a.lon * Math.PI) / 180
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brg)
+  )
+  const lon2 =
+    lon1 +
+    Math.atan2(
+      Math.sin(brg) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    )
+  return { ...a, lat: (lat2 * 180) / Math.PI, lon: (((lon2 * 180) / Math.PI + 540) % 360) - 180 }
 }
 
+/**
+ * Airborne aircraft in a viewport, positioned for now. The server sends whole cached cells (which overlap and spill
+ * past the viewport) with report times, so this dedupes, dead-reckons and crops.
+ */
+export async function fetchTraffic(bounds: Bounds): Promise<TrafficResponse> {
+  const res: { aircraft: AircraftView[]; complete: boolean; serverTime: number } = (
+    await axios.get('/api/live/aircraft', { params: bounds })
+  ).data
+  const reported = (a: AircraftView) => a.positionTime ?? res.serverTime
+  const newest = new Map<string, AircraftView>()
+  for (const a of res.aircraft) {
+    const seen = newest.get(a.hex)
+    if (!seen || reported(a) > reported(seen)) newest.set(a.hex, a)
+  }
+  const aircraft = [...newest.values()]
+    .map((a) => deadReckon(a, (res.serverTime - reported(a)) / 1000))
+    .filter(
+      (a) =>
+        a.lat >= bounds.south &&
+        a.lat <= bounds.north &&
+        a.lon >= bounds.west &&
+        a.lon <= bounds.east
+    )
+  return { aircraft, complete: res.complete }
+}
+
+/** One aircraft by ICAO hex, or undefined when it isn't being tracked right now. */
+export async function fetchAircraft(hex: string): Promise<AircraftView | undefined> {
+  try {
+    return (await axios.get(`/api/live/aircraft/${encodeURIComponent(hex)}`)).data
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) return undefined
+    throw e
+  }
+}
+
+/** `frameId` may be "latest" for the current nowcast, which works before the status has loaded. */
 export function tileUrl(frameId: string, levelFt: number): string {
   return `${apiBase()}/api/turbulence/tiles/${frameId}/${levelFt}/{z}/{x}/{y}.png`
 }
@@ -92,7 +156,9 @@ export function formatUtc(iso: string): string {
 
 export function flightLevel(altitudeFt?: number): string {
   if (altitudeFt === undefined) return '?'
-  return altitudeFt >= 18000 ? `FL${Math.round(altitudeFt / 100)}` : `${altitudeFt.toLocaleString()} ft`
+  return altitudeFt >= 18000
+    ? `FL${Math.round(altitudeFt / 100)}`
+    : `${altitudeFt.toLocaleString()} ft`
 }
 
 /** Worst EDR per coarse grid block and level, Light or worse only (see backend VolumeSampler). */
@@ -121,7 +187,11 @@ export async function fetchVolume(frameId: string, step = 6): Promise<Turbulence
   return (await axios.get(`/api/turbulence/volume/${frameId}`, { params: { step } })).data
 }
 
-export async function fetchColumn(frameId: string, lat: number, lon: number): Promise<TurbulenceColumn> {
+export async function fetchColumn(
+  frameId: string,
+  lat: number,
+  lon: number
+): Promise<TurbulenceColumn> {
   return (await axios.get(`/api/turbulence/column/${frameId}`, { params: { lat, lon } })).data
 }
 
