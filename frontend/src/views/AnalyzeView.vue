@@ -32,16 +32,6 @@
             hide-details
           />
         </v-col>
-        <v-col cols="6" md="2">
-          <v-select
-            v-model="aircraftClass"
-            :items="['Light', 'Medium', 'Heavy']"
-            label="Aircraft size"
-            density="comfortable"
-            variant="outlined"
-            hide-details
-          />
-        </v-col>
         <v-col cols="12" md="1">
           <v-btn color="#10324f" size="large" :loading="loading" block @click="analyze">Analyze</v-btn>
         </v-col>
@@ -76,6 +66,7 @@
               <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
               <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
               <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
+              <div><span>Aircraft</span>{{ aircraftLabel }}</div>
               <div>
                 <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
                 <template v-if="analysis.summary.worstMinute !== undefined">
@@ -171,7 +162,6 @@ const mode = ref<'flight' | 'route'>('flight')
 const flightQuery = ref('')
 const origin = ref<Place>()
 const destination = ref<Place>()
-const aircraftClass = ref<AircraftClass>('Medium')
 const departureLocal = ref(toLocalInput(new Date()))
 const loading = ref(false)
 const error = ref<string>()
@@ -184,6 +174,11 @@ const allThresholds = ref<Record<AircraftClass, Thresholds>>()
 const thresholds = computed(
   () => allThresholds.value?.[analysis.value?.aircraftClass ?? 'Medium'] ?? { light: 0.12, moderate: 0.14 }
 )
+const aircraftLabel = computed(() => {
+  const a = analysis.value
+  if (!a) return ''
+  return a.aircraftType ? `${a.aircraftType} · ${a.aircraftClass}` : `${a.aircraftClass} (assumed)`
+})
 const shownCategories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme', 'NoData']
 const worstPoint = computed<[number, number] | undefined>(() => {
   const s = analysis.value?.summary
@@ -242,7 +237,7 @@ async function analyze() {
       origin: from!,
       destination: to!,
       departure: new Date(departureLocal.value).toISOString(),
-      aircraftClass: aircraftClass.value
+      callsign: mode.value === 'flight' ? lookup.value?.callsign : undefined
     })
     analyzedOrigin.value = from
     analyzedDestination.value = to

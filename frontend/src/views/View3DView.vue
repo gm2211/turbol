@@ -524,7 +524,7 @@ async function loadFlight() {
       return
     }
     const r = lookup.route
-    analysis.value = await analyzeFlight({ origin: r.origin, destination: r.destination })
+    analysis.value = await analyzeFlight({ origin: r.origin, destination: r.destination, callsign: lookup.callsign })
     flightLabel.value = `${r.iataCallsign ?? r.callsign}: ${r.origin.code} → ${r.destination.code}, cruise ${flightLevel(
       analysis.value.cruiseAltitudeFt
     )}`
