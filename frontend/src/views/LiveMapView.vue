@@ -41,6 +41,8 @@
       />
     </div>
 
+    <EdrHover :map="leafletMap" :frame-id="selectedFrame?.id" :level-ft="levelFt" :level-label="levelLabel" />
+
     <div class="bottom-left">
       <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" />
     </div>
@@ -50,8 +52,9 @@
 <script setup lang="ts">
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
+import EdrHover from '@/components/turbulence/EdrHover.vue'
 import { planeIcon } from '@/components/turbulence/planeIcon'
 import {
   type AircraftView,
@@ -98,6 +101,7 @@ const selectedFrameLabel = computed(() => {
 })
 
 let map: L.Map | undefined
+const leafletMap = shallowRef<L.Map>()
 let turbulenceLayer: L.TileLayer | undefined
 const planes = L.layerGroup()
 let trafficTimer: number | undefined
@@ -174,6 +178,7 @@ onMounted(async () => {
   map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true }).setView([39.5, -97], 5)
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
   planes.addTo(map)
+  leafletMap.value = map
   map.on('moveend', refreshTraffic)
   await refreshStatus()
   updateTurbulenceLayer()
