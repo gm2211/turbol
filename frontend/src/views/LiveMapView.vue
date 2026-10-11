@@ -1,5 +1,5 @@
 <template>
-  <div class="map-page" :class="{ 'is-3d': mode === '3d' }">
+  <div class="map-page" :class="{ 'is-3d': mode === '3d', mobile }">
     <div ref="mapEl" class="map" />
 
     <component
@@ -16,6 +16,7 @@
     />
 
     <v-btn-toggle
+      v-show="!(mobile && showControls)"
       :model-value="mode"
       mandatory
       density="compact"
@@ -24,16 +25,23 @@
       class="mode-toggle glass-panel"
       @update:model-value="setMode"
     >
-      <v-btn value="2d" size="small" :loading="loading3d && mode === '2d'">2D</v-btn>
-      <v-btn value="3d" size="small" title="Or shift+drag the map">3D</v-btn>
+      <v-btn value="2d" :size="mobile ? 'default' : 'small'" :loading="loading3d && mode === '2d'"
+        >2D</v-btn
+      >
+      <v-btn
+        value="3d"
+        :size="mobile ? 'default' : 'small'"
+        :title="mobile ? 'Or slide up with two fingers' : 'Or shift+drag the map'"
+        >3D</v-btn
+      >
     </v-btn-toggle>
 
     <div class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
-      <div class="muted" v-if="status?.nowcast">
+      <div class="muted" v-if="status?.nowcast && !mobile">
         GTG-N nowcast valid {{ formatUtc(status.nowcast.validTime) }}
       </div>
-      <div class="muted" v-else-if="statusLoaded">Turbulence data loading…</div>
+      <div class="muted" v-else-if="statusLoaded && !status?.nowcast">Turbulence data loading…</div>
 
       <v-switch
         v-model="showAll"
@@ -80,7 +88,30 @@
       </div>
     </div>
 
-    <div class="panel glass-panel top-right controls">
+    <v-btn
+      v-if="mobile && !showControls"
+      icon="mdi-tune-variant"
+      theme="dark"
+      class="glass-panel controls-fab"
+      aria-label="Map altitude and time"
+      @click="showControls = true"
+    />
+    <div
+      v-if="!mobile || showControls"
+      class="panel glass-panel top-right controls"
+      :class="{ sheet: mobile }"
+    >
+      <div v-if="mobile" class="d-flex align-center justify-space-between mb-2">
+        <span class="panel-title">Map settings</span>
+        <v-btn
+          icon="mdi-close"
+          size="small"
+          variant="text"
+          theme="dark"
+          aria-label="Close"
+          @click="showControls = false"
+        />
+      </div>
       <v-select
         v-model="levelFt"
         :items="levelItems"
@@ -126,7 +157,7 @@
     />
 
     <div class="bottom-left">
-      <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" />
+      <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" :compact="mobile" />
     </div>
   </div>
 </template>
@@ -164,6 +195,7 @@ import {
 import { lookupFlight } from '@/api/flights'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
+import { useMobile } from '@/util/useMobile'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
 
 interface TrackedFlight {
@@ -188,6 +220,8 @@ const flightQuery = ref('')
 const adding = ref(false)
 const addError = ref('')
 const tracked = ref<TrackedFlight[]>([])
+const mobile = useMobile()
+const showControls = ref(false)
 
 function readShowAll(): boolean {
   try {
@@ -613,6 +647,27 @@ function onShiftDrag(e: PointerEvent) {
   window.addEventListener('pointerup', up)
 }
 
+// On touch screens, two fingers sliding up together (not pinching) opens 3D, like tilting a phone map.
+let twoFinger: { y: number; gap: number } | undefined
+const touchGap = (t: TouchList) =>
+  Math.hypot(t[0]!.clientX - t[1]!.clientX, t[0]!.clientY - t[1]!.clientY)
+const touchY = (t: TouchList) => (t[0]!.clientY + t[1]!.clientY) / 2
+function onTouchStart(e: TouchEvent) {
+  twoFinger =
+    mode.value === '2d' && e.touches.length === 2
+      ? { y: touchY(e.touches), gap: touchGap(e.touches) }
+      : undefined
+}
+function onTouchMove(e: TouchEvent) {
+  if (!twoFinger || e.touches.length !== 2) return
+  const dy = touchY(e.touches) - twoFinger.y
+  const pinch = Math.abs(touchGap(e.touches) - twoFinger.gap)
+  if (dy < -30 && pinch < 25) {
+    twoFinger = undefined
+    setMode('3d')
+  } else if (pinch > 40) twoFinger = undefined
+}
+
 onMounted(() => {
   // boxZoom off: shift+drag opens 3D instead.
   map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true, boxZoom: false }).setView(
@@ -625,6 +680,8 @@ onMounted(() => {
   leafletMap.value = map
   mapEl.value!.addEventListener('click', onPopupClick)
   mapEl.value!.addEventListener('pointerdown', onShiftDrag)
+  mapEl.value!.addEventListener('touchstart', onTouchStart, { passive: true })
+  mapEl.value!.addEventListener('touchmove', onTouchMove, { passive: true })
   trackedPlanes.addTo(map)
   map.on('moveend', () => {
     if (showAll.value) refreshTraffic()
@@ -657,7 +714,7 @@ onBeforeUnmount(() => {
 .map-page {
   position: relative;
   width: 100%;
-  height: calc(100vh - 80px);
+  height: var(--page-h);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -699,6 +756,52 @@ onBeforeUnmount(() => {
   z-index: 1000;
   right: 12px;
   bottom: 24px;
+}
+/* Phones: panels hug the edges, settings open as a bottom sheet, pinch replaces the zoom buttons. */
+.mobile .top-left {
+  top: 8px;
+  left: 8px;
+  right: 60px;
+  width: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.mobile .top-left .panel-title {
+  font-size: 13px;
+}
+.controls-fab {
+  position: absolute;
+  z-index: 1000;
+  top: 8px;
+  right: 8px;
+}
+.top-right.sheet {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  z-index: 1100;
+  padding: 12px 16px 16px;
+  background: rgba(24, 39, 52, 0.92);
+}
+.mobile .bottom-left {
+  bottom: 22px;
+  left: 8px;
+}
+.mobile .mode-toggle {
+  right: 8px;
+  bottom: 56px;
+}
+.mobile :deep(.leaflet-control-zoom) {
+  display: none;
+}
+.mobile :deep(.leaflet-control-attribution) {
+  font-size: 9px;
+  max-width: calc(100vw - 24px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* The 2D map's zoom buttons and EDR readout belong to the hidden map in 3D (3D has its own tooltip). */
 .is-3d :deep(.leaflet-control-container),

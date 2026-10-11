@@ -1,9 +1,9 @@
 <template>
-  <div class="legend glass-panel">
-    <div class="legend-title">{{ title }}</div>
+  <div class="legend glass-panel" :class="{ compact }">
+    <div v-if="!compact" class="legend-title">{{ title }}</div>
     <div v-for="c in categories" :key="c" class="legend-row">
       <span class="swatch" :style="{ background: categoryColors[c] }" />
-      {{ categoryLabels[c] }}
+      {{ compact ? shortLabels[c] : categoryLabels[c] }}
     </div>
   </div>
 </template>
@@ -11,8 +11,16 @@
 <script setup lang="ts">
 import { categoryColors, categoryLabels, type TurbulenceCategory } from '@/api/turbulence'
 
-defineProps<{ title: string }>()
+defineProps<{ title: string; compact?: boolean }>()
 const categories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme']
+// One row on a phone screen.
+const shortLabels: Partial<Record<TurbulenceCategory, string>> = {
+  Smooth: 'Smooth',
+  Light: 'Light',
+  Moderate: 'Mod',
+  Severe: 'Sev',
+  Extreme: 'Ext'
+}
 </script>
 
 <style scoped>
@@ -29,6 +37,15 @@ const categories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.legend.compact {
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.compact .legend-row {
+  gap: 3px;
 }
 .swatch {
   width: 14px;

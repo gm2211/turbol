@@ -30,32 +30,8 @@
 
 <script setup lang="ts">
 import '../../assets/style/navbar.css'
-import forecastIcon from '../../assets/icons/forecast.png'
+import { navRoutes as routes } from '@/components/layout/navRoutes'
 import {ref} from 'vue'
 
 const rail = ref(true)
-const routes = [
-  {
-    name: 'Live map',
-    path: '/map',
-    icon: forecastIcon,
-    iconOpacity: 1
-  },
-  {
-    // Each page gets its own icon so the collapsed bar can be read at a glance.
-    name: 'Analyze a flight',
-    path: '/analyze',
-    mdiIcon: 'mdi-airplane-search'
-  },
-  {
-    name: 'Follow a flight',
-    path: '/follow',
-    mdiIcon: 'mdi-crosshairs-gps'
-  },
-  {
-    name: '3D view',
-    path: '/3d',
-    mdiIcon: 'mdi-cube-outline'
-  }
-]
 </script>

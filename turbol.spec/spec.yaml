@@ -20,3 +20,4 @@ areas:
   - areas/view-3d.yaml
   - areas/airports.yaml
   - areas/deployment.yaml
+  - areas/mobile.yaml
