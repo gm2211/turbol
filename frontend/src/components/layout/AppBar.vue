@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import '../../assets/style/base.css'
+import { useMobile } from '@/util/useMobile'
+
+const mobile = useMobile()
 </script>
 <template>
-  <v-app-bar color="var(--my-blue)">
+  <v-app-bar color="var(--my-blue)" :density="mobile ? 'compact' : 'default'">
     <v-row no-gutters>
       <v-col/>
       <v-col md="auto" class="mx-auto">
-        <v-avatar variant="text" rounded="0" style="min-height: 64px; width: 200px">
+        <v-avatar variant="text" rounded="0" :style="mobile ? 'min-height: 48px; width: 150px' : 'min-height: 64px; width: 200px'">
           <a style="height: 100%; width: 100%" href="/">
             <v-img :src="logo" cover alt="Turbol"/>
           </a>

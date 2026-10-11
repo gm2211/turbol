@@ -1,5 +1,5 @@
 <template>
-  <div class="map-page">
+  <div class="map-page" :class="{ mobile }">
     <div ref="mapEl" class="map" @contextmenu.prevent />
 
     <div class="panel glass-panel top-left">
@@ -27,12 +27,26 @@
       <v-alert v-if="error" type="warning" variant="tonal" density="compact" class="mt-2">{{
         error
       }}</v-alert>
-      <div class="hint mt-1">
+      <div class="hint mt-1" v-if="mobile">
+        Two fingers: slide to tilt, twist to rotate · tap for the column
+      </div>
+      <div class="hint mt-1" v-else>
         Drag to pan · right-drag or Ctrl+drag to tilt and rotate · click for the column
       </div>
     </div>
 
-    <div class="panel glass-panel top-right controls">
+    <v-btn
+      v-if="mobile && !showControls"
+      icon="mdi-tune-variant"
+      theme="dark"
+      class="glass-panel controls-fab"
+      aria-label="Flight level and time"
+      @click="showControls = true"
+    />
+    <div v-if="!mobile || showControls" class="panel glass-panel top-right controls" :class="{ sheet: mobile }">
+      <div v-if="mobile" class="d-flex justify-end">
+        <v-btn icon="mdi-close" size="small" variant="text" theme="dark" aria-label="Close" @click="showControls = false" />
+      </div>
       <div class="text-caption">
         Flight level: <b>{{ flightLevel(levelFt) }}</b>
       </div>
@@ -107,7 +121,7 @@
     </div>
 
     <div class="bottom-left">
-      <TurbulenceLegend title="Turbulence (medium aircraft)" />
+      <TurbulenceLegend title="Turbulence (medium aircraft)" :compact="mobile" />
     </div>
   </div>
 </template>
@@ -126,6 +140,7 @@ import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
 import { CubeGeometry } from '@luma.gl/engine'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import ColumnProfile from '@/components/turbulence/ColumnProfile.vue'
+import { useMobile } from '@/util/useMobile'
 import {
   type Voxel,
   basemapLayer,
@@ -176,6 +191,8 @@ const windowFt = ref(4000)
 const frameIndex = ref(0)
 const exaggeration = ref(30)
 const showLight = ref(true)
+const mobile = useMobile()
+const showControls = ref(false)
 
 const windowItems = [
   { title: '± 2,000 ft', value: 2000 },
@@ -504,7 +521,7 @@ onMounted(async () => {
       bearing: -15,
       maxPitch: 85
     },
-    controller: true,
+    controller: { touchRotate: true },
     layers: buildLayers(),
     getTooltip: tooltip
   })
@@ -540,7 +557,7 @@ onBeforeUnmount(() => {
 .map-page {
   position: relative;
   width: 100%;
-  height: calc(100vh - 80px);
+  height: var(--page-h);
   border-radius: 8px;
   overflow: hidden;
   background: #e5e7eb;
@@ -597,5 +614,33 @@ onBeforeUnmount(() => {
   z-index: 1000;
   bottom: 24px;
   left: 12px;
+}
+/* Phones: the flight panel spans the top, settings and the column open as bottom sheets. */
+.mobile .top-left {
+  top: 8px;
+  left: 8px;
+  right: 60px;
+  width: auto;
+}
+.controls-fab {
+  position: absolute;
+  z-index: 1000;
+  top: 8px;
+  right: 8px;
+}
+.mobile .top-right.sheet,
+.mobile .right-profile {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  max-height: 60%;
+  overflow-y: auto;
+  z-index: 1100;
+}
+.mobile .bottom-left {
+  bottom: 8px;
+  left: 8px;
 }
 </style>

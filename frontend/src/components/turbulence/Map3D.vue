@@ -2,10 +2,31 @@
   <div class="map3d">
     <div ref="canvasEl" class="canvas" @contextmenu.prevent />
 
-    <div class="panel glass-panel controls3d">
+    <v-btn
+      v-if="mobile && !showPanel"
+      icon="mdi-cube-outline"
+      theme="dark"
+      class="glass-panel panel-fab"
+      aria-label="3D settings"
+      @click="showPanel = true"
+    />
+    <div
+      v-if="!mobile || showPanel"
+      class="panel glass-panel controls3d"
+      :class="{ sheet: mobile }"
+    >
       <div class="d-flex align-center justify-space-between">
         <span class="panel-title">3D</span>
         <span class="muted fps" v-if="fps">{{ fps }} fps</span>
+        <v-btn
+          v-if="mobile"
+          icon="mdi-close"
+          size="small"
+          variant="text"
+          theme="dark"
+          aria-label="Close"
+          @click="showPanel = false"
+        />
       </div>
       <div class="muted" v-if="loadingVolume">Loading the turbulence volume…</div>
       <div class="muted" v-else-if="volume">
@@ -32,7 +53,10 @@
         theme="dark"
         color="var(--my-accent)"
       />
-      <div class="hint">
+      <div class="hint" v-if="mobile">
+        Two fingers: slide up or down to tilt, twist to rotate · tap a plane for details
+      </div>
+      <div class="hint" v-else>
         Shift+drag or right-drag to tilt and rotate · click a plane for details
       </div>
     </div>
@@ -71,6 +95,7 @@ import {
   toVoxels,
   tooltipStyle
 } from '@/components/turbulence/scene3d'
+import { useMobile } from '@/util/useMobile'
 
 /** A map view in Leaflet terms: zoom counts 256 px tiles. */
 export interface MapView {
@@ -99,7 +124,10 @@ const canvasEl = ref<HTMLDivElement>()
 const volume = shallowRef<TurbulenceVolume>()
 const voxels = shallowRef<Voxel[]>([])
 const loadingVolume = ref(false)
-const windowFt = ref(4000)
+const mobile = useMobile()
+const showPanel = ref(false)
+// Phones draw half as many blocks by default.
+const windowFt = ref(mobile.value ? 2000 : 4000)
 const exaggeration = ref(30)
 const fps = ref(0)
 
@@ -323,7 +351,8 @@ onMounted(() => {
   deck = new Deck({
     parent: canvasEl.value,
     initialViewState: viewState,
-    controller: true,
+    // touchRotate: two-finger twist rotates and two-finger vertical slide tilts.
+    controller: { touchRotate: true },
     layers: buildLayers(),
     getTooltip: tooltip,
     onViewStateChange: ({ viewState: v }) => {
@@ -377,6 +406,21 @@ onBeforeUnmount(() => {
 .hint {
   color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
+}
+.panel-fab {
+  position: absolute;
+  z-index: 1000;
+  /* Below the live map's settings button. */
+  top: 60px;
+  right: 8px;
+}
+.controls3d.sheet {
+  background: rgba(24, 39, 52, 0.92);
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: auto;
+  z-index: 1100;
 }
 .controls3d {
   right: 12px;

@@ -1,0 +1,26 @@
+id: mobile
+name: Mobile layout
+prose: On phones and touch-first tablets the app switches to a layout built for small touch screens.
+behaviors:
+  - id: auto-detect
+    description: >-
+      Screens up to 760 px wide, or touch-first screens up to 1024 px wide, get the mobile layout
+      automatically, and it follows rotation and window resizes.
+  - id: bottom-tab-bar
+    description: >-
+      On mobile the side rail is replaced by a bottom tab bar for the four pages, clear of the iPhone
+      home indicator, and the app bar is shorter.
+  - id: safe-areas
+    description: >-
+      The page extends edge to edge on notched phones and keeps content inside the safe areas,
+      including in landscape.
+  - id: map-sheets
+    description: >-
+      On mobile the map pages keep panels at the edges, open their settings as a bottom sheet from a
+      button, show a one-row legend, use pinch instead of zoom buttons, and give controls large tap
+      targets.
+  - id: touch-3d
+    description: >-
+      On touch screens, sliding two fingers up the live map opens 3D. In 3D, sliding two fingers tilts
+      and twisting them rotates. The live map still opens in 2D, and 3D shows fewer levels by default
+      on mobile to stay light.

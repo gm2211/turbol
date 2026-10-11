@@ -253,7 +253,7 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 .map-card {
-  height: calc(100vh - 100px);
+  height: calc(var(--page-h) - 20px);
   min-height: 420px;
 }
 .now-box {
