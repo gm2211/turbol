@@ -1,0 +1,44 @@
+name: Spec check
+
+on:
+  pull_request:
+    branches: [ "develop" ]
+
+permissions:
+  contents: read
+
+env:
+  # gm2211/specify, pinned so a new Specify release can't break this check unannounced.
+  SPECIFY_REF: 8ba4dffe7da8eb1463f087bbd10e8d5d590a1cac
+
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/checkout@v5
+        with:
+          repository: gm2211/specify
+          ref: ${{ env.SPECIFY_REF }}
+          path: .specify-cli
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Build Specify
+        run: |
+          cd .specify-cli
+          npm ci --ignore-scripts
+          npm run build
+      # Put "Spec review: <reason>" on its own line in the PR body when a change leaves the spec untouched.
+      - name: Check spec against PR base
+        env:
+          SPEC_BASE: ${{ github.event.pull_request.base.sha }}
+          SPEC_PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          reason=$(printf '%s\n' "$SPEC_PR_BODY" | sed -n 's/^Spec review: //p' | head -n 1)
+          args=()
+          if [ -n "$reason" ]; then args=(--reason "$reason"); fi
+          node .specify-cli/dist/src/cli/index.js spec check --spec turbol.spec --base "$SPEC_BASE" "${args[@]}"

@@ -1,0 +1,14 @@
+id: deployment
+name: Run and deploy
+prose: One Docker service (backend serving API and built frontend) plus Postgres.
+behaviors:
+  - id: run-locally
+    description: '`./run.sh` starts Postgres, the backend and the frontend for local use.'
+  - id: render-free-plan
+    description: >-
+      The app deploys to Render's free plan from render.yaml and fits in 512 MB with every 3D frame
+      loaded. Pushes to develop redeploy.
+  - id: keep-awake-on-render
+    description: >-
+      On Render the backend pings its own public URL so the free instance does not sleep between
+      nowcasts.
