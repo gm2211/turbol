@@ -3,7 +3,9 @@
     <template v-if="tip.loading">…</template>
     <template v-else-if="tip.edr != null">
       <b>EDR {{ tip.edr.toFixed(2) }}</b> ·
-      <span :style="{ color: categoryColors[tip.category] }">{{ categoryLabels[tip.category] }}</span>
+      <span :style="{ color: categoryColors[tip.category] }">{{
+        categoryLabels[tip.category]
+      }}</span>
       · {{ levelLabel }}
     </template>
     <template v-else>No data · {{ levelLabel }}</template>
@@ -67,13 +69,23 @@ async function lookup(latlng: L.LatLng, point: L.Point) {
   const col = await column(frameId, latlng.lat, lon)
   if (mySeq !== seq || !tip.value) return
   const level = col?.levels.find((l) => l.levelFt === props.levelFt)
-  tip.value = { x: point.x, y: point.y, loading: false, edr: level?.edr, category: level?.category ?? 'NoData' }
+  tip.value = {
+    x: point.x,
+    y: point.y,
+    loading: false,
+    edr: level?.edr,
+    category: level?.category ?? 'NoData'
+  }
 }
 
 function show(e: L.LeafletMouseEvent, delay: number) {
   lastLatLng = e.latlng
   const prev = tip.value
-  tip.value = { ...(prev ?? { loading: true, category: 'NoData' }), x: e.containerPoint.x, y: e.containerPoint.y }
+  tip.value = {
+    ...(prev ?? { loading: true, category: 'NoData' }),
+    x: e.containerPoint.x,
+    y: e.containerPoint.y
+  }
   window.clearTimeout(timer)
   timer = window.setTimeout(() => lookup(e.latlng, e.containerPoint), delay)
 }
@@ -91,7 +103,8 @@ const onTap = (e: L.LeafletMouseEvent) => {
 }
 
 function refresh() {
-  if (tip.value && lastLatLng && props.map) lookup(lastLatLng, props.map.latLngToContainerPoint(lastLatLng))
+  if (tip.value && lastLatLng && props.map)
+    lookup(lastLatLng, props.map.latLngToContainerPoint(lastLatLng))
 }
 
 watch(
@@ -106,7 +119,11 @@ watch(() => [props.frameId, props.levelFt], refresh)
 
 onBeforeUnmount(() => {
   window.clearTimeout(timer)
-  props.map?.off('mousemove', onMove).off('mouseout', hide).off('movestart', hide).off('click', onTap)
+  props.map
+    ?.off('mousemove', onMove)
+    .off('mouseout', hide)
+    .off('movestart', hide)
+    .off('click', onTap)
 })
 </script>
 
