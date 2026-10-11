@@ -15,6 +15,16 @@ behaviors:
     description: >-
       Looking up a flight number or callsign finds the first candidate callsign with a known route or
       that is airborne right now, and returns its route and live position when available.
+    details: >-
+      Airlines reuse a flight number for every leg of the day, so the live aircraft counts as flying
+      the route only when it is near the origin-destination great circle and heading for the
+      destination (any heading within 80 km of it). Otherwise it is reported as on another leg and not
+      drawn on the route map.
+  - id: route-map-legend
+    description: >-
+      The analysis map has a legend explaining the ribbon colours (forecast category), that the line is
+      a great-circle route, the red ring (worst forecast bump with its category and time) and the live
+      aircraft when it is flying this route. Airport labels sit on the side away from the route.
   - id: aircraft-class-from-flight
     description: >-
       When analyzing a looked-up flight, the server derives the aircraft class from that flight's live

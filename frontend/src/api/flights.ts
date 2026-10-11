@@ -20,7 +20,10 @@ export interface FlightLookup {
   query: string
   callsign?: string
   route?: FlightRoute
+  /** Airborne now, flying this route. */
   live?: AircraftView
+  /** Airborne now under this callsign, but on a different leg (airlines reuse flight numbers for every leg). */
+  otherLeg?: AircraftView
 }
 
 export interface RoutePoint {

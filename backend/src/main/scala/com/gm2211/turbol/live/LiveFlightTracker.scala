@@ -46,13 +46,11 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
         val aircraftClass = AircraftClass.fromAdsb(a.category, a.typeCode)
         val route = a.callsign.flatMap(traffic.route)
         val alt = a.altitudeFt.filterNot(_ => a.onGround)
-        // Only trust the scheduled route if the aircraft is actually heading for that destination.
+        // Only trust the scheduled route if the aircraft is actually flying it (not another leg of the same number).
         val destination = route
+          .filter(_.isFlownBy(a))
           .map(r => (r.destination.lat, r.destination.lon))
-          .filter { case (lat, lon) =>
-            a.trackDeg.forall(track => angleDiff(bearing(a.lat, a.lon, lat, lon), track) < 90) &&
-            RouteAnalyzer.greatCircleKm(a.lat, a.lon, lat, lon) > 5
-          }
+          .filter { case (lat, lon) => RouteAnalyzer.greatCircleKm(a.lat, a.lon, lat, lon) > 5 }
         val ahead = alt.map { altFt =>
           RouteAnalyzer.analyzeRemaining(
             store,
@@ -112,17 +110,5 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
       case _ => "Smooth now, and smooth for the next hour."
     }
     Upcoming(headline, nowCategory, worstInBump, firstBump.map(_.minutesFromStart), lasting, worst)
-  }
-
-  private def bearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double = {
-    val (p1, p2, dl) = (toRadians(lat1), toRadians(lat2), toRadians(lon2 - lon1))
-    val y = sin(dl) * cos(p2)
-    val x = cos(p1) * sin(p2) - sin(p1) * cos(p2) * cos(dl)
-    (toDegrees(atan2(y, x)) + 360) % 360
-  }
-
-  private def angleDiff(a: Double, b: Double): Double = {
-    val d = abs(a - b) % 360
-    if (d > 180) 360 - d else d
   }
 }
