@@ -20,3 +20,12 @@ behaviors:
     description: >-
       Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and
       selected flight level for the grid cell under the pointer, for the selected frame.
+  - id: shift-drag-into-3d
+    description: >-
+      Shift+dragging the live map tilts and rotates it into 3D, where aircraft sit at their altitude
+      and the turbulence volume shows around the selected flight level. Clicking an aircraft in 3D
+      returns to 2D with its popup open.
+  - id: toggle-2d-3d
+    description: >-
+      A 2D/3D toggle on the live map flattens back to the 2D map, or tilts up into 3D. The 3D
+      library loads only the first time 3D is opened, so the 2D map stays light.
