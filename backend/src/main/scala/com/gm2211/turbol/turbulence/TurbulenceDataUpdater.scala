@@ -41,8 +41,9 @@ object TurbulenceDataUpdater {
 }
 
 /**
- * Keeps [[TurbulenceStore]] fresh: a GTGN nowcast every 15 minutes and a GTG v4 forecast cycle every few hours, both
- * from NOMADS. Decoded layers are cached on disk, so a restart serves data immediately instead of re-downloading.
+ * Keeps [[TurbulenceStore]] fresh: a GTGN nowcast every 15 minutes (polled every minute) and a GTG v4 forecast cycle
+ * every few hours, both from NOMADS. Decoded layers are cached on disk, so a restart serves data immediately instead of
+ * re-downloading.
  */
 final class TurbulenceDataUpdater(
   store: TurbulenceStore,
@@ -55,11 +56,16 @@ final class TurbulenceDataUpdater(
   private val nowcastDir = dataDir.resolve("nowcast")
   private val forecastDir = dataDir.resolve("forecast")
 
+  // GTGN lands on NOMADS ~2-3 min after each quarter hour; a one-minute poll is two directory listings. The loops are
+  // independent so a long forecast download (18 hours of GRIB) never holds back the next nowcast.
   override def run(): IO[Unit] =
     IO.blocking(loadCached()) >>
-      (IO.blocking(refreshNowcast()).both(IO.blocking(refreshForecast())) >> IO.sleep(
-        3.minutes
-      )).foreverM
+      poll("nowcast", 1.minute)(refreshNowcast()).both(poll("forecast", 3.minutes)(refreshForecast())).void
+
+  private def poll(name: String, every: FiniteDuration)(refresh: => Unit): IO[Nothing] =
+    (IO.blocking(refresh).handleErrorWith(e =>
+      IO(log.warn("Turbulence refresh failed", safe("product", name), unsafe("error", e)))
+    ) >> IO.sleep(every)).foreverM
 
   /** Load the newest complete nowcast and forecast left on disk by a previous run. */
   def loadCached(): Unit = {
