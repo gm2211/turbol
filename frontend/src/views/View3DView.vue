@@ -117,28 +117,32 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { useRoute, useRouter } from 'vue-router'
 import { Deck, type Layer, type PickingInfo, WebMercatorViewport } from '@deck.gl/core'
 import {
-  BitmapLayer,
   LineLayer,
   PathLayer,
   ScatterplotLayer,
   SolidPolygonLayer
 } from '@deck.gl/layers'
-import { TileLayer } from '@deck.gl/geo-layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
 import { CubeGeometry } from '@luma.gl/engine'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import ColumnProfile from '@/components/turbulence/ColumnProfile.vue'
-import { baseMapUrl } from '@/components/turbulence/baseMap'
+import {
+  type Voxel,
+  basemapLayer,
+  blue,
+  ftToM,
+  hexRgb,
+  toVoxels as volumeToVoxels,
+  tooltipStyle
+} from '@/components/turbulence/scene3d'
 import {
   type AircraftView,
   type FrameInfo,
-  type TurbulenceCategory,
   type TurbulenceColumn,
   type TurbulenceStatus,
   type TurbulenceVolume,
   categoryColors,
   categoryLabels,
-  classify,
   fetchColumn,
   fetchStatus,
   fetchVolume,
@@ -151,16 +155,6 @@ import { type RouteAnalysis, type RoutePoint, analyzeFlight, lookupFlight } from
 interface Segment {
   from: RoutePoint
   to: RoutePoint
-}
-
-interface Voxel {
-  lat: number
-  lon: number
-  levelFt: number
-  bottomFt: number
-  topFt: number
-  edr: number
-  category: TurbulenceCategory
 }
 
 const route = useRoute()
@@ -190,9 +184,7 @@ const windowItems = [
   { title: 'All levels', value: 60000 }
 ]
 
-const ftToM = 0.3048
 const z = (ft: number) => ft * ftToM * exaggeration.value
-const blue: [number, number, number] = [16, 50, 79] // --my-blue
 
 /** Nowcast first, then forecast hours that are still in the future (same as the live map). */
 const frames = computed<FrameInfo[]>(() => {
@@ -229,54 +221,14 @@ const voxelCount = computed(() => visibleVoxels.value.length)
 
 function toVoxels(v: TurbulenceVolume): Voxel[] {
   const thresholds = status.value?.thresholds.Medium
-  if (!thresholds) return []
-  const levels = v.levelsFt
-  const out: Voxel[] = []
-  for (let k = 0; k < v.voxels.length; k += 4) {
-    const i = v.voxels[k + 2]!
-    const level = levels[i]!
-    const prev = levels[i - 1]
-    const next = levels[i + 1]
-    const edr = v.voxels[k + 3]! / 200
-    out.push({
-      lat: v.voxels[k]! / 100,
-      lon: v.voxels[k + 1]! / 100,
-      levelFt: level,
-      bottomFt: prev === undefined ? Math.max(level - 1000, 0) : (prev + level) / 2,
-      topFt: next === undefined ? level + 1000 : (next + level) / 2,
-      edr,
-      category: classify(edr, thresholds)
-    })
-  }
-  return out
+  return thresholds ? volumeToVoxels(v, thresholds) : []
 }
 
 let deck: Deck | undefined
 const cube = new CubeGeometry()
 
-function hexRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
-
 function buildLayers(): Layer[] {
-  const layers: Layer[] = [
-    new TileLayer({
-      id: 'basemap',
-      data: baseMapUrl,
-      minZoom: 0,
-      maxZoom: 12,
-      tileSize: 256,
-      renderSubLayers: (props) => {
-        const [[west, south], [east, north]] = props.tile.boundingBox
-        return new BitmapLayer(props, {
-          data: undefined,
-          image: props.data,
-          bounds: [west, south, east, north]
-        })
-      }
-    })
-  ]
+  const layers: Layer[] = [basemapLayer()]
 
   // Translucent sheet at the chosen flight level.
   const c = status.value?.coverage
@@ -452,14 +404,7 @@ function tooltip(info: PickingInfo) {
   if (!v) return null
   return {
     html: `<b>${flightLevel(v.levelFt)}</b> · ${categoryLabels[v.category]} (EDR ${v.edr.toFixed(2)})`,
-    style: {
-      background: 'rgba(24, 39, 52, 0.92)', // --glass-panel-bg, more opaque to read over voxels
-      color: 'rgba(255, 255, 255, 0.95)',
-      borderRadius: '8px',
-      padding: '6px 10px',
-      fontSize: '12px',
-      boxShadow: '0px 1px 3px #000000'
-    }
+    style: tooltipStyle
   }
 }
 
