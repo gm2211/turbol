@@ -8,8 +8,10 @@ package com.gm2211.turbol
 
 import cats.effect.unsafe.IORuntime
 import cats.effect.{ExitCode, IO, IOApp}
+import cats.syntax.foldable.*
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
+import com.gm2211.turbol.background.KeepAwake
 import com.gm2211.turbol.config.ConfigWatcher
 import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.RuntimeConfig
@@ -66,6 +68,7 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
             .turbulenceDataUpdater
             .runForever(MoreExecutors.fixed("turbulence-data", 1).executionContext)
             .start
+          _ <- KeepAwake.fromEnv.traverse_(_.runForever(MoreExecutors.fixed("keep-awake", 1).executionContext).start)
           _ <-
             appModule.backgroundJobsModule.airportDataUpdater.runForever(MoreExecutors.fixed("bg", 1).executionContext)
           _ <- IO.never
