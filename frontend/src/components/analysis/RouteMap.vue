@@ -120,7 +120,10 @@ function draw() {
   if (props.follow && a) {
     map.panTo([a.lat, a.lon], { animate: true })
   } else if (!fitted && pts.length > 1) {
-    map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon] as [number, number])), { padding: [30, 30] })
+    map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon] as [number, number])), {
+      paddingTopLeft: [45, 45],
+      paddingBottomRight: [45, 75]
+    })
     fitted = true
   }
 }
