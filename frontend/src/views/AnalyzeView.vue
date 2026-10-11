@@ -56,6 +56,11 @@
             Follow live
           </v-btn>
         </span>
+        <span v-else-if="lookup.otherLeg">
+          · its aircraft is in the air on another leg right now ({{ flightLevel(lookup.otherLeg.altitudeFt) }},
+          heading {{ compass(lookup.otherLeg.trackDeg) }}), not {{ lookup.route.origin.code }} →
+          {{ lookup.route.destination.code }}
+        </span>
         <v-btn size="small" color="#10324f" variant="tonal" class="ml-2" :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`">
           View in 3D
         </v-btn>
@@ -114,7 +119,9 @@
               :origin="analyzedOrigin"
               :destination="analyzedDestination"
               :worst="worstPoint"
+              :worst-label="worstLabel"
               :aircraft="lookup?.live"
+              legend
             />
           </v-card>
         </v-col>
@@ -191,6 +198,12 @@ const worstPoint = computed<[number, number] | undefined>(() => {
     ? [s.worstLat, s.worstLon]
     : undefined
 })
+const worstLabel = computed(() => {
+  const s = analysis.value?.summary
+  if (!s || !worstPoint.value) return undefined
+  const at = s.worstMinute !== undefined ? ` at ${formatDuration(s.worstMinute)}` : ''
+  return `Worst forecast bump: ${categoryLabels[s.worstCategory]}${at}`
+})
 const arrival = computed(() =>
   analysis.value
     ? new Date(new Date(analysis.value.start).getTime() + analysis.value.durationMinutes * 60000).toISOString()
@@ -201,6 +214,8 @@ function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+const compass = (deg?: number) =>
+  deg === undefined ? '?' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]
 const fmt = (iso?: string) => (iso ? formatUtc(iso) : '–')
 const localTime = (iso: string) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''

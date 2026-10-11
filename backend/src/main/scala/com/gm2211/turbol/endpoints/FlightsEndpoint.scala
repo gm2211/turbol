@@ -7,7 +7,7 @@
 package com.gm2211.turbol.endpoints
 
 import cats.effect.IO
-import com.gm2211.turbol.live.{FlightRoute, LiveTrafficClient, LiveTrafficService, Place}
+import com.gm2211.turbol.live.{FlightRoute, LiveAircraft, LiveTrafficClient, LiveTrafficService, Place}
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.generic.auto.*
@@ -22,7 +22,9 @@ final case class FlightLookup(
   query: String,
   callsign: Option[String],
   route: Option[FlightRoute],
-  live: Option[AircraftView]
+  live: Option[AircraftView],
+  /** Airborne under this callsign but flying a different leg than `route` (flight numbers are reused per leg). */
+  otherLeg: Option[AircraftView] = None
 )
 
 final case class AnalyzeRequest(
@@ -72,7 +74,9 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
     }.find { case (_, route, live) => route.isDefined || live.isDefined }
     found match {
       case Some((callsign, route, live)) =>
-        FlightLookup(query, Some(callsign), route, live.map(LiveEndpoint.view(store, _, now)))
+        val (onRoute, elsewhere) = live.partition(a => route.forall(_.isFlownBy(a)))
+        val view = (a: LiveAircraft) => LiveEndpoint.view(store, a, now)
+        FlightLookup(query, Some(callsign), route, onRoute.map(view), elsewhere.map(view))
       case None => FlightLookup(query, None, None, None)
     }
   }
