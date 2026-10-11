@@ -1,0 +1,35 @@
+id: route-analysis
+name: Route analysis
+prose: >-
+  "How bumpy will this flight be": pick an origin and destination (or look up a flight) and get a
+  passenger-friendly verdict for the whole flight, gate to gate.
+behaviors:
+  - id: analyze-airport-pair
+    description: >-
+      Analyzing an origin and destination returns a great-circle route with a climb, cruise and descent
+      profile, sampled in space, altitude and time against the nowcast and forecast.
+    details: >-
+      Departure defaults to now, cruise altitude to the profile's default, and aircraft class to
+      Medium; each can be set by the user.
+  - id: lookup-flight-by-number
+    description: >-
+      Looking up a flight number or callsign finds the first candidate callsign with a known route or
+      that is airborne right now, and returns its route and live position when available.
+  - id: plain-language-verdict
+    description: >-
+      The result leads with a one-sentence verdict based on the worst en-route category, such as
+      "Smooth ride: no significant turbulence expected." or "Some bumps likely, worst around 2h33m
+      into the flight."
+  - id: near-ground-excluded
+    description: >-
+      Points below 2,000 ft are shown but excluded from the worst bump, the verdict and the category
+      totals.
+  - id: timeline-and-breakdown
+    description: >-
+      The result shows a timeline of category segments, minutes and percentage per category, the
+      worst point's time and location, and a map and altitude profile coloured by category.
+  - id: coverage-notes
+    description: >-
+      When data is missing the result says why: part of the route is outside GTG coverage, the flight
+      runs past the forecast's 18-hour horizon, data is still loading, or the departure is more than 18
+      hours away.

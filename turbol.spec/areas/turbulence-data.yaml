@@ -1,0 +1,35 @@
+id: turbulence-data
+name: Turbulence data
+prose: >-
+  Turbulence comes from NOAA's free NOMADS feeds over HTTPS: the GTGN nowcast (every 15 minutes) and
+  the GTG v4 forecast (hourly cycles, F000 to F018). Both are EDR on the 3 km HRRR Lambert grid and
+  cover the contiguous US only.
+behaviors:
+  - id: nowcast-picked-up-quickly
+    description: >-
+      Each new 15-minute GTGN nowcast is loaded within about a minute of appearing on NOMADS. A file
+      still being uploaded that does not decode completely is skipped in favour of the previous one.
+  - id: forecast-fetches-only-needed-levels
+    description: >-
+      GTG forecasts are fetched with byte-range requests for only the EDR messages and altitude levels
+      the app uses, never the whole multi-hundred-MB files.
+  - id: forecast-usable-while-loading
+    description: >-
+      On a first run the forecast is published hour by hour, so route analysis works before the whole
+      cycle has downloaded. A long forecast download never delays the next nowcast.
+  - id: cached-data-survives-restart
+    description: >-
+      On startup the newest complete nowcast and forecast left on disk are loaded before any new
+      download, so a restart does not leave the app without data.
+  - id: nowcast-blended-into-first-hour
+    description: >-
+      A point query uses the nowcast at full weight up to its valid time, tapering to zero one hour
+      later, and the forecast interpolated in time between the two bracketing forecast hours.
+  - id: status-lists-loaded-frames
+    description: >-
+      The turbulence status reports the loaded nowcast and forecast frames with their valid and issue
+      times and levels, the thresholds per aircraft class, and the coverage bounding box.
+  - id: outside-coverage-is-no-data
+    description: >-
+      A point outside the GTG grid, or where the grid has no value, reports no EDR and the NoData
+      category rather than a guessed value.

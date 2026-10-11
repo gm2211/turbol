@@ -1,0 +1,25 @@
+id: categories
+name: Turbulence categories
+prose: >-
+  EDR maps to Smooth, Light, Moderate, Severe or Extreme, with thresholds that scale with aircraft
+  weight class because heavier aircraft feel the same EDR less.
+behaviors:
+  - id: medium-thresholds-calibrated
+    description: >-
+      For medium aircraft, Light starts at EDR 0.12, Moderate at 0.14, Severe at 0.44 and Extreme at
+      0.79.
+    details: >-
+      Light and Moderate were recalibrated against 2,230 PIREPs for the 3 km grid
+      (data-pipeline/calibrate.py). Severe and Extreme come from the GTGN User Guide, Figure 2.
+  - id: class-specific-thresholds
+    description: >-
+      Light and heavy aircraft use their own thresholds: the guide's values scaled by the same
+      calibration ratios as medium (0.8 for Light, 0.7 for Moderate).
+  - id: aircraft-class-from-adsb
+    description: >-
+      A live aircraft's weight class comes from its ADS-B wake category and type code: wide-bodies and
+      category A5 are Heavy, categories A1 and A2 are Light, everything else is Medium.
+  - id: consistent-category-colours
+    description: >-
+      Each category has one colour, used identically by map tiles, route lines, profiles, legends and
+      the 3D view.
