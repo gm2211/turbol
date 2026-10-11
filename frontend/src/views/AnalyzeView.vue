@@ -1,134 +1,142 @@
 <template>
-  <div class="analyze-page">
-    <v-card class="glass pa-4 mb-3">
-      <v-tabs v-model="mode" density="compact" class="mb-3">
-        <v-tab value="flight">Flight number</v-tab>
-        <v-tab value="route">Route</v-tab>
-      </v-tabs>
-      <v-row density="compact" align="center">
+  <div class="analyze-page" :class="{ 'has-result': analysis }">
+    <v-card class="panel form-card px-4 py-3">
+      <div class="form-row">
+        <v-btn-toggle v-model="mode" mandatory density="compact" variant="outlined" divided class="mode">
+          <v-btn value="flight">Flight</v-btn>
+          <v-btn value="route">Route</v-btn>
+        </v-btn-toggle>
         <template v-if="mode === 'flight'">
-          <v-col cols="12" md="4">
-            <v-text-field
-              v-model="flightQuery"
-              label="Flight number or callsign (UA1517, DAL2105)"
-              density="comfortable"
-              variant="outlined"
-              hide-details
-              @keyup.enter="analyze"
-            />
-          </v-col>
-        </template>
-        <template v-else>
-          <v-col cols="12" md="3"><AirportPicker v-model="origin" label="From" /></v-col>
-          <v-col cols="12" md="3"><AirportPicker v-model="destination" label="To" /></v-col>
-        </template>
-        <v-col cols="6" md="2">
           <v-text-field
-            v-model="departureLocal"
-            type="datetime-local"
-            label="Departure (local time)"
-            density="comfortable"
+            v-model="flightQuery"
+            class="grow"
+            label="Flight number or callsign (UA1517, DAL2105)"
+            density="compact"
             variant="outlined"
             hide-details
+            @keyup.enter="analyze"
           />
-        </v-col>
-        <v-col cols="12" md="1">
-          <v-btn color="#10324f" size="large" :loading="loading" block @click="analyze">Analyze</v-btn>
-        </v-col>
-      </v-row>
-      <div v-if="lookup?.route" class="mt-3 text-body-2">
+        </template>
+        <template v-else>
+          <AirportPicker v-model="origin" class="grow" label="From" />
+          <AirportPicker v-model="destination" class="grow" label="To" />
+        </template>
+        <v-text-field
+          v-model="departureLocal"
+          class="departure"
+          type="datetime-local"
+          label="Departure (local time)"
+          density="compact"
+          variant="outlined"
+          hide-details
+        />
+        <v-btn color="#10324f" :loading="loading" height="40" @click="analyze">Analyze</v-btn>
+      </div>
+      <div v-if="lookup?.route" class="flight-line mt-2">
         <b>{{ lookup.route.iataCallsign ?? lookup.route.callsign }}</b>
         {{ lookup.route.airline ? `· ${lookup.route.airline}` : '' }} ·
         {{ lookup.route.origin.code }} → {{ lookup.route.destination.code }}
-        <span v-if="lookup.live">
-          · <b class="text-green-darken-2">in the air now</b> at {{ flightLevel(lookup.live.altitudeFt) }}
-          <v-btn size="small" color="green" variant="tonal" class="ml-2" :to="`/follow/${lookup.live.hex}`">
+        <template v-if="lookup.live">
+          <v-chip size="small" color="green-darken-2" variant="flat" class="ml-2">
+            In the air now · {{ flightLevel(lookup.live.altitudeFt) }}
+          </v-chip>
+          <v-btn
+            size="small"
+            color="green-darken-2"
+            variant="flat"
+            class="ml-2"
+            prepend-icon="mdi-crosshairs-gps"
+            :to="`/follow/${lookup.live.hex}`"
+          >
             Follow live
           </v-btn>
-        </span>
+        </template>
         <span v-else-if="lookup.otherLeg">
           · its aircraft is in the air on another leg right now ({{ flightLevel(lookup.otherLeg.altitudeFt) }},
           heading {{ compass(lookup.otherLeg.trackDeg) }}), not {{ lookup.route.origin.code }} →
           {{ lookup.route.destination.code }}
         </span>
-        <v-btn size="small" color="#10324f" variant="tonal" class="ml-2" :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`">
+        <v-btn
+          size="small"
+          color="#10324f"
+          variant="flat"
+          class="ml-2"
+          prepend-icon="mdi-cube-outline"
+          :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`"
+        >
           View in 3D
         </v-btn>
       </div>
-      <v-alert v-if="error" type="warning" variant="tonal" class="mt-3" density="compact">{{ error }}</v-alert>
+      <v-alert v-if="error" type="warning" variant="tonal" class="mt-2" density="compact">{{ error }}</v-alert>
     </v-card>
 
     <template v-if="analysis">
-      <v-row density="compact">
-        <v-col cols="12" md="4">
-          <v-card class="glass pa-4 fill-height">
-            <div class="text-overline">Forecast verdict</div>
-            <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" class="mb-2" label>
-              Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
-            </v-chip>
-            <div class="text-h6 mb-3">{{ analysis.summary.verdict }}</div>
-            <div class="stats">
-              <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
-              <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
-              <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
-              <div><span>Aircraft</span>{{ aircraftLabel }}</div>
-              <div>
-                <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
-                <template v-if="analysis.summary.worstMinute !== undefined">
-                  at {{ formatDuration(analysis.summary.worstMinute) }}
-                </template>
-              </div>
-            </div>
-            <div class="mt-3">
-              <div v-for="c in shownCategories" :key="c" class="cat-row">
-                <span class="swatch" :style="{ background: categoryColors[c] }" />
-                <span class="cat-name">{{ categoryLabels[c] }}</span>
-                <span>{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</span>
-                <span class="muted">({{ analysis.summary.percentByCategory[c] ?? 0 }}%)</span>
-              </div>
-            </div>
-            <v-alert
-              v-for="n in analysis.summary.notes"
-              :key="n"
-              type="info"
-              variant="tonal"
-              density="compact"
-              class="mt-2"
-              >{{ n }}</v-alert
-            >
-            <div class="muted text-caption mt-3">
-              GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
-              {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
-              {{ fmt(analysis.dataSources.forecastUntil) }}
-            </div>
-          </v-card>
-        </v-col>
-        <v-col cols="12" md="8">
-          <v-card class="glass pa-2 map-card">
-            <RouteMap
-              :points="analysis.points"
-              :origin="analyzedOrigin"
-              :destination="analyzedDestination"
-              :worst="worstPoint"
-              :worst-label="worstLabel"
-              :aircraft="lookup?.live"
-              legend
-            />
-          </v-card>
-        </v-col>
-      </v-row>
-      <v-card class="glass pa-4 mt-3">
-        <div class="text-subtitle-2 mb-2">Turbulence timeline</div>
+      <v-card class="panel verdict-card pa-4">
+        <div class="eyebrow">Forecast verdict</div>
+        <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" class="mb-2" label>
+          Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
+        </v-chip>
+        <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
+        <div class="stats">
+          <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
+          <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
+          <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
+          <div><span>Aircraft</span>{{ aircraftLabel }}</div>
+          <div class="wide">
+            <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
+            <template v-if="analysis.summary.worstMinute !== undefined">
+              at {{ formatDuration(analysis.summary.worstMinute) }}
+            </template>
+            <template v-if="worstPoint"> · <span class="ring" /> on the map</template>
+          </div>
+        </div>
+        <div class="mt-3">
+          <div v-for="c in shownCategories" :key="c" class="cat-row">
+            <span class="swatch" :style="{ background: categoryColors[c] }" />
+            <span class="cat-name">{{ categoryLabels[c] }}</span>
+            <span>{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</span>
+            <span class="muted">({{ analysis.summary.percentByCategory[c] ?? 0 }}%)</span>
+          </div>
+        </div>
+        <v-alert
+          v-for="n in analysis.summary.notes"
+          :key="n"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mt-2 note"
+          >{{ n }}</v-alert
+        >
+        <div class="muted sources mt-3">
+          GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
+          {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
+          {{ fmt(analysis.dataSources.forecastUntil) }}
+        </div>
+      </v-card>
+      <v-card class="panel map-card pa-2">
+        <RouteMap
+          :points="analysis.points"
+          :origin="analyzedOrigin"
+          :destination="analyzedDestination"
+          :worst="worstPoint"
+          :worst-label="worstLabel"
+          :aircraft="lookup?.live"
+          legend
+        />
+      </v-card>
+      <v-card class="panel timeline-card px-4 py-2">
+        <div class="eyebrow mb-1">Turbulence timeline</div>
         <TimelineBar
           :segments="analysis.segments"
           :start-label="`Departure ${localTime(analysis.start)}`"
           :end-label="`Arrival ${localTime(arrival)}`"
         />
         <TurbulenceProfile
-          class="mt-3"
+          class="mt-1"
           :points="analysis.points"
           :light="thresholds.light"
           :moderate="thresholds.moderate"
+          :height="100"
         />
       </v-card>
     </template>
@@ -186,7 +194,12 @@ const aircraftLabel = computed(() => {
   if (!a) return ''
   return a.aircraftType ? `${a.aircraftType} · ${a.aircraftClass}` : `${a.aircraftClass} (assumed)`
 })
-const shownCategories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme', 'NoData']
+/** Categories this flight actually has (Smooth always), so the breakdown stays short enough for one screen. */
+const shownCategories = computed(() =>
+  (['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme', 'NoData'] as TurbulenceCategory[]).filter(
+    (c) => c === 'Smooth' || (analysis.value?.summary.minutesByCategory[c] ?? 0) > 0
+  )
+)
 const worstPoint = computed<[number, number] | undefined>(() => {
   const s = analysis.value?.summary
   return s?.worstLat !== undefined && s.worstLon !== undefined && s.worstCategory !== 'Smooth'
@@ -280,33 +293,121 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* One screen on a laptop: form on top, verdict beside the map, timeline strip along the bottom. */
 .analyze-page {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (min-width: 960px) {
+  .analyze-page.has-result {
+    height: calc(100vh - 72px);
+    display: grid;
+    grid-template-columns: minmax(320px, 26%) 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'form form'
+      'verdict map'
+      'timeline timeline';
+  }
+  .form-card {
+    grid-area: form;
+  }
+  .verdict-card {
+    grid-area: verdict;
+    overflow-y: auto;
+  }
+  .map-card {
+    grid-area: map;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .map-card :deep(.route-map) {
+    min-height: 0;
+  }
+  .timeline-card {
+    grid-area: timeline;
+  }
+}
+/* Near-opaque light panels: dark text stays readable over the cloud photo. */
+.v-card.panel {
+  background: rgba(255, 255, 255, 0.93);
+  color: #0f172a;
+  backdrop-filter: blur(6px);
+  border-radius: 10px;
 }
 .map-card {
-  height: 100%;
-  min-height: 420px;
+  display: flex;
+}
+@media (max-width: 959px) {
+  .map-card {
+    min-height: 420px;
+  }
+}
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.form-row .grow {
+  flex: 1 1 220px;
+}
+.form-row .departure {
+  flex: 0 0 230px;
+}
+.mode {
+  height: 40px;
+}
+.flight-line {
+  font-size: 15px;
+  line-height: 32px;
+}
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #334155;
+}
+.verdict {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
-  font-size: 14px;
+  gap: 8px 12px;
+  font-size: 15px;
 }
-.stats span {
+.stats .wide {
+  grid-column: span 2;
+}
+.stats > div > span:first-child {
   display: block;
-  font-size: 11px;
-  color: var(--my-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
   text-transform: uppercase;
+}
+.ring {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2.5px solid #dc2626;
+  border-radius: 50%;
+  vertical-align: -1px;
 }
 .cat-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
 }
 .cat-name {
-  width: 80px;
+  width: 84px;
 }
 .swatch {
   width: 14px;
@@ -314,6 +415,12 @@ onMounted(async () => {
   border-radius: 2px;
 }
 .muted {
-  color: var(--my-text-muted);
+  color: #475569;
+}
+.sources {
+  font-size: 13px;
+}
+.note {
+  font-size: 14px;
 }
 </style>
