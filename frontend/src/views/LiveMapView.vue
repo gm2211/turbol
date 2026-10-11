@@ -1,6 +1,32 @@
 <template>
-  <div class="map-page">
+  <div class="map-page" :class="{ 'is-3d': mode === '3d' }">
     <div ref="mapEl" class="map" />
+
+    <component
+      :is="Map3D"
+      v-if="mode === '3d' && Map3D"
+      ref="map3d"
+      :view="view3d"
+      :aircraft="aircraft3d"
+      :frame="selectedFrame"
+      :status="status"
+      :level-ft="levelFt"
+      @move="on3dMove"
+      @select="on3dSelect"
+    />
+
+    <v-btn-toggle
+      :model-value="mode"
+      mandatory
+      density="compact"
+      theme="dark"
+      color="var(--my-accent)"
+      class="mode-toggle glass-panel"
+      @update:model-value="setMode"
+    >
+      <v-btn value="2d" size="small" :loading="loading3d && mode === '2d'">2D</v-btn>
+      <v-btn value="3d" size="small" title="Or shift+drag the map">3D</v-btn>
+    </v-btn-toggle>
 
     <div class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
@@ -108,7 +134,16 @@
 <script setup lang="ts">
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import {
+  type Component,
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
@@ -129,6 +164,7 @@ import {
 import { lookupFlight } from '@/api/flights'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
+import type { MapView } from '@/components/turbulence/Map3D.vue'
 
 interface TrackedFlight {
   /** What the user typed, which is also what goes in the URL (?flights=UA1517,DL5). */
@@ -191,6 +227,10 @@ const leafletMap = shallowRef<L.Map>()
 const planeRenderer = L.canvas({ padding: 0.2 })
 const planes = L.layerGroup()
 const trackedPlanes = L.layerGroup()
+/** What the 3D mode draws: every flight in view when "Show all flights" is on, plus the added flights. */
+const traffic = shallowRef<AircraftView[]>([])
+const trafficMarkers = new Map<string, L.CircleMarker>()
+const trackedMarkers = new Map<string, L.Marker>()
 let trafficTimer: number | undefined
 let trackedTimer: number | undefined
 let statusTimer: number | undefined
@@ -335,19 +375,22 @@ async function refreshTraffic() {
   const request = ++trafficRequest
   let complete = true
   try {
-    const traffic = await fetchTraffic(viewBounds())
+    const response = await fetchTraffic(viewBounds())
     if (request !== trafficRequest || !showAll.value) return
     const trackedHexes = new Set(tracked.value.map((t) => t.hex))
     planes.clearLayers()
+    trafficMarkers.clear()
     const size = planeSize()
-    for (const a of traffic.aircraft) {
+    for (const a of response.aircraft) {
       if (trackedHexes.has(a.hex)) continue
-      canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
+      const marker = canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
         .bindPopup(() => popupHtml(a), popupOptions)
         .addTo(planes)
+      trafficMarkers.set(a.hex, marker)
     }
-    aircraftCount.value = traffic.aircraft.length
-    trafficComplete.value = complete = traffic.complete
+    traffic.value = response.aircraft
+    aircraftCount.value = response.aircraft.length
+    trafficComplete.value = complete = response.complete
   } catch (e) {
     console.warn('traffic refresh failed', e)
   }
@@ -367,16 +410,19 @@ watch(showAll, (on) => {
     window.clearTimeout(trafficTimer)
     trafficRequest++
     planes.clearLayers()
+    trafficMarkers.clear()
+    traffic.value = []
     aircraftCount.value = 0
   }
 })
 
 function drawTracked() {
   trackedPlanes.clearLayers()
+  trackedMarkers.clear()
   for (const t of tracked.value) {
     const a = t.aircraft
     if (!a) continue
-    L.marker([a.lat, a.lon], {
+    const marker = L.marker([a.lat, a.lon], {
       icon: planeIcon(a.category, a.trackDeg ?? 0, 28, true),
       zIndexOffset: 1000
     })
@@ -388,6 +434,7 @@ function drawTracked() {
       })
       .bindPopup(popupHtml(a), popupOptions)
       .addTo(trackedPlanes)
+    trackedMarkers.set(a.hex, marker)
   }
 }
 
@@ -475,13 +522,109 @@ const stopConnectionWatch = onConnectionChange(() => {
   if (goodConnection()) updateTurbulenceLayers()
 })
 
+// 3D mode: deck.gl drawn over the Leaflet map, loaded only the first time it's opened so 2D stays light.
+interface Map3DHandle {
+  setRotation(pitch: number, bearing: number): void
+  tiltUp(): Promise<MapView>
+  flatten(): Promise<MapView>
+}
+const mode = ref<'2d' | '3d'>('2d')
+const Map3D = shallowRef<Component>()
+const map3d = ref<Map3DHandle>()
+const loading3d = ref(false)
+const view3d = ref<MapView>({ lat: 39.5, lon: -97, zoom: 5, pitch: 0, bearing: 0 })
+const aircraft3d = computed<AircraftView[]>(() => {
+  const added = tracked.value.flatMap((t) => (t.aircraft ? [t.aircraft] : []))
+  const addedHexes = new Set(added.map((a) => a.hex))
+  return [...added, ...traffic.value.filter((a) => !addedHexes.has(a.hex))]
+})
+
+async function enter3d(pitch = 0, bearing = 0) {
+  if (!map || mode.value === '3d') return
+  const c = map.getCenter()
+  view3d.value = { lat: c.lat, lon: c.lng, zoom: map.getZoom(), pitch, bearing }
+  if (!Map3D.value) {
+    loading3d.value = true
+    try {
+      Map3D.value = (await import('@/components/turbulence/Map3D.vue')).default
+    } finally {
+      loading3d.value = false
+    }
+  }
+  mode.value = '3d'
+}
+
+async function exit3d(): Promise<void> {
+  if (mode.value !== '3d') return
+  const v = (await map3d.value?.flatten()) ?? view3d.value
+  map?.setView([v.lat, v.lon], Math.round(v.zoom), { animate: false })
+  mode.value = '2d'
+}
+
+async function setMode(m: '2d' | '3d') {
+  if (m === '2d') return exit3d()
+  await enter3d()
+  // Wait for the 3D component to mount, then tilt up.
+  await nextTick()
+  map3d.value?.tiltUp()
+}
+
+/** Keeps the hidden 2D map on the 3D camera so traffic loads for the area in view and 2D resumes there. */
+function on3dMove(v: MapView) {
+  view3d.value = v
+  // A tilted camera sees further than straight down: fetch traffic for a wider area.
+  map?.setView([v.lat, v.lon], Math.max(Math.round(v.zoom - v.pitch / 40), 2), { animate: false })
+}
+
+async function on3dSelect(hex: string) {
+  await exit3d()
+  const marker = trackedMarkers.get(hex) ?? trafficMarkers.get(hex)
+  if (marker && map) {
+    map.panTo(marker.getLatLng(), { animate: false })
+    marker.openPopup()
+  }
+}
+
+// Shift+drag on the 2D map opens 3D and keeps tilting and rotating for the rest of that drag.
+function onShiftDrag(e: PointerEvent) {
+  if (mode.value !== '2d' || !e.shiftKey || e.button !== 0 || !mapEl.value) return
+  const rect = mapEl.value.getBoundingClientRect()
+  const start = { x: e.clientX, y: e.clientY }
+  const startY = Math.max(e.clientY - rect.top, 100)
+  let started = false
+  const move = (ev: PointerEvent) => {
+    const dx = ev.clientX - start.x
+    const dy = ev.clientY - start.y
+    if (!started && Math.hypot(dx, dy) < 4) return
+    // Drag up to tilt (all the way up reaches the steepest tilt), sideways to rotate, like deck.gl's own rotate.
+    const pitch = Math.min(Math.max((-dy / startY) * 85, 0), 85)
+    const bearing = (180 * dx) / rect.width
+    if (!started) {
+      started = true
+      enter3d(pitch, bearing)
+    } else if (map3d.value) map3d.value.setRotation(pitch, bearing)
+    else view3d.value = { ...view3d.value, pitch, bearing }
+  }
+  const up = () => {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+  }
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+}
+
 onMounted(() => {
-  map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true }).setView([39.5, -97], 5)
+  // boxZoom off: shift+drag opens 3D instead.
+  map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true, boxZoom: false }).setView(
+    [39.5, -97],
+    5
+  )
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
   updateTurbulenceLayers()
   planes.addTo(map)
   leafletMap.value = map
   mapEl.value!.addEventListener('click', onPopupClick)
+  mapEl.value!.addEventListener('pointerdown', onShiftDrag)
   trackedPlanes.addTo(map)
   map.on('moveend', () => {
     if (showAll.value) refreshTraffic()
@@ -550,6 +693,17 @@ onBeforeUnmount(() => {
   z-index: 1000;
   bottom: 24px;
   left: 12px;
+}
+.mode-toggle {
+  position: absolute;
+  z-index: 1000;
+  right: 12px;
+  bottom: 24px;
+}
+/* The 2D map's zoom buttons and EDR readout belong to the hidden map in 3D (3D has its own tooltip). */
+.is-3d :deep(.leaflet-control-container),
+.is-3d :deep(.edr-tip) {
+  display: none;
 }
 .error-text {
   color: #fca5a5;
