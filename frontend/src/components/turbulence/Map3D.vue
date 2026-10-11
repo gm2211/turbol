@@ -198,7 +198,7 @@ function buildLayers(): Layer[] {
       data: flying,
       getSourcePosition: (a) => [a.lon, a.lat, 0],
       getTargetPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
-      getColor: (a) => categoryRgba(a, 90),
+      getColor: (a) => categoryRgba(a, 140),
       getWidth: 1,
       widthUnits: 'pixels',
       updateTriggers: { getTargetPosition: exaggeration.value }
