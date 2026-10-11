@@ -17,7 +17,10 @@
       >
         <template v-slot:prepend>
           <v-avatar size="40" variant="text">
-            <v-img :src="route.icon" :cover="false" :style="`opacity: ${route.iconOpacity}`"/>
+            <v-avatar v-if="route.mdiIcon" size="32" color="#2f9be4">
+              <v-icon :icon="route.mdiIcon" color="white" size="20"/>
+            </v-avatar>
+            <v-img v-else :src="route.icon" :cover="false" :style="`opacity: ${route.iconOpacity}`"/>
           </v-avatar>
         </template>
       </v-list-item>
@@ -52,10 +55,10 @@ const routes = [
     iconOpacity: 1
   },
   {
+    // Its own icon: with the forecast one it looked like a second "Live map" in the collapsed bar.
     name: '3D view',
     path: '/3d',
-    icon: forecastIcon,
-    iconOpacity: 0.58
+    mdiIcon: 'mdi-cube-outline'
   }
 ]
 </script>
