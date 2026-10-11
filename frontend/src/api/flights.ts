@@ -64,6 +64,7 @@ export interface RouteAnalysis {
   start: string
   cruiseAltitudeFt: number
   aircraftClass: AircraftClass
+  aircraftType?: string
   points: RoutePoint[]
   segments: Segment[]
   summary: RouteSummary
@@ -75,7 +76,7 @@ export interface AnalyzeRequest {
   destination: Place
   departure?: string
   cruiseAltitudeFt?: number
-  aircraftClass?: AircraftClass
+  callsign?: string
 }
 
 export interface AirportResult {

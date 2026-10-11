@@ -16,3 +16,7 @@ behaviors:
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to
       refresh. Aircraft from older data are dead-reckoned so they line up with fresher ones.
+  - id: edr-on-hover
+    description: >-
+      Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and
+      selected flight level for the grid cell under the pointer, for the selected frame.

@@ -35,6 +35,10 @@ class LiveTrafficTest extends BaseTest {
     AircraftClass.fromAdsb(Some("A5"), Some("B77W")) shouldBe AircraftClass.Heavy
     AircraftClass.fromAdsb(Some("A3"), Some("B788")) shouldBe AircraftClass.Heavy
     AircraftClass.fromAdsb(Some("A3"), Some("B38M")) shouldBe AircraftClass.Medium
+    AircraftClass.fromAdsb(None, Some("B737")) shouldBe AircraftClass.Medium
+    AircraftClass.fromAdsb(None, Some("C25A")) shouldBe AircraftClass.Light
+    AircraftClass.fromAdsb(None, Some("b789")) shouldBe AircraftClass.Heavy
+    AircraftClass.fromAdsb(None, None) shouldBe AircraftClass.Medium
     AircraftClass.fromAdsb(Some("A1"), Some("C172")) shouldBe AircraftClass.Light
   }
 

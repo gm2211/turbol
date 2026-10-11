@@ -9,8 +9,8 @@ behaviors:
       Analyzing an origin and destination returns a great-circle route with a climb, cruise and descent
       profile, sampled in space, altitude and time against the nowcast and forecast.
     details: >-
-      Departure defaults to now, cruise altitude to the profile's default, and aircraft class to
-      Medium; each can be set by the user.
+      Departure defaults to now and cruise altitude to the profile's default; the user can set the
+      departure. Aircraft class is never a user input (see aircraft-class-from-flight).
   - id: lookup-flight-by-number
     description: >-
       Looking up a flight number or callsign finds the first candidate callsign with a known route or
@@ -25,6 +25,15 @@ behaviors:
       The analysis map has a legend explaining the ribbon colours (forecast category), that the line is
       a great-circle route, the red ring (worst forecast bump with its category and time) and the live
       aircraft when it is flying this route. Airport labels sit on the side away from the route.
+  - id: aircraft-class-from-flight
+    description: >-
+      When analyzing a looked-up flight, the server derives the aircraft class from that flight's live
+      ADS-B type and category (aircraft-class-from-adsb), and the result shows the detected type and
+      class read-only.
+    details: >-
+      When the type is unknown (the flight isn't airborne, or only airports were given) the class is
+      Medium, the result marks it as assumed, and a note says so. The live sighting from the lookup is
+      cached for 10 minutes so the analysis doesn't query adsb.lol again.
   - id: plain-language-verdict
     description: >-
       The result leads with a one-sentence verdict based on the worst en-route category, such as
