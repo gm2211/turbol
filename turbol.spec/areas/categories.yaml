@@ -18,7 +18,9 @@ behaviors:
   - id: aircraft-class-from-adsb
     description: >-
       A live aircraft's weight class comes from its ADS-B wake category and type code: wide-bodies and
-      category A5 are Heavy, categories A1 and A2 are Light, everything else is Medium.
+      category A5 are Heavy, categories A1 and A2 and light types (piston and turboprop singles and
+      twins, Citations and other small business jets, such as C25A) are Light, everything else is
+      Medium.
   - id: consistent-category-colours
     description: >-
       Each category has one colour, used identically by map tiles, route lines, profiles, legends and
