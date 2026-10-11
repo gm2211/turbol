@@ -1,0 +1,18 @@
+id: live-map
+name: Live map
+prose: The default page is a map of current turbulence and the aircraft flying through it.
+behaviors:
+  - id: root-opens-map
+    description: Opening the site root shows the live map.
+  - id: turbulence-overlay-by-level
+    description: >-
+      The map shows a translucent turbulence overlay for a chosen frame and flight level, drawn from
+      tiles rendered by the backend.
+  - id: live-aircraft-with-turbulence
+    description: >-
+      Airborne aircraft in view are shown with the turbulence category they are flying through right
+      now, from the nowcast at their position and altitude. Aircraft on the ground are hidden.
+  - id: wide-views-fill-in
+    description: >-
+      Panning or zooming out fills in traffic for the new area without waiting for every region to
+      refresh. Aircraft from older data are dead-reckoned so they line up with fresher ones.

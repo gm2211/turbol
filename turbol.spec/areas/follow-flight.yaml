@@ -1,0 +1,19 @@
+id: follow-flight
+name: Follow a flight
+prose: Follow one aircraft in flight and see what is coming up for it, in passenger terms.
+behaviors:
+  - id: follow-updates-every-ten-seconds
+    description: >-
+      Following an aircraft streams an update about it every 10 seconds until the page is closed.
+  - id: next-hour-headline
+    description: >-
+      Each update leads with a headline about the next hour, such as "Smooth now. Light bumps expected
+      in about 12 min for about 5 min." or "Moderate turbulence right now."
+  - id: route-only-if-heading-there
+    description: >-
+      The scheduled route is used for the rest of the flight only when the aircraft is actually
+      heading for that destination.
+  - id: no-data-outside-coverage
+    description: >-
+      Outside GTG coverage the headline says there is no turbulence data here rather than calling the
+      flight smooth.
