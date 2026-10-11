@@ -30,9 +30,14 @@ behaviors:
   - id: smooth-forecast-scrub
     description: >-
       Moving the forecast time slider swaps between preloaded hours without waiting for tiles, and a
-      play button steps through the hours.
+      play button steps through the hours. Hours are preloaded in the background only on a good
+      connection (no Data Saver, 4G-class, about 2 Mbps or more where the browser reports it); cached
+      hours drop out as they pass or a newer nowcast or forecast cycle replaces them.
     source:
-      text: sliding through future times should be smoother
+      text: >-
+        sliding through future times should be smoother / maybe we could async preload and cache
+        future data (with invalidation as time moves on and we need to update from GTG to GTGN to
+        what's current) and maybe we only do this when we detect a good and fast internet connection
   - id: live-aircraft-with-turbulence
     description: >-
       Airborne aircraft in view are shown with the turbulence category they are flying through right

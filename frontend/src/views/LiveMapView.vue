@@ -128,6 +128,7 @@ import {
 } from '@/api/turbulence'
 import { lookupFlight } from '@/api/flights'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
+import { goodConnection, onConnectionChange } from '@/util/network'
 
 interface TrackedFlight {
   /** What the user typed, which is also what goes in the URL (?flights=UA1517,DL5). */
@@ -213,7 +214,9 @@ function frameTileUrl(frame: FrameInfo | undefined): string {
 /**
  * One tile layer per frame at the selected altitude, all kept on the map: hidden ones are loaded one after another
  * once the visible one has finished (nearest hours first, so the first paint doesn't compete with them), and moving
- * the time slider or playing it only swaps which layer is visible.
+ * the time slider or playing it only swaps which layer is visible. Preloading only runs on a good connection; on a
+ * slow one each hour loads when picked. Frame ids are immutable, so the browser caches tiles; a status refresh drops
+ * hours that have passed, and a new nowcast or forecast cycle brings new ids (and new layers).
  */
 const turbulenceLayers = new Map<string, L.TileLayer>()
 const overlayOpacity = 0.85
@@ -247,7 +250,7 @@ function updateTurbulenceLayers() {
   }
   const generation = ++preloadGeneration
   const preloadNext = () => {
-    if (generation !== preloadGeneration) return
+    if (generation !== preloadGeneration || !goodConnection()) return
     const next = ordered.find((url) => !turbulenceLayers.has(url))
     if (next) addTurbulenceLayer(next, preloadNext)
   }
@@ -468,6 +471,9 @@ async function refreshStatus() {
 }
 
 watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
+const stopConnectionWatch = onConnectionChange(() => {
+  if (goodConnection()) updateTurbulenceLayers()
+})
 
 onMounted(() => {
   map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true }).setView([39.5, -97], 5)
@@ -499,6 +505,7 @@ onBeforeUnmount(() => {
   window.clearInterval(playTimer)
   trafficRequest++
   mapEl.value?.removeEventListener('click', onPopupClick)
+  stopConnectionWatch()
   map?.remove()
 })
 </script>
