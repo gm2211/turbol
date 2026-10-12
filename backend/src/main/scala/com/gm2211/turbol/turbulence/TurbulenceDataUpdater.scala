@@ -9,6 +9,7 @@ package com.gm2211.turbol.turbulence
 import cats.effect.{Deferred, IO}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.background.BackgroundJob
+import com.gm2211.turbol.util.MoreExecutors
 
 import java.nio.file.{Files, Path, Paths}
 import java.time.temporal.ChronoUnit
@@ -114,9 +115,12 @@ final class TurbulenceDataUpdater(
     else IO(log.info("Global turbulence layer disabled by TURBOL_GLOBAL_LAYER=off")) >> IO(store.loaded("global")) >>
       IO.never
 
+  // Downloading and decoding run at the lowest CPU priority, so visitors' requests always go first.
+  private val background = MoreExecutors.background("turbulence-decode")
+
   // After its first check, found or failed, a source no longer holds back Flight Packs.
   private def poll(name: String, every: FiniteDuration)(refresh: => Unit, after: IO[Unit] = IO.unit): IO[Nothing] =
-    (IO.blocking(refresh).handleErrorWith(e =>
+    (IO(refresh).evalOn(background.executionContext).handleErrorWith(e =>
       IO(log.warn("Turbulence refresh failed", safe("product", name), unsafe("error", e)))
     ) >> IO(store.loaded(name)) >> after >> IO.sleep(every)).foreverM
 
