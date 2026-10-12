@@ -4,7 +4,7 @@ export interface NavRoute {
   short: string
   path: string
   mdiIcon: string
-  /** Adds a pulsing dot to the desktop icon, for pages showing live data. */
+  /** Adds a pulsing dot to the desktop header tab, for pages showing live data. */
   live?: boolean
   /** The phone tab bar uses icon-font icons only. */
   mobileIcon: string
@@ -20,8 +20,7 @@ export const navRoutes: NavRoute[] = [
     mobileIcon: 'mdi-map-outline'
   },
   {
-    // Each page gets its own icon so the collapsed bar can be read at a glance. Flights downloaded for offline use
-    // live here too, at the top of the page.
+    // Flights downloaded for offline use live here too, at the top of the page.
     name: 'Analyze a flight',
     short: 'Analyze',
     path: '/analyze',

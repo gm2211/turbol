@@ -20,6 +20,21 @@ behaviors:
       the route only when it is near the origin-destination great circle and heading for the
       destination (any heading within 80 km of it). Otherwise it is reported as on another leg and not
       drawn on the route map.
+  - id: boarding-pass-search
+    description: >-
+      The analyze page's search is a boarding pass over the cloud backdrop: big FROM and TO airport
+      codes that fill in from the looked-up flight or the picked airports, the flight or airport
+      inputs and departure below them, and Analyze on a tear-off stub.
+    details: >-
+      The Flight/Route toggle sits above the pass. With a result on a laptop the pass folds into one
+      slim row so the verdict, map and timeline keep the screen; on phones the stub tears off along
+      the bottom. On desktop the pages are tabs in the header (no side rail), so every page gets the
+      full width.
+    source:
+      text: boarding pass
+      reference: >-
+        Giulio, turbol project thread, 2026-10-12, picking design 2 of five alternatives for the
+        Analyze page ("propose 5 alternative designs that retain the vibe")
   - id: route-map-legend
     description: >-
       The analysis map has a legend explaining the ribbon colours (forecast category), that the line is
