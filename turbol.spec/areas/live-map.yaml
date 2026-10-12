@@ -61,6 +61,19 @@ behaviors:
       airborne get a message instead.
     source:
       text: the ability to add a specific flight number right here
+  - id: add-flight-by-route
+    description: >-
+      The same field also takes a route ("JFK LAX", "JFK-LAX", ICAO codes too) and a day, today by
+      default. For today it lists the flights in the air now on that route; picking one adds it to
+      the map and follows it. Another day links to Analyze's forecast for the route on that day.
+    source:
+      text: I should be able to search aircraft by route and day, not just number straight from map
+      reference: Giulio, turbol project thread, 2026-10-12 05:41Z
+    details: >-
+      Only live positions are available (no keyless schedule source), so "in the air now" is the
+      only list; the other-day link is the assumed default for days with no live flights.
+      Candidates are aircraft near the great circle and heading for the destination, kept when the
+      adsb.im routeset (adsbdb as fallback) lists origin then destination as consecutive stops.
   - id: smooth-forecast-scrub
     description: >-
       Moving the forecast time slider swaps between preloaded hours without waiting for tiles, and a
