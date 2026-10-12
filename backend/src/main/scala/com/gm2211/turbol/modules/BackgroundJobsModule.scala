@@ -7,7 +7,7 @@
 package com.gm2211.turbol.modules
 
 import com.gm2211.turbol.background.airportdata.*
-import com.gm2211.turbol.turbulence.TurbulenceDataUpdater
+import com.gm2211.turbol.turbulence.{FrameKind, TurbulenceDataUpdater}
 import com.softwaremill.macwire.*
 
 import scala.annotation.unused
@@ -21,6 +21,11 @@ final class BackgroundJobsModule(val storageModule: StorageModule, val servicesM
   @unused lazy val airportDataUpdater: AirportDataUpdater = wire[AirportDataUpdater]
   lazy val turbulenceDataUpdater: TurbulenceDataUpdater = TurbulenceDataUpdater(
     servicesModule.turbulenceStore,
-    onNewFrames = _.foreach(servicesModule.tileRenderer.prewarm(_))
+    onNewFrames = frames => {
+      val store = servicesModule.turbulenceStore
+      // A new global cycle changes every map tile's edges; re-warm the one people open first, the nowcast.
+      val warm = if (frames.forall(_.kind == FrameKind.Global)) store.current.nowcast.toSeq else frames
+      warm.foreach(f => servicesModule.tileRenderer.prewarm(f, store.current.globalNear(f.validTime)))
+    }
   )
 }

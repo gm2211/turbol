@@ -18,6 +18,8 @@ export interface ColumnBatch {
   topLevelFt: Float32Array
   edr: Float32Array
   category: Uint8Array
+  /** Block width: GTG's fine blocks, or the coarse global layer's outside GTG. */
+  sizeKm: Float32Array
 }
 
 export type VolumeMessage =

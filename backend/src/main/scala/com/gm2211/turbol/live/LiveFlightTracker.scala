@@ -105,7 +105,7 @@ object LiveFlightTracker {
     val label = (c: TurbulenceCategory) => c.toString.toLowerCase
     val headline = (nowCategory, firstBump, worstInBump) match {
       case (TurbulenceCategory.NoData, None, _) if worst == TurbulenceCategory.NoData =>
-        "No turbulence data here (GTG covers the contiguous US)."
+        "No turbulence data here right now."
       case (now, _, _) if now.rank >= TurbulenceCategory.Light.rank =>
         s"${now.toString} turbulence right now."
       case (_, Some(b), Some(c)) =>

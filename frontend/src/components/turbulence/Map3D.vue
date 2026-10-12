@@ -138,7 +138,6 @@ const canvasEl = ref<HTMLDivElement>()
  */
 let store: ColumnBatch = emptyBatch(0)
 let storeLength = 0
-let cellKm = 0
 const storeVersion = ref(0)
 const loadState = ref('')
 const loadProgress = ref<number>()
@@ -160,7 +159,8 @@ function emptyBatch(n: number): ColumnBatch {
     levelFt: new Float32Array(n),
     topLevelFt: new Float32Array(n),
     edr: new Float32Array(n),
-    category: new Uint8Array(n)
+    category: new Uint8Array(n),
+    sizeKm: new Float32Array(n)
   }
 }
 
@@ -236,13 +236,17 @@ function buildLayers(): Layer[] {
   const c = props.status?.coverage
   if (c) {
     const h = z(props.levelFt)
-    const ring = [
-      [c.west, c.south, h],
-      [c.east, c.south, h],
-      [c.east, c.north, h],
-      [c.west, c.north, h],
-      [c.west, c.south, h]
-    ]
+    // GTG's 3 km edge at the map's level; outside it the blocks are the coarse global layer's.
+    const outline = props.status?.gtgOutline
+    const ring = outline?.length
+      ? outline.map(([lat, lon]) => [lon, lat, h])
+      : [
+          [c.west, c.south, h],
+          [c.east, c.south, h],
+          [c.east, c.north, h],
+          [c.west, c.north, h],
+          [c.west, c.south, h]
+        ]
     layers.push(
       new PathLayer({
         id: 'level-outline',
@@ -255,7 +259,6 @@ function buildLayers(): Layer[] {
     )
   }
   if (storeLength) {
-    const halfM = (cellKm * 1000) / 2
     const { index, bottom, top } = visible.value
     const colors = columnCategories.map((c) => overlayRgba[c])
     const triggers = [exaggeration.value, visible.value]
@@ -270,9 +273,10 @@ function buildLayers(): Layer[] {
           store.lat[index[j]!]!,
           z((bottom[j]! + top[j]!) / 2)
         ],
+        // Half the block width (km to m, halved) with a small gap between blocks.
         getScale: (_: unknown, { index: j }: { index: number }) => [
-          halfM * 0.92,
-          halfM * 0.92,
+          store.sizeKm[index[j]!]! * 460,
+          store.sizeKm[index[j]!]! * 460,
           (z(top[j]!) - z(bottom[j]!)) / 2
         ],
         getColor: (_: unknown, { index: j }: { index: number }) =>
@@ -390,7 +394,6 @@ function loadVolume() {
       // A newer frame: drop the old columns only now, so the scene doesn't go blank while downloading.
       store = emptyBatch(m.total)
       storeLength = 0
-      cellKm = m.cellKm
       total = m.total
     } else if (m.type === 'batch') {
       append(m.batch)

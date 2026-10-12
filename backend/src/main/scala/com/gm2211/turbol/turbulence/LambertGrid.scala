@@ -85,6 +85,34 @@ object LambertGrid {
     (lat, lon)
   }
 
+  /**
+   * Grid cells over which GTG fades into the coarse global layer at the edge of its domain (40 cells = 120 km, about
+   * four global grid steps), so the two don't meet in a hard seam.
+   */
+  val blendCells: Double = 40.0
+
+  /** Distance in grid cells from fractional grid coordinates to the nearest edge of the grid (negative outside). */
+  def edgeDistance(fi: Double, fj: Double): Double = min(min(fi, nx - 1 - fi), min(fj, ny - 1 - fj))
+
+  /** GTG's weight against the global layer: 1 at least [[blendCells]] inside the grid, falling to 0 at its edge. */
+  def interiorWeight(fi: Double, fj: Double): Double = max(0.0, min(1.0, edgeDistance(fi, fj) / blendCells))
+
+  def interiorWeightAt(lat: Double, lon: Double): Double =
+    if (lat < 0 || lat > 89) 0.0 else { val (fi, fj) = fractionalIndex(lat, lon); interiorWeight(fi, fj) }
+
+  /** Fractional grid coordinates from the split projection, like the three-argument nearestIndex. */
+  def fractionalIndex(rho: Double, sinTheta: Double, cosTheta: Double): (Double, Double) =
+    ((rho * sinTheta - x0) / dx, (rho0 - rho * cosTheta - y0) / dx)
+
+  /** The grid's edge as a closed [lat, lon] ring, one point every `every` cells, for drawing GTG's coverage. */
+  def outline(every: Int = 60): Seq[(Double, Double)] = {
+    val south = (0 until nx - 1 by every).map(i => latLonAt(i, 0))
+    val east = (0 until ny - 1 by every).map(j => latLonAt(nx - 1, j))
+    val north = (nx - 1 until 0 by -every).map(i => latLonAt(i, ny - 1))
+    val west = (ny - 1 until 0 by -every).map(j => latLonAt(0, j))
+    (south ++ east ++ north ++ west) :+ latLonAt(0, 0)
+  }
+
   /** Approximate coverage, for cheap "is this anywhere near CONUS" checks. */
   val boundingBox: (Double, Double, Double, Double) = (21.1, -134.1, 52.7, -60.9) // south, west, north, east
 }

@@ -8,6 +8,7 @@ behaviors:
     description: >-
       3D draws a loaded frame's turbulence by category, stacking vertically adjacent cells of the same
       category at a grid point into one column whose tooltip gives its level range and worst EDR.
+      Outside GTG the global layer is drawn in visibly larger 1.5 degree blocks.
   - id: all-levels
     description: >-
       Every flight level can be shown at once: the flight-level rail's full range is "All levels",

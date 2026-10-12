@@ -25,6 +25,12 @@ object TurbulenceDataUpdater {
   val forecastLevelsFt: Set[Int] =
     Set(3000, 6000, 10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000)
   val forecastHours: Range = 1 to 18
+
+  /**
+   * GFS forecast hours fetched for the global layer. A cycle is complete about 5 hours after its init and replaced 6
+   * hours later, so +3 h to +30 h covers from a couple of hours ago to beyond GTG's 18-hour horizon the whole time.
+   */
+  val globalForecastHours: Range = 3 to 30 by 3
   private val completeMarker = "COMPLETE"
 
   def defaultDataDir: Path =
@@ -56,12 +62,17 @@ final class TurbulenceDataUpdater(
 
   private val nowcastDir = dataDir.resolve("nowcast")
   private val forecastDir = dataDir.resolve("forecast")
+  private val globalDir = dataDir.resolve("global")
 
   // GTGN lands on NOMADS ~2-3 min after each quarter hour; a one-minute poll is two directory listings. The loops are
-  // independent so a long forecast download (18 hours of GRIB) never holds back the next nowcast.
+  // independent so a long forecast download (18 hours of GRIB) never holds back the next nowcast. GFS cycles land
+  // every 6 hours, so the global layer checks every 10 minutes.
   override def run(): IO[Unit] =
     IO.blocking(loadCached()) >>
-      poll("nowcast", 1.minute)(refreshNowcast()).both(poll("forecast", 3.minutes)(refreshForecast())).void
+      IO.both(
+        poll("nowcast", 1.minute)(refreshNowcast()),
+        IO.both(poll("forecast", 3.minutes)(refreshForecast()), poll("global", 10.minutes)(refreshGlobal()))
+      ).void
 
   private def poll(name: String, every: FiniteDuration)(refresh: => Unit): IO[Nothing] =
     (IO.blocking(refresh).handleErrorWith(e =>
@@ -90,6 +101,15 @@ final class TurbulenceDataUpdater(
         Try(onNewFrames(frames)): Unit
         log.info("Loaded cached GTG forecast", safe("issued", issued))
       }
+    subdirs(globalDir)
+      .filter(d => Files.exists(d.resolve(completeMarker)))
+      .maxByOption(_.getFileName.toString.toLong)
+      .foreach { dir =>
+        val issued = Instant.ofEpochSecond(dir.getFileName.toString.toLong)
+        val frames = loadHours(dir, issued, FrameKind.Global)
+        store.setGlobal(frames)
+        log.info("Loaded cached global turbulence layer", safe("issued", issued), safe("frames", frames.size))
+      }
   }
 
   private def mapLayers(dir: Path): SortedMap[Int, EdrLayer] =
@@ -106,9 +126,12 @@ final class TurbulenceDataUpdater(
     )
 
   private def loadForecastHours(cycleDir: Path, issued: Instant): Vector[EdrFrame] =
+    loadHours(cycleDir, issued, FrameKind.Forecast)
+
+  private def loadHours(cycleDir: Path, issued: Instant, kind: FrameKind): Vector[EdrFrame] =
     subdirs(cycleDir).flatMap { hourDir =>
       hourDir.getFileName.toString.stripPrefix("f").toIntOption.map { hour =>
-        EdrFrame(FrameKind.Forecast, issued.plus(hour.toLong, ChronoUnit.HOURS), issued, mapLayers(hourDir))
+        EdrFrame(kind, issued.plus(hour.toLong, ChronoUnit.HOURS), issued, mapLayers(hourDir))
       }
     }.toVector
 
@@ -178,6 +201,40 @@ final class TurbulenceDataUpdater(
       require(layers.size == forecastLevelsFt.size, s"F$hour: got ${layers.size} of ${forecastLevelsFt.size} levels")
       log.info("Fetched GTG forecast hour", safe("hour", hour), safe("messages", messages))
       EdrFrame(FrameKind.Forecast, cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS), cycle.initTime, layers)
+    } finally Files.deleteIfExists(tmp): Unit
+  }
+
+  /** Fetch a new GFS cycle for the global layer once one is complete, replacing the previous cycle. */
+  def refreshGlobal(): Unit = {
+    val current = store.current.globalIssued
+    NomadsClient.latestCompleteGfsCycle(globalForecastHours.last).foreach { cycle =>
+      if (current.forall(_.isBefore(cycle.initTime))) {
+        log.info("Fetching GFS cycle for the global turbulence layer", safe("init", cycle.initTime))
+        val cycleDir = globalDir.resolve(cycle.initTime.getEpochSecond.toString)
+        val frames = globalForecastHours.map { hour =>
+          val frame = fetchGlobalHour(cycle, hour, cycleDir)
+          // First run: publish hour by hour so the map fills in before the whole cycle is in.
+          if (current.isEmpty) store.setGlobal(store.current.global :+ frame)
+          frame
+        }.toVector
+        Files.writeString(cycleDir.resolve(completeMarker), cycle.dir): Unit
+        store.setGlobal(frames)
+        Try(onNewFrames(frames)): Unit
+        log.info("Updated global turbulence layer", safe("init", cycle.initTime), safe("frames", frames.size))
+        subdirs(globalDir).filterNot(_ == cycleDir).foreach(deleteRecursively)
+      }
+    }
+  }
+
+  private def fetchGlobalHour(cycle: GfsCycle, hour: Int, cycleDir: Path): EdrFrame = {
+    val hourDir = cycleDir.resolve(f"f$hour%02d")
+    Files.createDirectories(cycleDir)
+    val tmp = Files.createTempFile(cycleDir, "gfs", ".grib2")
+    try {
+      NomadsClient.fetchGfsHour(cycle, hour, GfsTurbulence.pressureLevelsHpa, tmp): Unit
+      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir)
+      log.info("Fetched GFS hour for the global layer", safe("hour", hour), safe("levels", layers.size))
+      EdrFrame(FrameKind.Global, cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS), cycle.initTime, layers)
     } finally Files.deleteIfExists(tmp): Unit
   }
 }

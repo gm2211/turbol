@@ -106,7 +106,8 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
     case GET -> Root / "aircraft" :? South(south) +& West(west) +& North(north) +& East(east) =>
       IO.blocking {
         val traffic0 = traffic.cellsIn(south, west, north, east)
-        val nowcast = store.current.nowcast.fold("")(_.id)
+        val data = store.current
+        val nowcast = data.nowcast.fold("")(_.id) + data.globalIssued.fold("")(t => s"_g${t.getEpochSecond}")
         val aircraft = traffic0.cells.map(c => cellJson(c, nowcast)).filter(_.nonEmpty).mkString(",")
         s"""{"aircraft":[$aircraft],"complete":${traffic0.complete},"serverTime":${Instant.now().toEpochMilli}}"""
       }.flatMap(json => Ok(json).map(_.withContentType(`Content-Type`(MediaType.application.json))))

@@ -44,30 +44,20 @@ async function download(url: string): Promise<TurbulenceVolume> {
   return JSON.parse(new TextDecoder().decode(all))
 }
 
-function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
-  const levels = v.levelsFt
-  const n = v.voxels.length / 4
+type Columns = Record<keyof ColumnBatch, number[]>
+
+/** Stack one voxel set (GTG's, or the global layer's) into columns of `sizeKm` blocks. */
+function stack(cols: Columns, vox: number[], levels: number[], sizeKm: number, t: Thresholds) {
+  const n = vox.length / 4
   // Sort cells by grid point, then level, so each point's stack can be walked bottom-up.
   const order = new Uint32Array(n)
   for (let i = 0; i < n; i++) order[i] = i
-  const vox = v.voxels
   order.sort(
     (a, b) =>
       vox[a * 4]! - vox[b * 4]! ||
       vox[a * 4 + 1]! - vox[b * 4 + 1]! ||
       vox[a * 4 + 2]! - vox[b * 4 + 2]!
   )
-
-  const cols = {
-    lat: [] as number[],
-    lon: [] as number[],
-    bottomFt: [] as number[],
-    topFt: [] as number[],
-    levelFt: [] as number[],
-    topLevelFt: [] as number[],
-    edr: [] as number[],
-    category: [] as number[]
-  }
   let last = -1
   for (const i of order) {
     const lat = vox[i * 4]!
@@ -99,9 +89,27 @@ function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
       cols.topLevelFt.push(level)
       cols.edr.push(edr)
       cols.category.push(cat)
+      cols.sizeKm.push(sizeKm)
       last = cols.lat.length - 1
     }
   }
+}
+
+function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
+  const cols: Columns = {
+    lat: [],
+    lon: [],
+    bottomFt: [],
+    topFt: [],
+    levelFt: [],
+    topLevelFt: [],
+    edr: [],
+    category: [],
+    sizeKm: []
+  }
+  stack(cols, v.voxels, v.levelsFt, v.cellKm, t)
+  if (v.globalVoxels?.length && v.globalLevelsFt && v.globalCellKm)
+    stack(cols, v.globalVoxels, v.globalLevelsFt, v.globalCellKm, t)
 
   // Nearest to the camera first.
   const m = cols.lat.length
@@ -145,7 +153,8 @@ self.onmessage = async (e: MessageEvent<VolumeRequest>) => {
         levelFt: pick(cols.levelFt, Float32Array),
         topLevelFt: pick(cols.topLevelFt, Float32Array),
         edr: pick(cols.edr, Float32Array),
-        category: pick(cols.category, Uint8Array)
+        category: pick(cols.category, Uint8Array),
+        sizeKm: pick(cols.sizeKm, Float32Array)
       }
       post(
         { type: 'batch', batch },

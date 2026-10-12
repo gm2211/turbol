@@ -33,7 +33,9 @@ UCAR LDM feed with a static, allowlisted IP. That blocker no longer exists.
 4. International routes: compute Ellrod-style indices from open GFS data
    (AWS `noaa-gfs-bdp-pds`). WAFS global turbulence is limited to FAA-approved
    users, and IATA Turbulence Aware is commercial. Turbli's sources page cites
-   NOAA GFS and GTG.
+   NOAA GFS and GTG. **Done 2026-10-12**: the backend's global layer
+   (`GfsTurbulence.scala`, method in `data-pipeline/gfs_turbulence.py`) fills
+   everything outside GTG at 0.25 deg.
 5. GribStream (third-party): point-query API over GTG with a free tier; limits
    not checked.
 

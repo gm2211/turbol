@@ -49,6 +49,7 @@ behaviors:
       worst point's time and location, and a map and altitude profile coloured by category.
   - id: coverage-notes
     description: >-
-      When data is missing the result says why: part of the route is outside GTG coverage, the flight
-      runs past the forecast's 18-hour horizon, data is still loading, or the departure is more than 18
-      hours away.
+      The result says how much of the route uses the coarser global layer outside GTG coverage, and
+      when data is missing it says why: part of the route has no data in either layer, the flight
+      runs past the forecast's horizon, data is still loading, or the departure is more than 18 hours
+      away. The data sources line names the global layer's GFS cycle.

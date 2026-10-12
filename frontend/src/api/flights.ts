@@ -35,7 +35,7 @@ export interface RoutePoint {
   time: string
   edr?: number
   category: TurbulenceCategory
-  source: 'Nowcast' | 'Forecast' | 'Blend' | 'NoData'
+  source: 'Nowcast' | 'Forecast' | 'Blend' | 'Global' | 'NoData'
   nearGround: boolean
 }
 
@@ -68,7 +68,13 @@ export interface RouteAnalysis {
   points: RoutePoint[]
   segments: Segment[]
   summary: RouteSummary
-  dataSources: { nowcastValid?: string; forecastIssued?: string; forecastUntil?: string }
+  dataSources: {
+    nowcastValid?: string
+    forecastIssued?: string
+    forecastUntil?: string
+    /** GFS cycle behind the coarse global layer used outside GTG. */
+    globalIssued?: string
+  }
 }
 
 export interface AnalyzeRequest {

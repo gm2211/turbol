@@ -11,10 +11,23 @@ export interface FrameInfo {
   levelsFt: number[]
 }
 
+/** The coarse layer drawn outside GTG's 3 km grid (backend GfsTurbulence). */
+export interface GlobalLayerInfo {
+  source: string
+  method: string
+  resolutionKm: number
+  issued: string
+  validTimes: string[]
+}
+
 export interface TurbulenceStatus {
   nowcast?: FrameInfo
   forecast: FrameInfo[]
+  /** GTG's bounding box. */
   coverage: { south: number; west: number; north: number; east: number }
+  /** GTG's exact edge as [lat, lon] pairs: 3 km inside, the global layer outside. */
+  gtgOutline?: [number, number][]
+  global?: GlobalLayerInfo
   thresholds: Record<AircraftClass, Thresholds>
 }
 
@@ -168,6 +181,10 @@ export interface TurbulenceVolume {
   cellKm: number
   /** Flat, 4 per voxel: lat * 100, lon * 100, index into levelsFt, EDR * 200. */
   voxels: number[]
+  /** The same for the coarse global layer outside GTG, in blocks of globalCellKm. */
+  globalLevelsFt?: number[]
+  globalCellKm?: number
+  globalVoxels?: number[]
 }
 
 export interface ColumnLevel {
@@ -181,6 +198,8 @@ export interface TurbulenceColumn {
   lat: number
   lon: number
   levels: ColumnLevel[]
+  /** Global: the coarse GFS-derived layer (outside GTG). */
+  source: 'Nowcast' | 'Forecast' | 'Global' | 'NoData'
 }
 
 export async function fetchColumn(

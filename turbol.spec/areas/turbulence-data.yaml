@@ -3,7 +3,9 @@ name: Turbulence data
 prose: >-
   Turbulence comes from NOAA's free NOMADS feeds over HTTPS: the GTGN nowcast (every 15 minutes) and
   the GTG v4 forecast (hourly cycles, F000 to F018). Both are EDR on the 3 km HRRR Lambert grid and
-  cover the contiguous US only.
+  cover the contiguous US only. Everywhere else a coarse global layer derived from NOAA GFS fills in
+  (data-pipeline/gfs_turbulence.py has the method and its verification). Free gridded EDR from the
+  World Area Forecast System needs an approved WIFS account, so it is not used.
 behaviors:
   - id: nowcast-picked-up-quickly
     description: >-
@@ -28,8 +30,44 @@ behaviors:
   - id: status-lists-loaded-frames
     description: >-
       The turbulence status reports the loaded nowcast and forecast frames with their valid and issue
-      times and levels, the thresholds per aircraft class, and the coverage bounding box.
+      times and levels, the thresholds per aircraft class, the GTG coverage bounding box and exact
+      outline, and the global layer's source, resolution, GFS cycle and valid times.
   - id: outside-coverage-is-no-data
     description: >-
-      A point outside the GTG grid, or where the grid has no value, reports no EDR and the NoData
-      category rather than a guessed value.
+      A point where neither GTG nor the global layer has a value (for example before the global layer
+      has loaded, or more than 3 hours past its last frame) reports no EDR and the NoData category
+      rather than a guessed value.
+    details: >-
+      Before the global layer, everything outside the GTG grid was NoData; Giulio asked for at least
+      transatlantic coverage, so the global layer now answers there.
+    source:
+      text: can we add at least transatlantic coverage?
+      reference: Giulio, turbol project chat, 2026-10-12 00:18Z (Transatlantic turbulence coverage)
+  - id: global-layer-outside-gtg
+    description: >-
+      Outside the GTG grid, or where GTG has no value, EDR comes from a global layer covering the
+      whole world at GFS's 0.25 degree (about 28 km) resolution, at the same 12 altitude levels as the
+      GTG forecast, every 3 hours from 3 to 30 hours after the GFS cycle, interpolated in time. Its
+      source is reported as Global.
+    source:
+      text: can we add at least transatlantic coverage?
+      reference: Giulio, turbol project chat, 2026-10-12 00:18Z (Transatlantic turbulence coverage)
+  - id: global-layer-matches-gtg
+    description: >-
+      The global layer is Ellrod's TI1 turbulence index (vertical wind shear times horizontal
+      deformation) from GFS winds and heights, mapped to EDR per level by matching GTG's EDR
+      distribution over the US, so the same thresholds give about the same share of each category.
+    details: >-
+      Fitted on 4 GFS/GTG cycle pairs (6-hour forecasts) and scored against GTG on 4 later ones at
+      FL200 and above: log correlation 0.54, Peirce skill 0.32 for Light or worse (0.40 on 75 km
+      neighbourhoods), and 21% of points Light or worse vs GTG's 22%. TI1 beat the Ellrod-Knox and
+      Richardson-number indices and their mean.
+  - id: global-blend-at-gtg-edge
+    description: >-
+      Across the last 40 grid cells (120 km) inside GTG's edge, GTG and the global layer are mixed
+      linearly by distance to the edge, in point queries and map tiles alike, so there is no seam.
+  - id: global-layer-refresh
+    description: >-
+      A new GFS cycle is fetched within about 10 minutes of its 30-hour forecast appearing on NOMADS,
+      through the NOMADS GRIB filter (only the winds and heights it needs), is published hour by hour
+      on a first run, and is kept on disk so a restart loads it before downloading again.

@@ -52,6 +52,10 @@
       <div class="muted" v-if="status?.nowcast && !mobile">
         GTG-N nowcast valid {{ formatUtc(status.nowcast.validTime) }}
       </div>
+      <div class="muted" v-if="status?.global && !mobile">
+        Outside the dashed line: NOAA GFS-derived, ~{{ Math.round(status.global.resolutionKm) }} km,
+        {{ formatUtc(status.global.issued) }} cycle
+      </div>
       <div class="muted" v-else-if="statusLoaded && !status?.nowcast">Turbulence data loading…</div>
 
       <div class="flights-row mt-2">
@@ -206,6 +210,7 @@
         :title="`Turbulence at ${levelLabel}`"
         :compact="mobile"
         :aircraft-key="trafficMode !== 'off' || tracked.length > 0 || !!followHex"
+        :coarse-km="status?.global?.resolutionKm"
       />
     </div>
   </div>
@@ -361,7 +366,7 @@ function addTurbulenceLayer(url: string, onLoaded?: () => void): L.TileLayer {
     opacity: 0,
     maxNativeZoom: 9,
     zIndex: 5,
-    attribution: 'Turbulence: NOAA GTG-N / GTG'
+    attribution: 'Turbulence: NOAA GTG-N / GTG (US, 3 km), NOAA GFS-derived elsewhere (~28 km)'
   })
   if (onLoaded) layer.once('load', onLoaded)
   turbulenceLayers.set(url, layer.addTo(map!))
@@ -795,6 +800,22 @@ async function refreshStatus() {
 }
 
 watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
+
+// GTG's edge: 3 km inside, the coarse GFS-derived layer outside.
+let gtgOutline: L.Polyline | undefined
+watch(
+  () => status.value?.gtgOutline,
+  (ring) => {
+    if (!map || !ring?.length || gtgOutline) return
+    gtgOutline = L.polyline(ring, {
+      color: '#1e293b',
+      weight: 2,
+      opacity: 0.8,
+      dashArray: '8 6',
+      interactive: false
+    }).addTo(map)
+  }
+)
 const stopConnectionWatch = onConnectionChange(() => {
   if (goodConnection()) updateTurbulenceLayers()
 })
