@@ -39,6 +39,8 @@ behaviors:
     description: >-
       3D loads and is operable within 3 seconds: the map, the turbulence columns for the shown levels,
       and pan, tilt and rotate. The volume comes as compact binary, compressed once when a frame is
-      built (the opening frame ahead of time), and the live map fetches it while 2D is up.
+      built (the opening frame ahead of time), and the live map fetches it while 2D is up. To keep it
+      small, 3D EDR values are rounded down to 0.01 (implementation choice, not a user decision); the
+      Medium thresholds are whole hundredths, so no column changes category.
     source:
       text: 3d view loads and is operable within 3 seconds

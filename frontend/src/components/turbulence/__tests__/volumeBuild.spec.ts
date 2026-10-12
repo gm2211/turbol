@@ -14,9 +14,9 @@ const volume = (voxels: number[]): BinaryVolume => ({
 
 describe('build', () => {
   it('stacks adjacent levels of one category at a point into one column, nearest first', () => {
-    // As the backend writes them: level by level. EDR bytes are EDR * 200 (26 = 0.13 Light, 40 = 0.2 Moderate).
+    // As decodeVolume returns them: by point, bottom up. EDR bytes are EDR * 200 (26 = 0.13 Light, 40 = 0.2 Moderate).
     const { cols, byDistance } = build(
-      volume([4000, -9000, 0, 26, 3000, -8000, 0, 40, 4000, -9000, 1, 26, 4000, -9000, 2, 40]),
+      volume([3000, -8000, 0, 40, 4000, -9000, 0, 26, 4000, -9000, 1, 26, 4000, -9000, 2, 40]),
       t,
       [-80, 30]
     )

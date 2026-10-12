@@ -9,7 +9,10 @@ export interface VolumeRequest {
   center: [number, number]
 }
 
-/** A decoded binary volume: voxels are 4 ints each (lat * 100, lon * 100, level index, EDR * 200). */
+/**
+ * A decoded binary volume: voxels are 4 ints each (lat * 100, lon * 100, level index, EDR * 200), grouped by grid point,
+ * each point's bottom up.
+ */
 export interface BinaryVolume {
   levelsFt: number[]
   cellKm: number

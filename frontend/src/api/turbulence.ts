@@ -170,7 +170,7 @@ export function tileUrl(frameId: string, levelFt: number): string {
 
 /** The 3D view's turbulence volume for a frame (binary, see volumeWorker.ts), at the block size it draws. */
 export function volumeUrl(frameId: string): string {
-  return `${apiBase()}/api/turbulence/volume/${frameId}/bin?step=6`
+  return `${apiBase()}/api/turbulence/volume/${frameId}/bin2?step=6`
 }
 
 const volumes = new Map<string, Promise<ArrayBuffer>>()

@@ -109,6 +109,86 @@ final case class Volume(
     put(globalVoxels)
     buf.array()
   }
+
+  /**
+   * [[toBinary]] ~45% smaller once gzipped: voxels grouped by grid point, and EDR in 0.01 steps. Little-endian:
+   *
+   * {{{
+   * int32 magic "TVB2"
+   * per set (GTG, then global): int32 levelCount, int32 levelsFt[levelCount], float32 cellKm, int32 points, int32 n
+   * per set: int16 lat*100 delta[points], int16 lon*100 delta[points], uint8 voxel count[points],
+   *          uint8 level step[n], uint8 EDR byte / 2 [n]
+   * }}}
+   *
+   * Points go west to east, then south to north, each written once with the number of voxels it holds; deltas wrap in
+   * 16 bits as in [[toBinary]]. A point's voxels follow in the same order, bottom up: each level index is the change
+   * from the previous one at that point (the first from 0). EDR bytes are halved, rounding down: the 3D map's
+   * thresholds (Medium aircraft) are all whole hundredths, so no voxel changes category.
+   */
+  def toBinary2: Array[Byte] = {
+    final case class Set(levels: Vector[Int], km: Double, vox: Array[Int], order: Array[Int], points: Int)
+    def set(levels: Vector[Int], km: Double, vox: Array[Int]) = {
+      val n = vox.length / 4
+      require(n < VolumeSampler.indexBits, s"$n voxels")
+      val keys = Array.tabulate(n) { i =>
+        val point = (vox(i * 4 + 1) + 18000).toLong * 18001 + (vox(i * 4) + 9000)
+        (point * 256 + vox(i * 4 + 2)) * VolumeSampler.indexBits + i
+      }
+      java.util.Arrays.sort(keys)
+      val order = keys.map(k => (k % VolumeSampler.indexBits).toInt)
+      var points = 0
+      var k = 0
+      while (k < n) {
+        if (k == 0 || !samePoint(vox, order(k - 1), order(k))) points += 1
+        k += 1
+      }
+      Set(levels, km, vox, order, points)
+    }
+    def samePoint(vox: Array[Int], a: Int, b: Int) = vox(a * 4) == vox(b * 4) && vox(a * 4 + 1) == vox(b * 4 + 1)
+    val sets = Seq(set(levelsFt, cellKm, voxels), set(globalLevelsFt, globalCellKm, globalVoxels))
+    val size = 4 + sets.map(s => 4 * (s.levels.length + 4) + 5 * s.points + 2 * s.order.length).sum
+    val buf = java.nio.ByteBuffer.allocate(size).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    buf.put("TVB2".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+    sets.foreach { s =>
+      buf.putInt(s.levels.length)
+      s.levels.foreach(buf.putInt)
+      buf.putFloat(s.km.toFloat).putInt(s.points).putInt(s.order.length): Unit
+    }
+    sets.foreach { s =>
+      val n = s.order.length
+      // The first voxel of each point.
+      val starts = (0 until n).filter(k => k == 0 || !samePoint(s.vox, s.order(k - 1), s.order(k))).toArray
+      for (field <- Seq(0, 1)) {
+        var prev = 0
+        starts.foreach { k =>
+          val v = s.vox(s.order(k) * 4 + field)
+          buf.putShort((v - prev).toShort)
+          prev = v
+        }
+      }
+      starts.indices.foreach { p =>
+        val end = if (p + 1 < starts.length) starts(p + 1) else n
+        val count = end - starts(p)
+        require(count < 256, s"$count levels at one point")
+        buf.put(count.toByte)
+      }
+      var prevLevel = 0
+      var k = 0
+      while (k < n) {
+        if (k == 0 || !samePoint(s.vox, s.order(k - 1), s.order(k))) prevLevel = 0
+        val level = s.vox(s.order(k) * 4 + 2)
+        buf.put((level - prevLevel).toByte)
+        prevLevel = level
+        k += 1
+      }
+      k = 0
+      while (k < n) {
+        buf.put((s.vox(s.order(k) * 4 + 3) >> 1).toByte)
+        k += 1
+      }
+    }
+    buf.array()
+  }
 }
 
 final class VolumeSampler {
@@ -135,13 +215,17 @@ final class VolumeSampler {
 
   def volume(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume = sample(frame, global, step)
 
-  /** [[Volume.toBinary]] of [[volume]], gzipped and cached: serve it with `Content-Encoding: gzip`. */
-  def volumeGzip(frame: EdrFrame, global: Option[EdrFrame], step: Int): Array[Byte] =
+  /**
+   * [[Volume.toBinary2]] (or [[Volume.toBinary]] with `format` 1) of [[volume]], gzipped and cached: serve it with
+   * `Content-Encoding: gzip`.
+   */
+  def volumeGzip(frame: EdrFrame, global: Option[EdrFrame], step: Int, format: Int = 2): Array[Byte] =
     binaryCache.get(
-      s"${frame.id}/${global.fold("-")(_.id)}/$step",
+      s"${frame.id}/${global.fold("-")(_.id)}/$step/$format",
       () =>
         building.synchronized {
-          val raw = sample(frame, global, step).toBinary
+          val volume = sample(frame, global, step)
+          val raw = if (format == 1) volume.toBinary else volume.toBinary2
           val out = new java.io.ByteArrayOutputStream(raw.length / 3)
           val gz = new java.util.zip.GZIPOutputStream(out) { `def`.setLevel(java.util.zip.Deflater.BEST_COMPRESSION) }
           gz.write(raw)
@@ -258,6 +342,9 @@ object VolumeSampler {
 
   /** Block size the 3D map asks for. */
   val defaultStep: Int = 6
+
+  /** [[Volume.toBinary2]] packs a voxel's index below this in its sort key. */
+  private[turbulence] val indexBits: Long = 1L << 20
 
   /**
    * Volume JSON kept in memory across frames and steps (~2.5 MB each at the production step, so ~6). JSON is ASCII,
