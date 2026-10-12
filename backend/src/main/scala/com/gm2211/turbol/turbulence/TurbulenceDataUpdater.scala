@@ -32,6 +32,15 @@ object TurbulenceDataUpdater {
    */
   val globalForecastHours: Range = 3 to 30 by 3
 
+  /**
+   * Share of wall-clock time the global layer's decoding may use, and the pause between its forecast hours when a
+   * cycle replaces one already served. Render's instance has a tenth of a CPU, and decoding flat out (a few CPU
+   * seconds per hour) starved request handling; at half duty with pauses a cycle takes several minutes instead, which
+   * is fine for data refreshed every 6 hours.
+   */
+  val globalCpuDuty = 0.5
+  val globalPauseBetweenHours: Duration = Duration.ofSeconds(20)
+
   /** What the updater keeps fresh; a store starts with all of them loading (see [[TurbulenceData.loading]]). */
   val sources: Set[String] = Set("nowcast", "forecast", "global")
   private val completeMarker = "COMPLETE"
@@ -217,6 +226,7 @@ final class TurbulenceDataUpdater(
         log.info("Fetching GFS cycle for the global turbulence layer", safe("init", cycle.initTime))
         val cycleDir = globalDir.resolve(cycle.initTime.getEpochSecond.toString)
         val frames = globalForecastHours.map { hour =>
+          if (current.nonEmpty && hour != globalForecastHours.head) Thread.sleep(globalPauseBetweenHours.toMillis)
           val frame = fetchGlobalHour(cycle, hour, cycleDir)
           // First run: publish hour by hour so the map fills in before the whole cycle is in.
           if (current.isEmpty) store.setGlobal(store.current.global :+ frame, wafsIssued(cycleDir))
@@ -239,8 +249,9 @@ final class TurbulenceDataUpdater(
       NomadsClient.fetchGfsHour(cycle, hour, GfsTurbulence.pressureLevelsHpa, tmp): Unit
       val valid = cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS)
       // WAFS from AWC is blended in where available; without it the hour is GFS-only rather than missing.
-      val wafs = Try(Wafs.fetch(valid, cycle.initTime)).toOption.flatten
-      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir, wafs.map(_._2))
+      val throttle = new Throttle(globalCpuDuty)
+      val wafs = Try(Wafs.fetch(valid, cycle.initTime, throttle)).toOption.flatten
+      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir, wafs.map(_._2), throttle)
       wafs.foreach { case (wafsCycle, _) =>
         Files.writeString(hourDir.resolve(wafsMarker), wafsCycle.getEpochSecond.toString): Unit
       }

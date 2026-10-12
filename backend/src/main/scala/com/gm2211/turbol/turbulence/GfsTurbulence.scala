@@ -69,12 +69,13 @@ object GfsTurbulence {
   private val ny = GlobalGrid.ny
 
   /** Horizontal deformation sqrt(stretching^2 + shearing^2) by central differences, periodic in longitude. */
-  def deformation(u: Array[Float], v: Array[Float]): Array[Float] = {
+  def deformation(u: Array[Float], v: Array[Float], throttle: Throttle = Throttle.off): Array[Float] = {
     val out = new Array[Float](nx * ny)
     val dLambda = toRadians(GlobalGrid.resolutionDeg)
     val dy = earthRadius * toRadians(-GlobalGrid.resolutionDeg) // rows run north to south
     var j = 0
     while (j < ny) {
+      throttle.tick()
       val dx = earthRadius * max(cos(toRadians(GlobalGrid.latOf(j))), 0.05) * dLambda
       val jc = min(max(j, 1), ny - 2) // the first and last rows reuse their neighbour's north-south gradient
       val row = j * nx
@@ -102,12 +103,13 @@ object GfsTurbulence {
   final private case class Layer(mid: Array[Float], ti1: Array[Float])
 
   /** TI1 and mid-height for the layer between two pressure levels. */
-  private def layer(lo: Level, hi: Level): Layer = {
+  private def layer(lo: Level, hi: Level, throttle: Throttle): Layer = {
     val n = nx * ny
     val mid = new Array[Float](n)
     val ti1 = new Array[Float](n)
     var p = 0
     while (p < n) {
+      if ((p & 4095) == 0) throttle.tick()
       val dz = max(hi.z(p) - lo.z(p), 50f)
       val du = hi.u(p) - lo.u(p)
       val dv = hi.v(p) - lo.v(p)
@@ -130,32 +132,35 @@ object GfsTurbulence {
    * levels at a time, so only a few global fields are on the heap at once (~60 MB).
    *
    * With `wafs` (EDR per [[Wafs]] level on the same grid, see [[Wafs.fetch]]), levels WAFS covers blend it in.
+   * `throttle` caps its CPU share so the server stays responsive.
    */
   def decodeToLayers(
     gribFile: Path,
     outputDir: Path,
-    wafs: Option[Vector[Array[Byte]]] = None
+    wafs: Option[Vector[Array[Byte]]] = None,
+    throttle: Throttle = Throttle.off
   ): SortedMap[Int, EdrLayer] = {
     Files.createDirectories(outputDir)
     val n = nx * ny
     val targetsM = levelsFt.map(_ * 0.3048f)
-    // Per target level: (blend table index, lower WAFS level, weight of the upper one) where WAFS covers it.
-    val wafsAt: Vector[Option[(Int, Int, Double)]] = levelsFt.map { ft =>
-      wafs.flatMap(_ => Wafs.blendLevel(ft)).map { b =>
-        val (k, t) = Wafs.bracket(ft)
-        (b, k, t)
-      }
-    }
+    // Per target level, where WAFS covers it: blend table index (-1 if not), lower WAFS level, weight of the upper one.
+    val wafsLevels = wafs.orNull
+    val blendIndex = levelsFt.map(ft => if (wafsLevels == null) -1 else Wafs.blendLevel(ft).getOrElse(-1)).toArray
+    val wafsLower = levelsFt.map(Wafs.bracket(_)._1).toArray
+    val wafsUpperWeight = levelsFt.map(Wafs.bracket(_)._2).toArray
     def edrAt(t: Int, p: Int, ti1: Float): Float = {
       val ti1Edr = edrFromTi1(t, ti1)
-      val blended = for {
-        (b, k, w) <- wafsAt(t)
-        levels <- wafs
-        lo = EdrLayer.decode(levels(k)(p))
-        hi = EdrLayer.decode(levels(k + 1)(p))
-        if !lo.isNaN && !hi.isNaN
-      } yield Wafs.blend(b, (1 - w) * lo + w * hi, ti1Edr)
-      blended.getOrElse(ti1Edr).toFloat
+      val b = blendIndex(t)
+      if (b < 0) ti1Edr.toFloat
+      else {
+        val lo = EdrLayer.decode(wafsLevels(wafsLower(t))(p))
+        val hi = EdrLayer.decode(wafsLevels(wafsLower(t) + 1)(p))
+        if (lo.isNaN || hi.isNaN) ti1Edr.toFloat
+        else {
+          val w = wafsUpperWeight(t)
+          Wafs.blend(b, (1 - w) * lo + w * hi, ti1Edr).toFloat
+        }
+      }
     }
     val outputs =
       Array.fill(levelsFt.size) { val a = new Array[Byte](n); java.util.Arrays.fill(a, EdrLayer.missing); a }
@@ -175,14 +180,16 @@ object GfsTurbulence {
       val byKey = records.result()
       def field(param: (Int, Int), hPa: Int): Array[Float] = {
         val record = byKey.getOrElse((param, hPa), throw RuntimeException(s"$gribFile has no $param at $hPa hPa"))
+        throttle.tick()
         val values = record.readData(raf)
+        throttle.tick()
         require(values.length == n, s"unexpected grid size ${values.length} in $gribFile")
         values
       }
       def level(hPa: Int): Level = {
         val u = field(uWind, hPa)
         val v = field(vWind, hPa)
-        Level(u, v, field(height, hPa), deformation(u, v))
+        Level(u, v, field(height, hPa), deformation(u, v, throttle))
       }
 
       val bottomUp = pressureLevelsHpa.sorted(using Ordering[Int].reverse)
@@ -191,13 +198,14 @@ object GfsTurbulence {
       var previous: Layer = null
       for (k <- 1 until bottomUp.size) {
         val hi = level(bottomUp(k))
-        val current = layer(lo, hi)
+        val current = layer(lo, hi, throttle)
         // Linear in height between layer mids, holding the end values below the first and above the last mid.
         if (previous != null) {
           val first = k == 2
           val last = k == layerCount
           var p = 0
           while (p < n) {
+            if ((p & 1023) == 0) throttle.tick()
             val z0 = previous.mid(p)
             val z1 = current.mid(p)
             var t = 0
