@@ -4,111 +4,11 @@
  * Cells are classified, stacked into same-category columns (see mergeColumns in scene3d.ts) and sent back nearest
  * to the camera first, in a few batches of transferable typed arrays, so the scene fills in from the middle out.
  */
-import type { Thresholds } from '@/api/turbulence'
-import type {
-  BinaryVolume,
-  ColumnBatch,
-  VolumeMessage,
-  VolumeRequest
-} from '@/components/turbulence/volumeTypes'
+import type { ColumnBatch, VolumeMessage, VolumeRequest } from '@/components/turbulence/volumeTypes'
 import { decodeVolume } from '@/components/turbulence/volumeCodec'
+import { build } from '@/components/turbulence/volumeBuild'
 
 const post = (m: VolumeMessage, transfer: Transferable[] = []) => self.postMessage(m, transfer)
-
-function classify(edr: number, t: Thresholds): number {
-  if (edr < t.light) return 0
-  if (edr < t.moderate) return 1
-  if (edr < t.severe) return 2
-  if (edr < t.extreme) return 3
-  return 4
-}
-
-type Columns = Record<keyof ColumnBatch, number[]>
-
-/** Stack one voxel set (GTG's, or the global layer's) into columns of `sizeKm` blocks. */
-function stack(
-  cols: Columns,
-  vox: ArrayLike<number>,
-  levels: number[],
-  sizeKm: number,
-  t: Thresholds
-) {
-  const n = vox.length / 4
-  // Sort cells by grid point, then level, so each point's stack can be walked bottom-up.
-  const order = new Uint32Array(n)
-  for (let i = 0; i < n; i++) order[i] = i
-  order.sort(
-    (a, b) =>
-      vox[a * 4]! - vox[b * 4]! ||
-      vox[a * 4 + 1]! - vox[b * 4 + 1]! ||
-      vox[a * 4 + 2]! - vox[b * 4 + 2]!
-  )
-  let last = -1
-  for (const i of order) {
-    const lat = vox[i * 4]!
-    const lon = vox[i * 4 + 1]!
-    const li = vox[i * 4 + 2]!
-    const level = levels[li]!
-    const prev = levels[li - 1]
-    const next = levels[li + 1]
-    const bottom = prev === undefined ? Math.max(level - 1000, 0) : (prev + level) / 2
-    const top = next === undefined ? level + 1000 : (next + level) / 2
-    const edr = vox[i * 4 + 3]! / 200
-    const cat = classify(edr, t)
-    if (
-      last >= 0 &&
-      cols.lat[last] === lat / 100 &&
-      cols.lon[last] === lon / 100 &&
-      cols.category[last] === cat &&
-      cols.topFt[last] === bottom
-    ) {
-      cols.topFt[last] = top
-      cols.topLevelFt[last] = level
-      cols.edr[last] = Math.max(cols.edr[last]!, edr)
-    } else {
-      cols.lat.push(lat / 100)
-      cols.lon.push(lon / 100)
-      cols.bottomFt.push(bottom)
-      cols.topFt.push(top)
-      cols.levelFt.push(level)
-      cols.topLevelFt.push(level)
-      cols.edr.push(edr)
-      cols.category.push(cat)
-      cols.sizeKm.push(sizeKm)
-      last = cols.lat.length - 1
-    }
-  }
-}
-
-function build(v: BinaryVolume, t: Thresholds, center: [number, number]) {
-  const cols: Columns = {
-    lat: [],
-    lon: [],
-    bottomFt: [],
-    topFt: [],
-    levelFt: [],
-    topLevelFt: [],
-    edr: [],
-    category: [],
-    sizeKm: []
-  }
-  stack(cols, v.voxels, v.levelsFt, v.cellKm, t)
-  if (v.globalVoxels.length) stack(cols, v.globalVoxels, v.globalLevelsFt, v.globalCellKm, t)
-
-  // Nearest to the camera first.
-  const m = cols.lat.length
-  const cosLat = Math.cos((center[1] * Math.PI) / 180)
-  const dist = new Float32Array(m)
-  for (let i = 0; i < m; i++) {
-    const dx = (cols.lon[i]! - center[0]) * cosLat
-    const dy = cols.lat[i]! - center[1]
-    dist[i] = dx * dx + dy * dy
-  }
-  const byDistance = new Uint32Array(m)
-  for (let i = 0; i < m; i++) byDistance[i] = i
-  byDistance.sort((a, b) => dist[a]! - dist[b]!)
-  return { cols, byDistance }
-}
 
 self.onmessage = (e: MessageEvent<VolumeRequest>) => {
   try {
@@ -122,7 +22,7 @@ self.onmessage = (e: MessageEvent<VolumeRequest>) => {
     while (start < total) {
       const idx = byDistance.subarray(start, Math.min(start + size, total))
       const pick = <T extends Float32Array | Uint8Array>(
-        src: number[],
+        src: ArrayLike<number>,
         Out: new (n: number) => T
       ): T => {
         const out = new Out(idx.length)
