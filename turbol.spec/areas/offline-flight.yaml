@@ -9,7 +9,8 @@ prose: >-
   thread, 2026-10-12 00:44Z). Its first phase is a Flight Pack of raw EDR for the flight's corridor,
   downloaded at the gate (the backend serves it at /api/packs/manifest and /api/packs/slab, and
   /api/ping tells a working connection from a captive portal), an app shell that opens with no
-  network, the backend's sampler and route analyzer ported to the phone, and a Fly view. Still
+  network, the backend's sampler and route analyzer ported to the phone, and a Fly view (/fly) that
+  keeps saved flights on the phone and follows them from the gate to landing. Still
   proposals, not decided: a position engine that also takes an ADS-B fix whenever a Wi-Fi window
   opens, one small request per window, and splitting the app into two flows, Plan (ahead of time,
   including finding the best flight for a route) and Fly (the day of and during the flight). Giulio
@@ -24,6 +25,11 @@ behaviors:
     description: >-
       A flight looked up at the airport can still be opened and followed after boarding with no
       connection at all, until the plane is in the air.
+    details: >-
+      The Fly view (/fly) saves a flight, by flight number or route there or with "Save for the
+      flight" under an analysis, and downloads its Flight Pack into the phone's IndexedDB. With no
+      connection it opens from the app shell and shows the flight's verdict, timeline and turbulence
+      profile worked out on the phone from that pack, at the gate and in the air.
     source:
       text: >-
         You are at the airport, open the site, look up your flight, but then board the plane and you
@@ -33,6 +39,15 @@ behaviors:
     description: >-
       In the air on slow, filtered or spotty Wi-Fi, the app takes each chance it gets to download
       updates for the flight and stays usable between them.
+    details: >-
+      While the Fly view is open it asks for a newer pack when the connection comes back, when the
+      app comes to the front, and on a timer, first checking /api/ping so a captive portal counts as
+      no connection. A newer pack downloads beside the one in use, slab by slab with the nowcast
+      first, so a window that closes keeps what arrived, and the view switches to it only once every
+      slab is on the phone. While a saved flight is in the air the phone also keeps the app build it
+      has, so plane Wi-Fi goes to the flight's turbulence. Implementation choices, not requirements:
+      the timer (3 minutes in the air, 10 on the ground, backing off after failures), the download
+      order, and holding app updates until after landing.
     source:
       text: >-
         You're in the air and have wifi connection but it's slow-af, might be occasionally filter out
@@ -43,6 +58,15 @@ behaviors:
     description: >-
       Between downloads, the flight's position keeps updating from the phone itself, for example from
       GPS or dead reckoning.
+    details: >-
+      Without GPS the Fly view flies the planned route and climb, cruise and descent profile from the
+      takeoff: GPS on the takeoff run, the passenger's "We've taken off" tap, or else the scheduled
+      departure plus a taxi. With GPS on, the latest fix at flying speed pins where the plane is on
+      that plan, and one in cruise also sets the pace of the rest of the flight from its ground speed,
+      so a tailwind brings what's ahead sooner. The view says how sure it is in minutes and shades that
+      stretch of the timeline. Assumptions, not requirements: a 15-minute taxi; 50 m/s as the speed
+      that means airborne; fixes faster than 400 m/s, vaguer than 1 km or 600 km off the route ignored
+      as bad readings; and the timing-error tables (90th percentile) behind the plus-or-minus minutes.
     source:
       text: should still be able to use gps / dead reconing / inertia /... to keep updating your flight
       reference: Giulio, turbol project chat, 2026-10-11 22:39Z (Offline and low-bandwidth UX design)
@@ -52,7 +76,8 @@ behaviors:
       captive portal, a dead or crawling link) and shows the app, not the browser's offline page.
     details: >-
       The offline app shell from the first phase Giulio picked. When the connection works, opening
-      the app still gets the latest deploy.
+      the app still gets the latest deploy, except while a saved flight is in the air (see
+      updates-in-short-windows): then it opens the build on the phone and updates after landing.
     source:
       text: Offline Fly
       reference: >-

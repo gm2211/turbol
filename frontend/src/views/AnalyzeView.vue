@@ -77,6 +77,17 @@
           Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
         </v-chip>
         <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
+        <v-btn
+          size="small"
+          color="#10324f"
+          variant="flat"
+          class="mb-3"
+          prepend-icon="mdi-airplane-takeoff"
+          :loading="savingForFlight"
+          @click="saveForFlight"
+        >
+          Save for the flight (works offline)
+        </v-btn>
         <div class="stats">
           <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
           <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
@@ -173,6 +184,8 @@ import {
   flightLevel,
   formatUtc
 } from '@/api/turbulence'
+import { idbStore } from '@/fly/db'
+import { newFlight, saveFlight } from '@/fly/flights'
 
 const route = useRoute()
 const router = useRouter()
@@ -188,6 +201,7 @@ const lookup = ref<FlightLookup>()
 const analysis = ref<RouteAnalysis>()
 const analyzedOrigin = ref<Place>()
 const analyzedDestination = ref<Place>()
+const savingForFlight = ref(false)
 const allThresholds = ref<Record<AircraftClass, Thresholds>>()
 
 const thresholds = computed(
@@ -277,6 +291,34 @@ async function analyze() {
     error.value = `Analysis failed: ${e}`
   } finally {
     loading.value = false
+  }
+}
+
+/** Keeps this flight on the phone for the Fly view, which downloads its Flight Pack. */
+async function saveForFlight() {
+  const a = analysis.value
+  const from = analyzedOrigin.value
+  const to = analyzedDestination.value
+  if (!a || !from || !to) return
+  savingForFlight.value = true
+  try {
+    const found = lookup.value?.route
+    const flight = newFlight({
+      label: found ? (found.iataCallsign ?? found.callsign) : `${from.code} → ${to.code}`,
+      callsign: lookup.value?.callsign,
+      origin: from,
+      destination: to,
+      departure: new Date(a.start).getTime(),
+      aircraftClass: a.aircraftClass,
+      aircraftType: a.aircraftType,
+      cruiseFt: a.cruiseAltitudeFt
+    })
+    await saveFlight(idbStore, flight)
+    await router.push({ path: '/fly', query: { flight: flight.id } })
+  } catch (e) {
+    error.value = `Couldn't save the flight on this phone: ${e}`
+  } finally {
+    savingForFlight.value = false
   }
 }
 
