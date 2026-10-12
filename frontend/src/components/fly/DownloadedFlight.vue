@@ -136,6 +136,8 @@
           :end-label="`Landing ${clock(est.landing)}`"
           :now-minute="nowMinute"
           :uncertainty-minutes="bandMinutes"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
         <TurbulenceProfile
           class="mt-1"
@@ -145,6 +147,8 @@
           :height="110"
           :now-minute="nowMinute"
           :uncertainty-minutes="bandMinutes"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
         <div class="stats mt-3">
           <div>
@@ -278,6 +282,8 @@ const anchor = computed(() =>
   est.value ? Math.round(est.value.planStart / 60000) * 60000 : undefined
 )
 /** Where the plane is on the analysis' clock (planned minutes), while in the air. */
+/** The minute being read on the timeline (hover or drag). */
+const hoverMinute = ref<number>()
 const nowMinute = computed(() => (est.value?.phase === 'air' ? est.value.plannedMinute : undefined))
 /** How unsure the position is, in the analysis' planned minutes. */
 const bandMinutes = computed(() => (est.value ? est.value.uncertaintyMinutes / est.value.pace : 0))
