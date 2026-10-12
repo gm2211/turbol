@@ -21,9 +21,13 @@ import scala.util.Try
 
 object TurbulenceDataUpdater {
 
-  /** GTG forecast levels we fetch: climb/descent coverage plus every 2,000 ft through the cruise band. */
+  /**
+   * GTG forecast levels we fetch: climb/descent coverage plus every 1,000 ft from FL300 to FL450, GTG's native spacing
+   * (the files hold 51 levels, 100 ft then 1,000 to 50,000 ft), so the forecast is as fine as the nowcast where jets
+   * cruise. Each level is ~1.9 MB on disk per forecast hour.
+   */
   val forecastLevelsFt: Set[Int] =
-    Set(3000, 6000, 10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000)
+    Set(3000, 6000, 10000, 15000, 20000, 25000) ++ (30000 to 45000 by 1000)
   val forecastHours: Range = 1 to 18
 
   /**
