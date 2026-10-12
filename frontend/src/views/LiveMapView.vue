@@ -295,7 +295,8 @@ const frameIndex = ref(0)
 const aircraftCount = ref(0)
 const trafficComplete = ref(false)
 type TrafficMode = 'off' | 'sample' | 'all'
-const trafficMode = ref<TrafficMode>(readTrafficMode())
+// Every visit opens with no flights; the choice isn't remembered.
+const trafficMode = ref<TrafficMode>('off')
 const sampleSize = 100
 const sampleRotateMs = 30000
 const shownCount = ref(0)
@@ -309,16 +310,6 @@ const addError = ref('')
 const tracked = ref<TrackedFlight[]>([])
 const mobile = useMobile()
 const showControls = ref(false)
-
-function readTrafficMode(): TrafficMode {
-  try {
-    const saved = localStorage.getItem('turbol.trafficMode')
-    if (saved === 'off' || saved === 'sample' || saved === 'all') return saved
-    return localStorage.getItem('turbol.showAllFlights') === 'true' ? 'all' : 'off'
-  } catch {
-    return 'off'
-  }
-}
 
 const levelLabel = computed(() => flightLevel(levelFt.value))
 /** Levels the 3D view shows: around the map altitude until the rail's band is moved; the full range is every level. */
@@ -615,11 +606,6 @@ function searchThisArea() {
 }
 
 watch(trafficMode, (m) => {
-  try {
-    localStorage.setItem('turbol.trafficMode', m)
-  } catch {
-    // private mode: the choice just isn't remembered
-  }
   window.clearTimeout(trafficTimer)
   trafficRequest++
   clearTraffic()
