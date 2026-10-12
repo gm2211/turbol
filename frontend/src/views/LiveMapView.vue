@@ -1213,7 +1213,23 @@ onMounted(() => {
   stopWheelZoom = smoothWheelZoom(map)
   // Zoom buttons sit bottom-right beside the 2D/3D switch, so the left panels can share one left edge.
   L.control.zoom({ position: 'bottomright' }).addTo(map)
-  L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
+  L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 })
+    // The tiles index.html showed before the app loaded (see map-preview there) give way once the map has its own.
+    .once('load', () => document.getElementById('map-preview')?.remove())
+    .addTo(map)
+  // index.html's preview of the opening view moves into the map, under its controls and the panels, until Leaflet has
+  // drawn the same tiles.
+  const preview = document.getElementById('map-preview')
+  if (preview) {
+    Object.assign(preview.style, {
+      position: 'absolute',
+      left: '0',
+      top: '0',
+      zIndex: '450',
+      borderRadius: '0'
+    })
+    mapEl.value!.appendChild(preview)
+  }
   // Leaflet sizes itself once; if the page laid out after that (or the window changed), it would load no tiles.
   mapResizeObserver.observe(mapEl.value!)
   updateTurbulenceLayers()
@@ -1274,6 +1290,7 @@ onBeforeUnmount(() => {
   mapEl.value?.removeEventListener('click', onPopupClick)
   stopConnectionWatch()
   mapResizeObserver.disconnect()
+  document.getElementById('map-preview')?.remove()
   map?.remove()
   map = undefined
 })
