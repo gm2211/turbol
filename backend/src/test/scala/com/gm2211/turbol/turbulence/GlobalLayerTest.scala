@@ -115,6 +115,46 @@ class GlobalLayerTest extends BaseTest {
     volume.voxels.length should be > 0
   }
 
+  test("the gzipped binary volume decodes back to the same volume") {
+    val gtg = uniformFrame(FrameKind.Nowcast, t0, Map(35000 -> 0.20))
+    val global = uniformFrame(FrameKind.Global, t0, Map(35000 -> 0.20))
+    val sampler = VolumeSampler()
+    val volume = sampler.volume(gtg, Some(global), 8)
+    val gz = sampler.volumeGzip(gtg, Some(global), 8)
+    val raw = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(gz)).readAllBytes()
+    java.util.Arrays.equals(raw, volume.toBinary) shouldBe true
+    val buf = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    new String(raw, 0, 4, "US-ASCII") shouldBe "TVB1"
+    buf.position(4)
+    def head() = {
+      val levels = Vector.fill(buf.getInt())(buf.getInt())
+      (levels, buf.getFloat().toDouble, buf.getInt())
+    }
+    val (levels, km, n) = head()
+    val (globalLevels, globalKm, globalN) = head()
+    levels shouldBe volume.levelsFt
+    km shouldBe volume.cellKm +- 1e-4
+    globalLevels shouldBe volume.globalLevelsFt
+    globalKm shouldBe volume.globalCellKm +- 1e-4
+    def voxels(n: Int): Array[Int] = {
+      val out = new Array[Int](n * 4)
+      for (field <- Seq(0, 1)) {
+        var prev = 0
+        for (k <- 0 until n) { prev = (prev + buf.getShort()).toShort; out(k * 4 + field) = prev }
+      }
+      for {
+        field <- Seq(2, 3)
+        k <- 0 until n
+      } out(k * 4 + field) = buf.get() & 0xff
+      out
+    }
+    java.util.Arrays.equals(voxels(n), volume.voxels) shouldBe true
+    java.util.Arrays.equals(voxels(globalN), volume.globalVoxels) shouldBe true
+    n should be > 0
+    globalN should be > 0
+    buf.remaining() shouldBe 0
+  }
+
   // Decodes a real GFS file when one is around (data-pipeline/gfs_turbulence.py collect downloads it). Expected values
   // are the pipeline's own output for the same file (gfs_turbulence.gfs_edr), so the Scala port must match it.
   test("decodes a real GFS file the same way as the pipeline") {
