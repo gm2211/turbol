@@ -39,7 +39,12 @@ export function preload3d(): Plugin {
           ` ${files}.forEach(function (f) { var l = document.createElement('link');` +
           ` l.rel = f.endsWith('.css') ? 'preload' : 'modulepreload'; if (l.rel === 'preload') l.as = 'style';` +
           ` l.href = f; document.head.appendChild(l) })</script>`
-        return html.replace('</head>', `${script}\n</head>`)
+        // Ahead of the stylesheets: an inline script after a stylesheet that's still loading waits for it, which held
+        // these preloads back by up to a second.
+        const at = html.indexOf('<script type="module"')
+        return at < 0
+          ? html.replace('</head>', `${script}\n</head>`)
+          : `${html.slice(0, at)}${script}\n  ${html.slice(at)}`
       }
     }
   }

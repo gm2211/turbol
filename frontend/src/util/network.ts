@@ -23,6 +23,16 @@ export function goodConnection(): boolean {
   return true
 }
 
+/**
+ * Looser than goodConnection, for one-off downloads that make a likely next step instant (the 3D code and volume,
+ * ~1 MB together): only Data Saver and 2G rule them out. Chromium rates the connection from observed round trips,
+ * so a slow server alone can drop a fast link to "3g".
+ */
+export function fineForOneOffs(): boolean {
+  const c = connection()
+  return !c?.saveData && c?.effectiveType !== '2g' && c?.effectiveType !== 'slow-2g'
+}
+
 /** Calls `listener` when the connection changes (Chromium only), e.g. to resume prefetching on Wi-Fi. */
 export function onConnectionChange(listener: () => void): () => void {
   const c = connection()
