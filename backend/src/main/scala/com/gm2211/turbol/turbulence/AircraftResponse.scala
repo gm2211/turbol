@@ -88,7 +88,8 @@ object AircraftResponse {
     "A388" -> AircraftSpec(575000, 845.0, 79.75, 33.5, 488),
     "B763" -> AircraftSpec(186880, 283.3, 47.57, 31.5, 459),
     "B764" -> AircraftSpec(204120, 290.7, 51.9, 31.5, 459),
-    "B772" -> AircraftSpec(247200, 427.8, 60.9, 31.6, 482),
+    // ICAO B772 covers the 777-200 and the far more common 777-200ER: use the ER's MTOW.
+    "B772" -> AircraftSpec(297550, 427.8, 60.9, 31.6, 482),
     "B77L" -> AircraftSpec(347800, 436.8, 64.8, 31.6, 490),
     "B77W" -> AircraftSpec(351500, 436.8, 64.8, 31.6, 490),
     "B788" -> AircraftSpec(227930, 360.5, 60.1, 32.2, 488),

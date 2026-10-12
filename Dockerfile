@@ -31,6 +31,6 @@ ENV TURBOL_STATIC_DIR=/opt/turbol/static \
     TURBOL_MIN_VOLUME_STEP=6 \
     MALLOC_ARENA_MAX=2 \
     TURBOL_GLOBAL_LAYER=on \
-    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
 EXPOSE 8081
 CMD ["./entrypoint.sh"]

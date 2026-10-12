@@ -8,6 +8,7 @@ package com.gm2211.turbol.util
 
 import com.gm2211.logging.BackendLogging
 
+import java.nio.file.{Files, Paths}
 import java.util
 import java.util.concurrent.*
 import scala.concurrent.ExecutionContext
@@ -72,6 +73,44 @@ object MoreExecutors extends BackendLogging {
   def fixed(namePrefix: String, numThreads: Int, daemonic: Boolean = true): Scheduler = {
     val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic)
     Executors.newFixedThreadPool(numThreads, threadFactory).toExecutionContext.toScheduler
+  }
+
+  /**
+   * Like [[io]], but its threads run at the lowest CPU priority (nice 19). The production instance has a tenth of a
+   * CPU: at equal priority, decoding turbulence data left a visitor's page and tiles waiting 10 s or more for a turn,
+   * since one GRIB level takes seconds of CPU and can't be paused midway. At nice 19 the request threads get the CPU
+   * whenever they want it, and background work gets the rest.
+   */
+  def background(namePrefix: String): Scheduler = {
+    val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic = true)
+    val lowPriority: ThreadFactory = (r: Runnable) =>
+      threadFactory.newThread { () =>
+        lowerCurrentThreadPriority()
+        r.run()
+      }
+    Executors.newCachedThreadPool(lowPriority).toExecutionContext.toScheduler
+  }
+
+  private def lowerCurrentThreadPriority(): Unit =
+    Try {
+      // Linux gives each thread its own task; renice on its id (from /proc/thread-self -> <pid>/task/<tid>) lowers
+      // this thread only. Java's own thread priorities are ignored on Linux.
+      val tid = Files.readSymbolicLink(Paths.get("/proc/thread-self")).getFileName.toString
+      val renice = new ProcessBuilder("renice", "-n", "19", "-p", tid)
+        .redirectErrorStream(true)
+        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        .start()
+      require(renice.waitFor() == 0, s"renice exited with ${renice.exitValue()}")
+      niceOfCurrentThread
+    }.fold(
+      e => log.warn("Background thread keeps its normal CPU priority", e),
+      nice => log.info("Background thread priority lowered", safe("nice", nice))
+    )
+
+  /** The calling thread's nice value: field 19 of /proc/thread-self/stat, counted after the command in parentheses. */
+  def niceOfCurrentThread: Int = {
+    val stat = Files.readString(Paths.get("/proc/thread-self/stat"))
+    stat.substring(stat.lastIndexOf(')') + 2).split(' ')(16).toInt
   }
 
   private object ThreadFactoryBuilder extends BackendLogging {

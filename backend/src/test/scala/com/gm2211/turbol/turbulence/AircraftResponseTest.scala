@@ -20,6 +20,7 @@ class AircraftResponseTest extends BaseTest {
   test("higher wing loading feels the same EDR less, lower wing loading more") {
     of("B77W").factor should be < of("B788").factor
     of("B744").factor should be < 0.8
+    of("B772").factor should be < 0.9 // the 777-200ER, not the rare 247 t base model
     of("CL35").factor should be > 1.5
     of("C172").factor should be > 1.5
     AircraftResponse.specs.keys.foreach(t => of(t).factor should (be >= 0.5 and be <= 2.5))
