@@ -1,8 +1,8 @@
 name: Spec check
 
+# CI disabled at the owner's request: manual runs only.
 on:
-  pull_request:
-    branches: [ "develop" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
