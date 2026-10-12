@@ -37,6 +37,16 @@
       >
     </v-btn-toggle>
 
+    <v-btn
+      v-if="trafficMode === 'sample' && areaMoved"
+      class="search-area glass-panel"
+      theme="dark"
+      prepend-icon="mdi-refresh"
+      rounded="pill"
+      @click="searchThisArea"
+      >Search this area</v-btn
+    >
+
     <div class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
       <div class="muted" v-if="status?.nowcast && !mobile">
@@ -44,18 +54,36 @@
       </div>
       <div class="muted" v-else-if="statusLoaded && !status?.nowcast">Turbulence data loading…</div>
 
-      <v-switch
-        v-model="showAll"
-        label="Show all flights"
-        density="compact"
-        hide-details
-        theme="dark"
-        color="var(--my-accent)"
-        class="mt-1"
-      />
-      <div class="muted" v-if="showAll">
-        {{ aircraftCount.toLocaleString() }} aircraft in view
-        <span v-if="!trafficComplete"> (loading more)</span>
+      <div class="flights-row mt-2">
+        <span class="muted">Flights</span>
+        <v-btn-toggle
+          v-model="trafficMode"
+          mandatory
+          density="compact"
+          theme="dark"
+          color="var(--my-accent)"
+          variant="outlined"
+          divided
+        >
+          <v-btn value="off" size="small">None</v-btn>
+          <v-btn
+            value="sample"
+            size="small"
+            :title="`${sampleSize} random flights, reshuffled every 30 s`"
+            >{{ sampleSize }} random</v-btn
+          >
+          <v-btn value="all" size="small">All</v-btn>
+        </v-btn-toggle>
+      </div>
+      <div class="muted" v-if="trafficMode !== 'off'">
+        <template v-if="trafficMode === 'sample'">
+          {{ shownCount.toLocaleString() }} of {{ aircraftCount.toLocaleString() }} aircraft in this
+          area
+        </template>
+        <template v-else>{{ shownCount.toLocaleString() }} aircraft in view</template>
+        <span v-if="!trafficComplete || shownCount < Math.min(targetCount, aircraftCount)">
+          (loading more)</span
+        >
       </div>
 
       <form class="add-flight mt-2" @submit.prevent="addFlight">
@@ -168,7 +196,11 @@
     />
 
     <div v-show="!followHex" class="bottom-left">
-      <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" :compact="mobile" />
+      <TurbulenceLegend
+        :title="`Turbulence at ${levelLabel}`"
+        :compact="mobile"
+        :aircraft-key="trafficMode !== 'off' || tracked.length > 0 || !!followHex"
+      />
     </div>
   </div>
 </template>
@@ -191,9 +223,10 @@ import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import AltitudeRail from '@/components/turbulence/AltitudeRail.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
 import FollowStrip from '@/components/turbulence/FollowStrip.vue'
-import { canvasPlane, planeIcon } from '@/components/turbulence/planeIcon'
+import { canvasPlane, planeIcon, updateCanvasPlane } from '@/components/turbulence/planeIcon'
 import {
   type AircraftView,
+  type Bounds,
   type FrameInfo,
   type TurbulenceStatus,
   categoryColors,
@@ -229,7 +262,15 @@ const levelFt = ref(35000)
 const frameIndex = ref(0)
 const aircraftCount = ref(0)
 const trafficComplete = ref(true)
-const showAll = ref(readShowAll())
+type TrafficMode = 'off' | 'sample' | 'all'
+const trafficMode = ref<TrafficMode>(readTrafficMode())
+const sampleSize = 100
+const sampleRotateMs = 30000
+const shownCount = ref(0)
+const targetCount = computed(() => (trafficMode.value === 'sample' ? sampleSize : Infinity))
+/** In sample mode, flights come from the area searched last; moving the map offers "Search this area". */
+const areaMoved = ref(false)
+let searchedBounds: Bounds | undefined
 const flightQuery = ref('')
 const adding = ref(false)
 const addError = ref('')
@@ -237,11 +278,13 @@ const tracked = ref<TrackedFlight[]>([])
 const mobile = useMobile()
 const showControls = ref(false)
 
-function readShowAll(): boolean {
+function readTrafficMode(): TrafficMode {
   try {
-    return localStorage.getItem('turbol.showAllFlights') === 'true'
+    const saved = localStorage.getItem('turbol.trafficMode')
+    if (saved === 'off' || saved === 'sample' || saved === 'all') return saved
+    return localStorage.getItem('turbol.showAllFlights') === 'true' ? 'all' : 'off'
   } catch {
-    return false
+    return 'off'
   }
 }
 
@@ -415,53 +458,142 @@ function viewBounds() {
   }
 }
 
-/** Polls every 15 s, or every 3 s while the server is still filling in the view, so planes appear as they arrive. */
+let sample: { hexes: string[]; at: number } | undefined
+
+/** Keeps the current sample while it's fresh (topping it up when flights leave), and draws a new one every 30 s. */
+function pickSample(all: AircraftView[]): AircraftView[] {
+  const byHex = new Map(all.map((a) => [a.hex, a]))
+  const fresh = sample && Date.now() - sample.at < sampleRotateMs
+  const kept = fresh ? sample!.hexes.filter((h) => byHex.has(h)) : []
+  const keptSet = new Set(kept)
+  const rest = all.filter((a) => !keptSet.has(a.hex))
+  // Partial Fisher-Yates: only as many swaps as picks.
+  const need = Math.min(sampleSize - kept.length, rest.length)
+  for (let i = 0; i < need; i++) {
+    const j = i + Math.floor(Math.random() * (rest.length - i))
+    ;[rest[i], rest[j]] = [rest[j]!, rest[i]!]
+  }
+  const hexes = [...kept, ...rest.slice(0, need).map((a) => a.hex)]
+  sample = { hexes, at: fresh ? sample!.at : Date.now() }
+  return hexes.map((h) => byHex.get(h)!)
+}
+
+/**
+ * Polls every 15 s (every 3 s while the server is still filling in the area). Each poll is applied by
+ * `applyTraffic`, which spreads the marker work over animation frames so the page never freezes.
+ */
 async function refreshTraffic() {
   window.clearTimeout(trafficTimer)
-  if (!map || !showAll.value) return
+  if (!map || trafficMode.value === 'off') return
   const request = ++trafficRequest
   let complete = true
   try {
-    const response = await fetchTraffic(viewBounds())
-    if (request !== trafficRequest || !showAll.value) return
-    const trackedHexes = new Set(tracked.value.map((t) => t.hex))
-    if (followHex.value) trackedHexes.add(followHex.value)
-    planes.clearLayers()
-    trafficMarkers.clear()
-    const size = planeSize()
-    for (const a of response.aircraft) {
-      if (trackedHexes.has(a.hex)) continue
-      const marker = canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
-        .bindPopup(() => popupHtml(a), popupOptions)
-        .addTo(planes)
-      trafficMarkers.set(a.hex, marker)
-    }
-    traffic.value = response.aircraft
+    const bounds = trafficMode.value === 'sample' ? (searchedBounds ??= viewBounds()) : viewBounds()
+    const response = await fetchTraffic(bounds)
+    // Switching modes bumps trafficRequest, so a stale response is dropped here.
+    if (request !== trafficRequest) return
+    const shown = trafficMode.value === 'sample' ? pickSample(response.aircraft) : response.aircraft
     aircraftCount.value = response.aircraft.length
     trafficComplete.value = complete = response.complete
+    applyTraffic(shown)
   } catch (e) {
     console.warn('traffic refresh failed', e)
   }
-  if (request === trafficRequest && showAll.value) {
+  if (request === trafficRequest) {
     trafficTimer = window.setTimeout(refreshTraffic, complete ? 15000 : 3000)
   }
 }
 
-watch(showAll, (on) => {
+const trafficData = new Map<string, AircraftView>()
+let applyJob = 0
+
+/**
+ * Moves planes that are still there, drops the ones that left and adds new ones, nearest the centre first, within
+ * ~6 ms per animation frame. The 3D view gets the growing list a few times a second rather than every frame.
+ */
+function applyTraffic(list: AircraftView[]) {
+  if (!map) return
+  const job = ++applyJob
+  const trackedHexes = new Set(tracked.value.map((t) => t.hex))
+  if (followHex.value) trackedHexes.add(followHex.value)
+  const wanted = new Map(list.filter((a) => !trackedHexes.has(a.hex)).map((a) => [a.hex, a]))
+  for (const [hex, marker] of trafficMarkers) {
+    if (!wanted.has(hex)) {
+      planes.removeLayer(marker)
+      trafficMarkers.delete(hex)
+      trafficData.delete(hex)
+    }
+  }
+  const c = map.getCenter()
+  const pending = [...wanted.values()].sort(
+    (a, b) => Math.hypot(a.lat - c.lat, a.lon - c.lng) - Math.hypot(b.lat - c.lat, b.lon - c.lng)
+  )
+  const size = planeSize()
+  let i = 0
+  let published = 0
+  const publish = () => {
+    traffic.value = [...trafficData.values()]
+    shownCount.value = trafficMarkers.size
+    published = performance.now()
+  }
+  const step = () => {
+    if (job !== applyJob) return
+    const until = performance.now() + 6
+    while (i < pending.length && performance.now() < until) {
+      for (const end = Math.min(i + 25, pending.length); i < end; i++) {
+        const a = pending[i]!
+        trafficData.set(a.hex, a)
+        const marker = trafficMarkers.get(a.hex)
+        if (marker) updateCanvasPlane(marker, [a.lat, a.lon], a.category, a.trackDeg ?? 0, size)
+        else {
+          const hex = a.hex
+          trafficMarkers.set(
+            hex,
+            canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
+              .bindPopup(() => popupHtml(trafficData.get(hex) ?? a), popupOptions)
+              .addTo(planes)
+          )
+        }
+      }
+    }
+    if (i < pending.length) {
+      if (performance.now() - published > 250) publish()
+      requestAnimationFrame(step)
+    } else publish()
+  }
+  requestAnimationFrame(step)
+}
+
+function clearTraffic() {
+  applyJob++
+  planes.clearLayers()
+  trafficMarkers.clear()
+  trafficData.clear()
+  traffic.value = []
+  shownCount.value = 0
+  aircraftCount.value = 0
+}
+
+function searchThisArea() {
+  searchedBounds = viewBounds()
+  sample = undefined
+  areaMoved.value = false
+  refreshTraffic()
+}
+
+watch(trafficMode, (m) => {
   try {
-    localStorage.setItem('turbol.showAllFlights', String(on))
+    localStorage.setItem('turbol.trafficMode', m)
   } catch {
-    // private mode: the toggle just isn't remembered
+    // private mode: the choice just isn't remembered
   }
-  if (on) refreshTraffic()
-  else {
-    window.clearTimeout(trafficTimer)
-    trafficRequest++
-    planes.clearLayers()
-    trafficMarkers.clear()
-    traffic.value = []
-    aircraftCount.value = 0
-  }
+  window.clearTimeout(trafficTimer)
+  trafficRequest++
+  clearTraffic()
+  sample = undefined
+  searchedBounds = undefined
+  areaMoved.value = false
+  if (m !== 'off') refreshTraffic()
 })
 
 function drawTracked() {
@@ -577,7 +709,7 @@ function follow(hex: string) {
   followMarker = undefined
   router.replace({ query: { ...route.query, follow: hex } })
   drawTracked()
-  if (showAll.value) refreshTraffic()
+  if (trafficMode.value !== 'off') refreshTraffic()
 }
 
 function unfollow() {
@@ -586,7 +718,7 @@ function unfollow() {
   followMarker = undefined
   router.replace({ query: { ...route.query, follow: undefined } })
   drawTracked()
-  if (showAll.value) refreshTraffic()
+  if (trafficMode.value !== 'off') refreshTraffic()
 }
 
 function onFollowUpdate(u: LiveFlightUpdate) {
@@ -811,11 +943,12 @@ onMounted(() => {
   trackedPlanes.addTo(map)
   followLayer.addTo(map)
   map.on('moveend', () => {
-    if (showAll.value) refreshTraffic()
+    if (trafficMode.value === 'all') refreshTraffic()
+    else if (trafficMode.value === 'sample') areaMoved.value = true
   })
   refreshStatus()
   statusTimer = window.setInterval(refreshStatus, 120000)
-  if (showAll.value) refreshTraffic()
+  if (trafficMode.value !== 'off') refreshTraffic()
 
   const fromUrl = String(route.query.flights ?? '')
     .split(',')
@@ -964,6 +1097,18 @@ onBeforeUnmount(() => {
 .is-3d :deep(.leaflet-control-container),
 .is-3d :deep(.edr-tip) {
   display: none;
+}
+.flights-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-area {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .error-text {
   color: #fca5a5;
