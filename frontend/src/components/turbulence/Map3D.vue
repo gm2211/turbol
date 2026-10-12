@@ -466,6 +466,13 @@ function panBy(dx: number, dy: number) {
   moveTimer = window.setTimeout(() => emit('move', fromDeck(viewState)), 400)
 }
 
+/** Turns the camera by `degrees`, positive turning the map counter-clockwise (the Q and E keys). */
+function rotateBy(degrees: number) {
+  if (!deck) return
+  viewState = { ...viewState, bearing: (((viewState.bearing ?? 0) + degrees + 540) % 360) - 180 }
+  deck.setProps({ initialViewState: viewState })
+}
+
 function animateTo(pitch: number, bearing: number, duration = 600): Promise<MapView> {
   return new Promise((resolve) => {
     if (!deck) return resolve(fromDeck(viewState))
@@ -486,7 +493,7 @@ const tiltUp = () => animateTo(50, viewState.bearing === 0 ? -15 : (viewState.be
 /** Animates back to flat and north-up, then gives the view to hand back to the 2D map. */
 const flatten = () => animateTo(0, 0, 450)
 
-defineExpose({ setRotation, tiltUp, flatten, panBy })
+defineExpose({ setRotation, tiltUp, flatten, panBy, rotateBy })
 
 // Clicks are picked by hand (deck's onClick doesn't fire in Chromium with deck.gl 9.4).
 let downAt: [number, number] = [0, 0]

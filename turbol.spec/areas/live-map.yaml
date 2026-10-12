@@ -39,6 +39,14 @@ behaviors:
     source:
       text: wasd should pan map
       reference: Giulio, turbol project chat, 2026-10-12 05:42Z
+  - id: qe-rotate
+    description: >-
+      Holding Q turns the map counter-clockwise and E clockwise, smoothly and continuously. The 2D
+      map can't turn, so in 2D the keys open the 3D view, still flat, and turn it there. The keys
+      are ignored while typing in a text field.
+    source:
+      text: q,e should rotate map
+      reference: Giulio, turbol project chat, 2026-10-12 12:30Z
   - id: random-flights-sample
     description: >-
       "100 random" shows a random sample of 100 airborne flights from the searched area and draws a
