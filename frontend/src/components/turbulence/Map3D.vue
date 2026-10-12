@@ -158,7 +158,12 @@ const showLight = ref(true)
 const exaggeration = ref(30)
 const fps = ref(0)
 
-const z = (ft: number) => ft * ftToM * exaggeration.value
+/**
+ * Height in deck.gl metres for an altitude at a latitude. Web Mercator draws heights 1/cos(lat) taller, as it does
+ * widths (twice as tall at 60°N as at the equator), so this undoes that: one altitude stands equally high everywhere.
+ */
+const z = (ft: number, lat: number) =>
+  ft * ftToM * exaggeration.value * Math.cos((lat * Math.PI) / 180)
 const maxPitch = 85
 
 function emptyBatch(n: number): ColumnBatch {
@@ -246,17 +251,16 @@ function buildLayers(): Layer[] {
   const layers: Layer[] = [basemapLayer()]
   const c = props.status?.coverage
   if (c) {
-    const h = z(props.levelFt)
     // GTG's 3 km edge at the map's level; outside it the blocks are the coarse global layer's.
     const outline = props.status?.gtgOutline
     const ring = outline?.length
-      ? outline.map(([lat, lon]) => [lon, lat, h])
+      ? outline.map(([lat, lon]) => [lon, lat, z(props.levelFt, lat)])
       : [
-          [c.west, c.south, h],
-          [c.east, c.south, h],
-          [c.east, c.north, h],
-          [c.west, c.north, h],
-          [c.west, c.south, h]
+          [c.west, c.south, z(props.levelFt, c.south)],
+          [c.east, c.south, z(props.levelFt, c.south)],
+          [c.east, c.north, z(props.levelFt, c.north)],
+          [c.west, c.north, z(props.levelFt, c.north)],
+          [c.west, c.south, z(props.levelFt, c.south)]
         ]
     layers.push(
       new PathLayer({
@@ -282,13 +286,13 @@ function buildLayers(): Layer[] {
         getPosition: (_: unknown, { index: j }: { index: number }) => [
           store.lon[index[j]!]!,
           store.lat[index[j]!]!,
-          z((bottom[j]! + top[j]!) / 2)
+          z((bottom[j]! + top[j]!) / 2, store.lat[index[j]!]!)
         ],
         // Half the block width (km to m, halved) with a small gap between blocks.
         getScale: (_: unknown, { index: j }: { index: number }) => [
           store.sizeKm[index[j]!]! * 460,
           store.sizeKm[index[j]!]! * 460,
-          (z(top[j]!) - z(bottom[j]!)) / 2
+          z((top[j]! - bottom[j]!) / 2, store.lat[index[j]!]!)
         ],
         getColor: (_: unknown, { index: j }: { index: number }) =>
           colors[store.category[index[j]!]!]!,
@@ -306,7 +310,7 @@ function buildLayers(): Layer[] {
       id: 'aircraft-stalks',
       data: flying,
       getSourcePosition: (a) => [a.lon, a.lat, 0],
-      getTargetPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
+      getTargetPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0), a.lat)],
       getColor: stalkRgba,
       getWidth: 1,
       widthUnits: 'pixels',
@@ -316,7 +320,7 @@ function buildLayers(): Layer[] {
     new ScatterplotLayer<AircraftView>({
       id: 'aircraft-rings',
       data: ringed,
-      getPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
+      getPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0), a.lat)],
       getRadius: 13,
       radiusUnits: 'pixels',
       stroked: true,
@@ -331,7 +335,7 @@ function buildLayers(): Layer[] {
       id: 'aircraft',
       data: flying,
       getIcon: () => planeIconDef,
-      getPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
+      getPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0), a.lat)],
       // Lying flat at its altitude, nose along its track (deck angles turn counter-clockwise).
       billboard: false,
       getAngle: (a) => -(a.trackDeg ?? 0),
