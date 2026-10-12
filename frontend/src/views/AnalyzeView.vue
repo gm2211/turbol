@@ -817,6 +817,10 @@ onMounted(async () => {
 .form-row .departure {
   flex: 0 0 240px;
 }
+/* The native date-time control is a couple of pixels taller than a text input: match the airport fields. */
+.form-row .departure :deep(input) {
+  height: 24px;
+}
 .flight-line {
   font-size: 15px;
   line-height: 32px;
