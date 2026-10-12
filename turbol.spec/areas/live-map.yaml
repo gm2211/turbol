@@ -32,6 +32,13 @@ behaviors:
     source:
       text: ui mangled
       reference: Giulio, turbol project chat, 2026-10-12 04:22Z (screenshot of "All" clipped at the panel edge)
+  - id: wasd-pan
+    description: >-
+      Holding W, A, S or D pans the live map up, left, down or right, smoothly and continuously, in
+      2D and 3D. The keys are ignored while typing in a text field such as Add flight.
+    source:
+      text: wasd should pan map
+      reference: Giulio, turbol project chat, 2026-10-12 05:42Z
   - id: random-flights-sample
     description: >-
       "100 random" shows a random sample of 100 airborne flights from the searched area and draws a
