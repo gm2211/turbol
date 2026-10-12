@@ -36,6 +36,10 @@ final case class TurbulenceData(
   loading: Set[String] = Set.empty
 ) {
   def forecastIssued: Option[Instant] = forecast.headOption.map(_.issued)
+
+  /** The frame the live map opens on: the nowcast, else the first forecast hour more than 15 minutes ahead. */
+  def opening(now: Instant = Instant.now()): Option[EdrFrame] =
+    nowcast.orElse(forecast.find(_.validTime.isAfter(now.plusSeconds(15 * 60))))
   def globalIssued: Option[Instant] = global.headOption.map(_.issued)
 
   /** The global frame closest in time to `time`, within [[TurbulenceStore.globalSlackHours]]: drawn under a GTG frame. */

@@ -1,3 +1,7 @@
+// Opening the map in 3D: fetch the 3D code alongside the app's rather than after it has started.
+if (/(^|[?&])view=3d/.test(location.search) || location.pathname.startsWith('/3d'))
+  import('@/components/turbulence/Map3D.vue').catch(() => undefined)
+
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
