@@ -6,7 +6,8 @@
 
 package com.gm2211.turbol.endpoints
 
-import cats.effect.IO
+import cats.effect.std.Semaphore
+import cats.effect.{IO, SyncIO}
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.generic.auto.*
@@ -69,6 +70,12 @@ object TurbulenceEndpoint {
   val bodyChunkChars: Int = 64 * 1024
 
   /**
+   * Tile renders running at once. A panning map asks for dozens of tiles a second; unbounded, each render (raster, PNG
+   * encoder, zlib buffers, a blocking thread) piles up off-heap until the 512 MB container is killed.
+   */
+  val tileRenders: Int = 2
+
+  /**
    * A frame's public id names its GTG frame and the GFS cycle drawn under it, so tiles (cached for a week) change when
    * either does.
    */
@@ -125,6 +132,8 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
   }
 
   override val basePath: String = "/turbulence"
+  // Waiting requests queue as fibers here rather than as blocked threads.
+  private val tileSlots: Semaphore[IO] = Semaphore.in[SyncIO, IO](tileRenders.toLong).unsafeRunSync()
   // A stale global suffix (the GFS cycle moved on since the client fetched the status) still finds its GTG frame.
   private def frame(id: String): Option[EdrFrame] = {
     val data = store.current
@@ -156,7 +165,7 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
               val global = store.current.globalNear(f.validTime)
               // A frame id names immutable data; "latest" moves every 15 minutes.
               val maxAge = if (id == latestNowcast) 1.minute else 7.days
-              IO.blocking(tiles.render(f, global, level, z, x, y)).flatMap { png =>
+              tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y))).flatMap { png =>
                 Ok(png).map(
                   _.withContentType(`Content-Type`(MediaType.image.png))
                     .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))
