@@ -145,29 +145,17 @@
           </button>
         </div>
       </v-card>
-      <v-card class="panel verdict-card pa-4">
-        <div
-          ref="verdictScroll"
-          class="verdict-scroll"
-          :class="{ more: verdictMore }"
-          @scroll="checkVerdictMore"
-        >
-          <div class="eyebrow">Forecast verdict</div>
-          <v-chip
-            :color="categoryColors[analysis.summary.worstCategory]"
-            variant="flat"
-            class="mb-2"
-            label
-          >
+      <v-card class="panel verdict-card px-4 py-3">
+        <div class="eyebrow">Forecast verdict</div>
+        <div class="verdict-head">
+          <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" label>
             Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
           </v-chip>
-          <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
           <v-btn
             v-if="downloaded"
             size="small"
             :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
             variant="flat"
-            class="mb-3"
             :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
             :to="{ path: '/analyze', query: { flight: downloaded.id } }"
           >
@@ -178,57 +166,57 @@
             size="small"
             color="#10324f"
             variant="flat"
-            class="mb-3"
             prepend-icon="mdi-download"
             :loading="downloading"
             @click="downloadForOffline"
           >
             Download for offline
           </v-btn>
-          <div class="stats">
-            <div>
-              <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
-            </div>
-            <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
-            <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
-            <div><span>Aircraft</span>{{ aircraftLabel }}</div>
-            <div v-if="response.basis === 'type'" class="wide">
-              <span>Ride</span>{{ responseLabel(response) }}
-            </div>
-            <div class="wide">
-              <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
-              <template v-if="analysis.summary.worstMinute !== undefined">
-                at {{ formatDuration(analysis.summary.worstMinute) }}
-              </template>
-              <template v-if="worstPoint"> · <span class="ring" /> on the map</template>
-            </div>
+        </div>
+        <div class="verdict mt-2 mb-3">{{ analysis.summary.verdict }}</div>
+        <div class="stats">
+          <div>
+            <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
           </div>
-          <div class="mt-3">
-            <div v-for="c in shownCategories" :key="c" class="cat-row">
-              <span class="swatch" :style="{ background: categoryColors[c] }" />
-              <span class="cat-name">{{ categoryLabels[c] }}</span>
-              <span>{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</span>
-              <span class="muted">({{ analysis.summary.percentByCategory[c] ?? 0 }}%)</span>
-            </div>
+          <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
+          <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
+          <div><span>Aircraft</span>{{ aircraftLabel }}</div>
+          <div v-if="response.basis === 'type'" class="wide">
+            <span>Ride</span>{{ responseLabel(response) }}
           </div>
-          <v-alert
-            v-for="n in analysis.summary.notes"
-            :key="n"
-            type="info"
-            variant="tonal"
-            density="compact"
-            class="mt-2 note"
-            >{{ n }}</v-alert
-          >
-          <div class="muted sources mt-3">
-            GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
-            {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
-            {{ fmt(analysis.dataSources.forecastUntil) }}
-            <template v-if="analysis.dataSources.globalIssued">
-              · outside the US: WAFS + NOAA GFS (~28 km), cycle
-              {{ fmt(analysis.dataSources.globalIssued) }}
+          <div class="wide">
+            <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
+            <template v-if="analysis.summary.worstMinute !== undefined">
+              at {{ formatDuration(analysis.summary.worstMinute) }}
             </template>
+            <template v-if="worstPoint"> · <span class="ring" /> on the map</template>
           </div>
+        </div>
+        <div class="mt-2">
+          <div v-for="c in shownCategories" :key="c" class="cat-row">
+            <span class="swatch" :style="{ background: categoryColors[c] }" />
+            <span class="cat-name">{{ categoryLabels[c] }}</span>
+            <span>{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</span>
+            <span class="muted">({{ analysis.summary.percentByCategory[c] ?? 0 }}%)</span>
+          </div>
+        </div>
+        <v-alert
+          v-for="n in analysis.summary.notes"
+          :key="n"
+          type="info"
+          variant="tonal"
+          density="compact"
+          class="mt-2 note"
+          >{{ n }}</v-alert
+        >
+        <div class="muted sources mt-2">
+          GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
+          {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
+          {{ fmt(analysis.dataSources.forecastUntil) }}
+          <template v-if="analysis.dataSources.globalIssued">
+            · outside the US: WAFS + NOAA GFS (~28 km), cycle
+            {{ fmt(analysis.dataSources.globalIssued) }}
+          </template>
         </div>
       </v-card>
       <v-card class="panel map-card pa-2">
@@ -268,7 +256,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AirportPicker from '@/components/analysis/AirportPicker.vue'
 import DownloadedFlight from '@/components/fly/DownloadedFlight.vue'
@@ -362,23 +350,6 @@ const shownCategories = computed(() =>
     (c) => c === 'Smooth' || (analysis.value?.summary.minutesByCategory[c] ?? 0) > 0
   )
 )
-/** Whether the verdict panel has more to scroll to, so its bottom fades out. */
-const verdictScroll = ref<HTMLDivElement>()
-const verdictMore = ref(false)
-function checkVerdictMore() {
-  const el = verdictScroll.value
-  verdictMore.value = !!el && el.scrollTop + el.clientHeight < el.scrollHeight - 4
-}
-let verdictObserver: ResizeObserver | undefined
-watch(verdictScroll, (el) => {
-  verdictObserver?.disconnect()
-  if (!el) return
-  verdictObserver = new ResizeObserver(checkVerdictMore)
-  verdictObserver.observe(el)
-  for (const child of el.children) verdictObserver.observe(child)
-})
-watch(analysis, () => nextTick(checkVerdictMore))
-onBeforeUnmount(() => verdictObserver?.disconnect())
 /** The minute being read on the timeline (hover or drag), mirrored on the map. */
 const hoverMinute = ref<number>()
 const hoverPoint = computed(() =>
@@ -671,11 +642,12 @@ onMounted(async () => {
   gap: 8px;
 }
 @media (min-width: 960px) {
+  /* At least one screen; the verdict row grows rather than clip or scroll when its panel needs more room. */
   .analyze-page.has-result {
-    height: calc(100vh - 72px);
+    min-height: calc(100vh - 72px);
     display: grid;
     grid-template-columns: minmax(320px, 26%) 1fr;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       'form form'
       'flights flights'
@@ -686,20 +658,8 @@ onMounted(async () => {
     grid-area: form;
     min-width: 0;
   }
-  /* The card keeps its padding; only the content inside scrolls, fading out while there's more below. */
   .verdict-card {
     grid-area: verdict;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .verdict-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
-  .verdict-scroll.more {
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
   }
   .map-card {
     grid-area: map;
@@ -1027,16 +987,23 @@ onMounted(async () => {
   text-transform: uppercase;
   color: #334155;
 }
+.verdict-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
 .verdict {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-  font-size: 15px;
+  gap: 6px 12px;
+  font-size: 14px;
 }
 .stats .wide {
   grid-column: span 2;
@@ -1060,7 +1027,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .cat-name {
   width: 84px;
@@ -1074,10 +1042,10 @@ onMounted(async () => {
   color: #475569;
 }
 .sources {
-  font-size: 13px;
+  font-size: 12px;
 }
 .note {
-  font-size: 14px;
+  font-size: 13px;
 }
 /* The route's flights: one row of ticket stubs, scrolling sideways when there are many. */
 .flights-head {
