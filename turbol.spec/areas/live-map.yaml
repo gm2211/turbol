@@ -68,7 +68,8 @@ behaviors:
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to
       refresh: the map polls every few seconds until the view is complete. Aircraft from older data
-      are dead-reckoned so they line up with fresher ones.
+      are dead-reckoned so they line up with fresher ones. A view too wide to fetch whole keeps the
+      regions around its centre.
   - id: edr-on-hover
     description: >-
       Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and

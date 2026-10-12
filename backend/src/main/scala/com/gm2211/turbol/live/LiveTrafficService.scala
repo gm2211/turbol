@@ -86,7 +86,11 @@ object LiveTrafficService {
     }
   private val maxCells = 120
 
-  /** Lattice cell centres covering a bounding box; longitude spacing widens with latitude to keep cells ~square. */
+  /**
+   * Lattice cell centres covering a bounding box; longitude spacing widens with latitude to keep cells ~square. A view
+   * wider than [[maxCells]] keeps the cells nearest its centre, so a zoomed-out view still shows the middle of the
+   * screen rather than only its southern rows.
+   */
   def cellsCovering(south: Double, west: Double, north: Double, east: Double): Seq[Cell] = {
     val rows = (math.floor(south / cellDeg).toInt to math.floor(north / cellDeg).toInt)
       .map(r => (r + 0.5) * cellDeg)
@@ -97,6 +101,10 @@ object LiveTrafficService {
       val eastCol = math.floor((math.min(east, 180) + 180) / lonStep).toInt
       (westCol to eastCol).map(col => Cell(lat, (col + 0.5) * lonStep - 180))
     }
-    all.take(maxCells)
+    if (all.size <= maxCells) all
+    else {
+      val (centerLat, centerLon) = ((south + north) / 2, (west + east) / 2)
+      all.sortBy(c => math.hypot(c.lat - centerLat, (c.lon - centerLon) * math.cos(math.toRadians(c.lat)))).take(maxCells)
+    }
   }
 }
