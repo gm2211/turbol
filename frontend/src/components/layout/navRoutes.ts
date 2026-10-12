@@ -28,13 +28,6 @@ export const navRoutes: NavRoute[] = [
     mobileIcon: 'mdi-airplane-search'
   },
   {
-    name: 'Follow a flight',
-    short: 'Follow',
-    path: '/follow',
-    mdiIcon: 'mdi-crosshairs-gps',
-    mobileIcon: 'mdi-crosshairs-gps'
-  },
-  {
     name: '3D view',
     short: '3D',
     path: '/3d',

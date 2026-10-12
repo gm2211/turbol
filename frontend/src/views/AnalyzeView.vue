@@ -46,7 +46,7 @@
             variant="flat"
             class="ml-2"
             prepend-icon="mdi-crosshairs-gps"
-            :to="`/follow/${lookup.live.hex}`"
+            :to="`/map?follow=${lookup.live.hex}`"
           >
             Follow live
           </v-btn>
