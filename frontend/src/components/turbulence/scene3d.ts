@@ -15,7 +15,9 @@ export function hexRgb(hex: string): [number, number, number] {
 export function basemapLayer(): TileLayer {
   return new TileLayer({
     id: 'basemap',
-    data: baseMapUrl,
+    // Its own URL (the parameter changes nothing in the tile): Safari reuses the 2D map's cached <img> tiles, fetched
+    // without CORS, for deck.gl's CORS fetches of the same URL and rejects them, leaving 3D without a basemap.
+    data: `${baseMapUrl}?blankTile=false`,
     minZoom: 0,
     maxZoom: 12,
     tileSize: 256,
