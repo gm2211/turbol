@@ -7,7 +7,7 @@
 package com.gm2211.turbol.live
 
 import com.gm2211.logging.BackendLogging
-import com.gm2211.turbol.turbulence.AircraftClass
+import com.gm2211.turbol.turbulence.{AircraftClass, PathPoint, RouteAnalyzer}
 import com.google.common.cache.{Cache, CacheBuilder}
 
 import java.time.{Duration, Instant}
@@ -116,11 +116,78 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
       .find(l => l.hex.equalsIgnoreCase(hex) && l.takeoff == flownTakeoff)
       .orElse(FlightHistory.findLeg(callsign, hex, flownTakeoff.plusSeconds(600), origin, destination))
 
+  /** The route's legs from the last day if a schedule search already loaded them (never scans history itself). */
+  def cachedLegs(origin: Place, destination: Place): Seq[FlownLeg] =
+    (for {
+      f <- icao(origin)
+      t <- icao(destination)
+      legs <- Option(flown.getIfPresent(s"$f-$t"))
+    } yield legs).getOrElse(Seq.empty)
+
   private def icao(place: Place): Option[String] =
     place.icao.filter(_.length == 4).orElse(Some(place.code.toUpperCase).filter(_.length == 4))
 }
 
+/** The mean of several flown tracks; `spreadKm` is how far the furthest track strays from it. */
+final case class AveragePath(points: Vector[PathPoint], legs: Int, spreadKm: Double)
+
 object RouteScheduleService {
+  /** Tracks count as one route, worth averaging, when none strays further than this from their mean. */
+  val similarKm = 200.0
+
+  /** Minutes after takeoff, position and altitude along a leg. */
+  def pathOf(leg: FlownLeg): Vector[PathPoint] =
+    leg.points.map(p =>
+      PathPoint(Duration.between(leg.takeoff, p.time).toMillis / 60000.0, p.lat, p.lon, p.altitudeFt)
+    )
+
+  /** A path resampled at `n` evenly spaced fractions of its length. */
+  def resample(path: IndexedSeq[PathPoint], n: Int): Vector[PathPoint] = {
+    val cumulative = path.indices.scanLeft(0.0) { (km, k) =>
+      if (k == 0) km
+      else km + RouteAnalyzer.greatCircleKm(path(k - 1).lat, path(k - 1).lon, path(k).lat, path(k).lon)
+    }.tail
+    val total = cumulative.last
+    (0 until n).toVector.map { i =>
+      val km = total * i / (n - 1)
+      val idx = cumulative.indexWhere(_ >= km)
+      val hi = if (idx < 0) path.size - 1 else math.max(1, idx)
+      val (a, b) = (path(hi - 1), path(hi))
+      val span = cumulative(hi) - cumulative(hi - 1)
+      val g = if (span <= 0) 0.0 else math.min(1.0, math.max(0.0, (km - cumulative(hi - 1)) / span))
+      val (lat, lon) = RouteAnalyzer.intermediate(a.lat, a.lon, b.lat, b.lon, g)
+      PathPoint(a.minutes + g * (b.minutes - a.minutes), lat, lon, a.altitudeFt + g * (b.altitudeFt - a.altitudeFt))
+    }
+  }
+
+  /**
+   * The average of the route's flown tracks, point by point along their length (positions averaged on the sphere,
+   * altitudes and times as numbers), when there are at least two and they agree within [[similarKm]]: on routes
+   * that move with the jet stream day to day (the North Atlantic tracks) they often don't, and no average is given.
+   */
+  def averagePath(legs: Seq[FlownLeg], n: Int = 150): Option[AveragePath] =
+    if (legs.size < 2) None
+    else {
+      val tracks = legs.map(l => resample(pathOf(l), n))
+      val mean = (0 until n).toVector.map { i =>
+        val ps = tracks.map(_(i))
+        val (x, y, zz) = ps.foldLeft((0.0, 0.0, 0.0)) { case ((x, y, zz), p) =>
+          val (la, lo) = (math.toRadians(p.lat), math.toRadians(p.lon))
+          (x + math.cos(la) * math.cos(lo), y + math.cos(la) * math.sin(lo), zz + math.sin(la))
+        }
+        PathPoint(
+          ps.map(_.minutes).sum / ps.size,
+          math.toDegrees(math.atan2(zz, math.sqrt(x * x + y * y))),
+          math.toDegrees(math.atan2(y, x)),
+          ps.map(_.altitudeFt).sum / ps.size
+        )
+      }
+      val spread = tracks.flatMap(t =>
+        t.indices.map(i => RouteAnalyzer.greatCircleKm(t(i).lat, t(i).lon, mean(i).lat, mean(i).lon))
+      ).max
+      Option.when(spread <= similarKm)(AveragePath(mean, legs.size, spread))
+    }
+
   /** The same time of day as `observed`, on the day [from, until), if it falls inside it. */
   def onDay(observed: Instant, from: Instant, until: Instant): Option[Instant] = {
     val day = 86400L

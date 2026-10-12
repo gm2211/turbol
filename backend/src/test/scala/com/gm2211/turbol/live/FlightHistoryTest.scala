@@ -99,6 +99,26 @@ class FlightHistoryTest extends BaseTest {
     slots.last shouldBe Instant.parse("2026-10-11T14:00:00Z")
   }
 
+  private def legThrough(lat: Double, minutes: Double): FlownLeg = {
+    val t0 = Instant.parse("2026-10-11T22:00:00Z")
+    val pts = Vector((0.0, 40.64, -73.78, 0.0), (0.3, lat, -30.0, 36000.0), (1.0, 45.63, 8.72, 0.0)).map {
+      case (f, la, lo, alt) => TrackPoint(t0.plusSeconds((f * minutes * 60).toLong), la, lo, alt)
+    }
+    FlownLeg("DAL184", "ab772d", Some("B764"), None, pts)
+  }
+
+  test("averages a route's tracks only when they agree") {
+    val close = RouteScheduleService.averagePath(Seq(legThrough(50.0, 480), legThrough(51.0, 500)))
+    close.map(_.legs) shouldBe Some(2)
+    val avg = close.get
+    avg.points.head.lat shouldBe 40.64 +- 0.01
+    avg.points.last.lon shouldBe 8.72 +- 0.01
+    avg.points.last.minutes shouldBe 490.0 +- 0.5
+    avg.spreadKm should be < RouteScheduleService.similarKm
+    RouteScheduleService.averagePath(Seq(legThrough(42.0, 480), legThrough(56.0, 480))) shouldBe None
+    RouteScheduleService.averagePath(Seq(legThrough(50.0, 480))) shouldBe None
+  }
+
   test("analyzes along a flown path, keeping its altitudes and timing") {
     val leg = FlightHistory.parseLegs(trace).head
     val path = leg.points.map(p =>

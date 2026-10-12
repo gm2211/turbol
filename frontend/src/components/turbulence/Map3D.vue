@@ -2,6 +2,25 @@
   <div class="map3d">
     <div ref="canvasEl" class="canvas" @contextmenu.prevent />
 
+    <div v-if="route" class="route-chip glass-panel" :class="{ mobile }">
+      <v-icon icon="mdi-airplane" size="16" class="mr-1" />
+      <div class="route-text">
+        <div class="route-label">{{ route.label }}</div>
+        <div v-if="route.path" class="muted route-path">{{ route.path }}</div>
+        <div v-if="!mobile" class="muted route-path">
+          Line colored by the forecast where and when the flight passes · hover it for details
+        </div>
+      </div>
+      <v-btn
+        icon="mdi-close"
+        size="x-small"
+        variant="text"
+        theme="dark"
+        aria-label="Hide the route"
+        @click="emit('clearRoute')"
+      />
+    </div>
+
     <div v-if="loadState" class="loading glass-panel">
       <div>{{ loadState }}</div>
       <v-progress-linear
@@ -114,6 +133,7 @@ import { planeFill, planePath, ringColor } from '@/components/turbulence/planeIc
 import { decodeVolume } from '@/components/turbulence/volumeCodec'
 import { VolumeProfiles, levelNear } from '@/components/turbulence/volumeProfile'
 import { useMobile } from '@/util/useMobile'
+import type { Route3D, RoutePoint } from '@/api/flights'
 // Inlined into this chunk: a separate worker file was one more round trip before anything could draw.
 import VolumeWorker from '@/components/turbulence/volumeWorker?worker&inline'
 
@@ -134,12 +154,16 @@ const props = defineProps<{
   levelFt: number
   /** Lowest and highest flight level shown, in feet. */
   band: [number, number]
+  /** A route analyzed on the Analyze page, drawn at its altitudes and colored by its forecast. */
+  route?: Route3D
 }>()
 const emit = defineEmits<{
   /** The camera settled somewhere new. */
   move: [view: MapView]
   /** A plane was clicked. */
   select: [hex: string]
+  /** The route's close button was clicked. */
+  clearRoute: []
 }>()
 
 const canvasEl = ref<HTMLDivElement>()
@@ -304,6 +328,7 @@ function buildLayers(): Layer[] {
       })
     )
   }
+  layers.push(...routeLayers())
   const flying = props.aircraft.filter((a) => a.altitudeFt !== undefined)
   const ringed = flying.filter((a) => ringColor(a.category))
   layers.push(
@@ -352,11 +377,88 @@ function buildLayers(): Layer[] {
   return layers
 }
 
+interface RouteSegment {
+  path: [number, number, number][]
+  point: RoutePoint
+}
+
+const routeRgb = (p: RoutePoint): [number, number, number] => hexRgb(categoryColors[p.category])
+
+/**
+ * The analyzed route as a line at its altitudes, each stretch in the color of the turbulence forecast there when the
+ * flight passes, over a faint curtain down to the ground so its height reads at any angle.
+ */
+function routeLayers(): Layer[] {
+  const points = props.route?.points ?? []
+  if (points.length < 2) return []
+  const at = (p: RoutePoint): [number, number, number] => [p.lon, p.lat, z(p.altitudeFt, p.lat)]
+  const segments: RouteSegment[] = points
+    .slice(1)
+    .map((p, i) => ({ path: [at(points[i]!), at(p)], point: points[i]! }))
+  const every = Math.max(1, Math.round(points.length / 120))
+  const curtain = points.filter((_, i) => i % every === 0)
+  const triggers = [exaggeration.value, props.route]
+  return [
+    new LineLayer<RoutePoint>({
+      id: 'route-curtain',
+      data: curtain,
+      getSourcePosition: (p) => [p.lon, p.lat, 0],
+      getTargetPosition: at,
+      getColor: (p) => [...routeRgb(p), 70],
+      getWidth: 1,
+      widthUnits: 'pixels',
+      updateTriggers: { getTargetPosition: triggers, getColor: triggers }
+    }),
+    new PathLayer<RouteSegment>({
+      id: 'route',
+      data: segments,
+      getPath: (s) => s.path,
+      getColor: (s) => [...routeRgb(s.point), 255],
+      getWidth: 6,
+      widthUnits: 'pixels',
+      capRounded: true,
+      pickable: true,
+      // In front of the blocks it flies through, like the planes.
+      parameters: { depthCompare: 'always' },
+      updateTriggers: { getPath: triggers, getColor: triggers }
+    }),
+    new ScatterplotLayer<RoutePoint>({
+      id: 'route-ends',
+      data: [points[0]!, points[points.length - 1]!],
+      getPosition: at,
+      getRadius: 6,
+      radiusUnits: 'pixels',
+      getFillColor: [16, 50, 79, 255],
+      stroked: true,
+      getLineColor: [255, 255, 255, 255],
+      lineWidthUnits: 'pixels',
+      getLineWidth: 2,
+      parameters: { depthCompare: 'always' },
+      updateTriggers: { getPosition: triggers }
+    })
+  ]
+}
+
+function routeTooltip(p: RoutePoint) {
+  const time = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const h = Math.floor(p.minutesFromStart / 60)
+  const m = Math.round(p.minutesFromStart % 60)
+  const edr = p.edr != null ? ` (EDR ${p.edr.toFixed(2)})` : ''
+  return {
+    html:
+      `<b>${flightLevel(p.altitudeFt)}</b> · ${time} (${h}h${String(m).padStart(2, '0')} after takeoff)<br/>` +
+      `<b style="color:${categoryColors[p.category]}">${categoryLabels[p.category]}</b>${edr} · ${p.source}`,
+    style: tooltipStyle
+  }
+}
+
 function render() {
   deck?.setProps({ layers: buildLayers() })
 }
 
 function tooltip(info: PickingInfo) {
+  if (info.layer?.id === 'route' && info.object)
+    return routeTooltip((info.object as RouteSegment).point)
   if (info.layer?.id === 'aircraft') {
     const a = info.object as AircraftView
     const edr = a.edr != null ? ` (EDR ${a.edr.toFixed(2)})` : ''
@@ -547,7 +649,14 @@ watch(
   () => loadVolume()
 )
 watch(
-  [visible, () => props.aircraft, () => props.status, () => props.levelFt, exaggeration],
+  [
+    visible,
+    () => props.aircraft,
+    () => props.status,
+    () => props.levelFt,
+    () => props.route,
+    exaggeration
+  ],
   render
 )
 
@@ -593,6 +702,37 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.route-chip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 8px 6px 8px 12px;
+  color: #fff;
+}
+.route-chip.mobile {
+  /* Under the phone's top panels, between the level rail and the 2D/3D switch. */
+  top: auto;
+  bottom: 150px;
+  left: 12px;
+  right: 12px;
+  transform: none;
+  max-width: none;
+}
+.route-text {
+  min-width: 0;
+}
+.route-label {
+  font-weight: 600;
+}
+.route-path {
+  font-size: 12px;
+}
 .map3d {
   position: absolute;
   inset: 0;

@@ -24,8 +24,10 @@
       :status="status"
       :level-ft="levelFt"
       :band="band"
+      :route="route3d"
       @move="on3dMove"
       @select="on3dSelect"
+      @clear-route="clearRoute3d"
     />
 
     <v-btn-toggle
@@ -327,9 +329,11 @@ import {
 } from '@/api/turbulence'
 import {
   type Place,
+  type Route3D,
   type RouteFlight,
   airportByCode,
   formatDuration,
+  loadRoute3d,
   lookupFlight,
   parseRouteQuery,
   searchRoute
@@ -1056,6 +1060,43 @@ const aircraft3d = computed<AircraftView[]>(() => {
   return [...added, ...traffic.value.filter((a) => !addedHexes.has(a.hex))]
 })
 
+/** A route analyzed on the Analyze page, shown in 3D (?route3d=1 with ?view=3d). */
+const route3d = ref<Route3D>()
+let routeFramePending = false
+
+/** Fits the handed-over route in view, at its cruise level, on the forecast hour nearest its roughest point. */
+function showRoute3d() {
+  const r = loadRoute3d()
+  if (!r || !map || r.points.length < 2) return
+  route3d.value = r
+  const bounds = L.latLngBounds(r.points.map((p) => [p.lat, p.lon] as [number, number]))
+  map.fitBounds(bounds, { padding: [40, 40], animate: false })
+  // Tilted, the far end recedes and the sides widen: back off a little so both airports stay in view.
+  map.setView(bounds.getCenter(), map.getZoom() - 0.6, { animate: false })
+  const cruise = Math.max(...r.points.map((p) => p.altitudeFt))
+  const level = Math.min(Math.max(Math.round(cruise / 1000) * 1000, 1000), 45000)
+  levelFt.value = level
+  band.value = [Math.max(level - 8000, 1000), Math.min(level + 4000, 45000)]
+  routeFramePending = true
+  pickRouteFrame()
+}
+
+function pickRouteFrame() {
+  const r = route3d.value
+  if (!routeFramePending || !r || !frames.value.length) return
+  routeFramePending = false
+  const worst = r.points.reduce((a, b) => ((b.edr ?? -1) > (a.edr ?? -1) ? b : a))
+  const t = new Date(worst.time).getTime()
+  const gaps = frames.value.map((f) => Math.abs(new Date(f.validTime).getTime() - t))
+  frameIndex.value = gaps.indexOf(Math.min(...gaps))
+}
+watch(frames, pickRouteFrame)
+
+function clearRoute3d() {
+  route3d.value = undefined
+  router.replace({ query: { ...route.query, route3d: undefined } })
+}
+
 async function loadMap3D() {
   Map3D.value ??= (await import('@/components/turbulence/Map3D.vue')).default
 }
@@ -1120,6 +1161,7 @@ watch(
       .filter((q) => q && !tracked.value.some((t) => t.query === q))
     await Promise.all(wanted.map((q) => track(q, true).catch(() => undefined)))
     if (wanted.length) syncUrl()
+    if (route.query.route3d) showRoute3d()
     await setMode('3d')
     router.replace({ query: { ...route.query, view: undefined } })
   }
@@ -1268,6 +1310,7 @@ onMounted(() => {
   Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(() => {
     syncUrl()
     if (route.query.view === '3d') {
+      if (route.query.route3d) showRoute3d()
       setMode('3d')
       router.replace({ query: { ...route.query, view: undefined } })
     }
