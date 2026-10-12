@@ -9,6 +9,16 @@ behaviors:
       3D draws a loaded frame's turbulence by category, stacking vertically adjacent cells of the same
       category at a grid point into one column whose tooltip gives its level range and worst EDR.
       Outside GTG the global layer is drawn in visibly larger 1.5 degree blocks.
+  - id: true-heights
+    description: >-
+      A given altitude is drawn at the same height at every latitude, so coarse blocks far north never
+      look taller than higher fine ones. Web Mercator draws heights 1/cos(latitude) taller, as it does
+      widths, so 3D undoes that factor for every height (blocks, planes, the level outline); widths
+      keep the map's stretch.
+    source:
+      text: >-
+        fl370 on lower resolution looks taller than fl450 on higher resolution - I understand it's
+        because of size of block to indicate lower resolution but feels weird
   - id: all-levels
     description: >-
       Every flight level can be shown at once: the flight-level rail's full range is "All levels",
