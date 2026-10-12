@@ -8,7 +8,7 @@ behaviors:
       automatically, and it follows rotation and window resizes.
   - id: bottom-tab-bar
     description: >-
-      On mobile the side rail is replaced by a bottom tab bar for the four pages, clear of the iPhone
+      On mobile the side rail is replaced by a bottom tab bar for the pages, clear of the iPhone
       home indicator, and the app bar is shorter.
   - id: safe-areas
     description: >-

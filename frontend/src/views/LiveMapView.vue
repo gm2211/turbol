@@ -16,7 +16,7 @@
     />
 
     <v-btn-toggle
-      v-show="!(mobile && showControls)"
+      v-show="!(mobile && (showControls || followHex))"
       :model-value="mode"
       mandatory
       density="compact"
@@ -108,7 +108,8 @@
           theme="dark"
           :color="t.aircraft ? categoryColors[t.aircraft.category] : undefined"
           variant="flat"
-          @click="panTo(t)"
+          :class="{ following: t.hex === followHex }"
+          @click="follow(t.hex)"
           @click:close="removeFlight(t.hex)"
         >
           {{ t.label }}<span v-if="!t.aircraft">&nbsp;(landed?)</span>
@@ -184,11 +185,19 @@
       :level-label="levelLabel"
     />
 
-    <div class="bottom-left">
+    <FollowStrip
+      v-if="followHex"
+      :hex="followHex"
+      :mobile="mobile"
+      @update="onFollowUpdate"
+      @close="unfollow"
+    />
+
+    <div v-show="!followHex" class="bottom-left">
       <TurbulenceLegend
         :title="`Turbulence at ${levelLabel}`"
         :compact="mobile"
-        :aircraft-key="trafficMode !== 'off' || tracked.length > 0"
+        :aircraft-key="trafficMode !== 'off' || tracked.length > 0 || !!followHex"
       />
     </div>
   </div>
@@ -210,6 +219,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
+import FollowStrip from '@/components/turbulence/FollowStrip.vue'
 import { canvasPlane, planeIcon, updateCanvasPlane } from '@/components/turbulence/planeIcon'
 import {
   type AircraftView,
@@ -226,6 +236,7 @@ import {
   tileUrl
 } from '@/api/turbulence'
 import { lookupFlight } from '@/api/flights'
+import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
@@ -401,8 +412,8 @@ function popupHtml(a: AircraftView): string {
   const color = categoryColors[a.category]
   const edr = a.edr != null ? `<span class="pp-edr">EDR ${a.edr.toFixed(2)}</span>` : ''
   const q = a.callsign ? encodeURIComponent(a.callsign) : undefined
-  const action = (href: string, icon: string, label: string) =>
-    `<a class="pp-action" href="${href}" data-route="${href}">` +
+  const action = (href: string, icon: string, label: string, followHex?: string) =>
+    `<a class="pp-action" href="${href}" data-route="${href}"${followHex ? ` data-follow="${followHex}"` : ''}>` +
     `<i class="mdi ${icon}"></i><span>${label}</span></a>`
   return (
     `<div class="pp">` +
@@ -413,7 +424,7 @@ function popupHtml(a: AircraftView): string {
     `<div class="pp-turb"><span class="pp-badge" style="--c:${color}"><span class="pp-dot"></span>` +
     `${categoryLabels[a.category]}</span>${edr}</div>` +
     `<div class="pp-actions">` +
-    action(`/follow/${a.hex}`, 'mdi-crosshairs-gps', 'Follow') +
+    action(`/map?follow=${a.hex}`, 'mdi-crosshairs-gps', 'Follow', a.hex) +
     (q
       ? action(`/analyze?q=${q}`, 'mdi-airplane-search', 'Analyze') +
         action(`/3d?q=${q}`, 'mdi-cube-outline', '3D')
@@ -428,7 +439,10 @@ function onPopupClick(e: MouseEvent) {
   const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-route]')
   if (!link) return
   e.preventDefault()
-  router.push(link.dataset.route!)
+  if (link.dataset.follow) {
+    map?.closePopup()
+    follow(link.dataset.follow)
+  } else router.push(link.dataset.route!)
 }
 
 const popupOptions: L.PopupOptions = { className: 'plane-popup', closeButton: true, minWidth: 220 }
@@ -502,6 +516,7 @@ function applyTraffic(list: AircraftView[]) {
   if (!map) return
   const job = ++applyJob
   const trackedHexes = new Set(tracked.value.map((t) => t.hex))
+  if (followHex.value) trackedHexes.add(followHex.value)
   const wanted = new Map(list.filter((a) => !trackedHexes.has(a.hex)).map((a) => [a.hex, a]))
   for (const [hex, marker] of trafficMarkers) {
     if (!wanted.has(hex)) {
@@ -587,7 +602,7 @@ function drawTracked() {
   trackedMarkers.clear()
   for (const t of tracked.value) {
     const a = t.aircraft
-    if (!a) continue
+    if (!a || t.hex === followHex.value) continue
     const marker = L.marker([a.lat, a.lon], {
       icon: planeIcon(a.category, a.trackDeg ?? 0, 28, true),
       zIndexOffset: 1000
@@ -630,6 +645,7 @@ async function track(query: string, pan: boolean): Promise<string | undefined> {
       ? `${lookup.callsign ?? query} isn't airborne right now.`
       : `Couldn't find a flight called ${query}.`
   }
+  lastTrackedHex = a.hex
   if (!tracked.value.some((t) => t.hex === a.hex)) {
     tracked.value.push({
       query,
@@ -653,6 +669,7 @@ async function addFlight() {
     if (error) addError.value = error
     else {
       flightQuery.value = ''
+      if (lastTrackedHex) follow(lastTrackedHex)
       syncUrl()
     }
   } catch (e) {
@@ -663,13 +680,101 @@ async function addFlight() {
 }
 
 function removeFlight(hex: string) {
+  if (hex === followHex.value) unfollow()
   tracked.value = tracked.value.filter((t) => t.hex !== hex)
   drawTracked()
   syncUrl()
 }
 
-function panTo(t: TrackedFlight) {
-  if (t.aircraft && map) map.setView([t.aircraft.lat, t.aircraft.lon], Math.max(map.getZoom(), 6))
+// Following one flight: a strip along the bottom of the map with its live status, and on the map its trail so far
+// and the next 90 minutes (or the rest of its route) drawn as a turbulence ribbon. The followed flight is in the URL
+// (?follow=<hex>) so a followed view can be shared, and old /follow/<hex> links land here.
+const followHex = ref<string>()
+const followLayer = L.layerGroup()
+let followTrail: [number, number][] = []
+let followCentered = false
+let followLevelSet = false
+let lastTrackedHex: string | undefined
+let followMarker: L.Marker | undefined
+
+function follow(hex: string) {
+  if (hex === followHex.value) {
+    if (followMarker && map) map.setView(followMarker.getLatLng(), Math.max(map.getZoom(), 7))
+    return
+  }
+  followHex.value = hex
+  followTrail = []
+  followCentered = false
+  followLevelSet = false
+  followLayer.clearLayers()
+  followMarker = undefined
+  router.replace({ query: { ...route.query, follow: hex } })
+  drawTracked()
+  if (trafficMode.value !== 'off') refreshTraffic()
+}
+
+function unfollow() {
+  followHex.value = undefined
+  followLayer.clearLayers()
+  followMarker = undefined
+  router.replace({ query: { ...route.query, follow: undefined } })
+  drawTracked()
+  if (trafficMode.value !== 'off') refreshTraffic()
+}
+
+function onFollowUpdate(u: LiveFlightUpdate) {
+  const a = u.aircraft
+  if (!map || !a || u.aircraft?.hex !== followHex.value) return
+  const last = followTrail.at(-1)
+  if (!last || last[0] !== a.lat || last[1] !== a.lon) followTrail.push([a.lat, a.lon])
+  followLayer.clearLayers()
+  // One polyline per run of same-category points, so the path ahead reads as a turbulence ribbon.
+  const pts = u.ahead?.points ?? []
+  let start = 0
+  for (let i = 1; i <= pts.length; i++) {
+    if (i === pts.length || pts[i]!.category !== pts[start]!.category) {
+      const run = pts
+        .slice(start, Math.min(i + 1, pts.length))
+        .map((p) => [p.lat, p.lon] as [number, number])
+      L.polyline(run, {
+        color: categoryColors[pts[start]!.category],
+        weight: 5,
+        opacity: 0.9
+      }).addTo(followLayer)
+      start = i
+    }
+  }
+  if (followTrail.length > 1) {
+    L.polyline(followTrail, { color: '#334155', weight: 3, dashArray: '4 6', opacity: 0.8 }).addTo(
+      followLayer
+    )
+  }
+  const category = u.upcoming?.nowCategory ?? 'NoData'
+  const label = u.route?.iataCallsign ?? a.callsign ?? a.hex
+  followMarker = L.marker([a.lat, a.lon], {
+    icon: planeIcon(category, a.trackDeg ?? 0, 30, true),
+    zIndexOffset: 2000
+  })
+    .bindTooltip(label, {
+      permanent: true,
+      direction: 'right',
+      offset: [14, 0],
+      className: 'flight-label'
+    })
+    .addTo(followLayer)
+  // Show the turbulence at the flight's own altitude, once, so the ribbon and the map agree.
+  if (!followLevelSet && a.altitudeFt !== undefined) {
+    followLevelSet = true
+    levelFt.value = levelItems.reduce((best, i) =>
+      Math.abs(i.value - a.altitudeFt!) < Math.abs(best.value - a.altitudeFt!) ? i : best
+    ).value
+  }
+  // Centre on the plane first, then only move the map when it nears the edge, so panning around isn't fought.
+  const inner = map.getBounds().pad(-0.25)
+  if (!followCentered) {
+    followCentered = true
+    map.setView([a.lat, a.lon], Math.max(map.getZoom(), 7))
+  } else if (!inner.contains([a.lat, a.lon])) map.panTo([a.lat, a.lon])
 }
 
 async function refreshStatus() {
@@ -815,6 +920,7 @@ onMounted(() => {
   mapEl.value!.addEventListener('touchstart', onTouchStart, { passive: true })
   mapEl.value!.addEventListener('touchmove', onTouchMove, { passive: true })
   trackedPlanes.addTo(map)
+  followLayer.addTo(map)
   map.on('moveend', () => {
     if (trafficMode.value === 'all') refreshTraffic()
     else if (trafficMode.value === 'sample') areaMoved.value = true
@@ -828,6 +934,8 @@ onMounted(() => {
     .map((q) => q.trim().toUpperCase())
     .filter(Boolean)
   Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(syncUrl)
+  const followFromUrl = String(route.query.follow ?? '').trim()
+  if (followFromUrl) follow(followFromUrl)
   trackedTimer = window.setInterval(refreshTracked, 15000)
 })
 
@@ -956,6 +1064,9 @@ onBeforeUnmount(() => {
 .error-text {
   color: #fca5a5;
   margin-top: 4px;
+}
+.tracked :deep(.v-chip.following) {
+  outline: 2px solid #fff;
 }
 .tracked {
   display: flex;
