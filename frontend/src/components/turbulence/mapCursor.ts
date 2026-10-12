@@ -14,13 +14,10 @@ const svg =
 
 export const inspectCursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, crosshair`
 
-/** deck.gl getCursor: grabbing while dragging, pointer over pickable things, otherwise the inspect cursor. */
-export function deckCursor({
-  isDragging,
-  isHovering
-}: {
-  isDragging: boolean
-  isHovering: boolean
-}) {
-  return isDragging ? 'grabbing' : isHovering ? 'pointer' : inspectCursor
+/**
+ * deck.gl cursor: grabbing while dragging, pointer only over something clickable (aircraft), otherwise the inspect
+ * cursor, including over turbulence voxels, which are pickable only for their EDR tooltip.
+ */
+export function deckCursor(isDragging: boolean, overClickable: boolean) {
+  return isDragging ? 'grabbing' : overClickable ? 'pointer' : inspectCursor
 }
