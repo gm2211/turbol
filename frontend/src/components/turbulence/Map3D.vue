@@ -256,14 +256,14 @@ function buildLayers(): Layer[] {
   }
   if (storeLength) {
     const halfM = (cellKm * 1000) / 2
-    const { count, index, bottom, top } = visible.value
+    const { index, bottom, top } = visible.value
     const colors = columnCategories.map((c) => overlayRgba[c])
     const triggers = [exaggeration.value, visible.value]
     layers.push(
       // Index-based accessors over the typed arrays: no object per column.
       new SimpleMeshLayer({
         id: 'voxels',
-        data: { length: count },
+        data: columnData.value,
         mesh: cube,
         getPosition: (_: unknown, { index: j }: { index: number }) => [
           store.lon[index[j]!]!,
@@ -350,6 +350,9 @@ function tooltip(info: PickingInfo) {
     style: tooltipStyle
   }
 }
+
+// Same object until the visible columns change, so streaming aircraft updates don't make deck.gl rebuild every column.
+const columnData = computed(() => ({ length: visible.value.count }))
 
 let loadedFrame: string | undefined
 let worker: Worker | undefined
