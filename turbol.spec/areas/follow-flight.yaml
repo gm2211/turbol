@@ -1,10 +1,39 @@
 id: follow-flight
 name: Follow a flight
-prose: Follow one aircraft in flight and see what is coming up for it, in passenger terms.
+prose: >-
+  Follow one aircraft in flight and see what is coming up for it, in passenger terms. Following
+  happens on the live map; there is no separate Follow page.
 behaviors:
+  - id: follow-on-live-map
+    description: >-
+      Adding a flight on the live map, tapping its chip, or choosing Follow in an aircraft's popup
+      follows that flight on the live map. The followed flight is kept in the page URL, and old
+      /follow/<aircraft> links open the live map with that flight followed. The nav has no Follow tab.
+    source:
+      text: >-
+        give me a few more designs for this page - it does not look professional / what's the
+        difference? Also if I just wanna follow on the map, should I not just use the map
+    details: >-
+      Giulio picked "Merge into map" on the decision card "Fold 'Follow a flight' into the live
+      map?" (project chat, 2026-10-12).
+  - id: follow-strip
+    description: >-
+      A followed flight gets a strip along the bottom of the map (a bottom sheet on phones) with how
+      fresh the data is, origin-to-destination progress, turbulence right now with EDR, altitude and
+      speed, the next-hour headline, a bar of the next 90 minutes (or the rest of the route), and the
+      worst category in the next hour. Closing it stops following. The legend, and on phones the
+      2D/3D toggle, are hidden while it is open.
+    details: >-
+      Chosen from three panel designs (flight strip, side card, flight sheet) published as the
+      "Follow panel options" artifact.
+  - id: follow-map-ribbon
+    description: >-
+      While following, the map shows the aircraft labelled, its trail so far, and the path ahead as
+      a ribbon coloured by turbulence category. It centres on the aircraft, then only pans when the
+      aircraft nears the edge, and switches the map altitude once to the level nearest the aircraft.
   - id: follow-updates-every-ten-seconds
     description: >-
-      Following an aircraft streams an update about it every 10 seconds until the page is closed.
+      Following an aircraft streams an update about it every 10 seconds until following stops.
   - id: next-hour-headline
     description: >-
       Each update leads with a headline about the next hour, such as "Smooth now. Light bumps expected

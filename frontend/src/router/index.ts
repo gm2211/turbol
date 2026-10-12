@@ -19,9 +19,10 @@ const router = createRouter({
       component: () => import('@/views/AnalyzeView.vue')
     },
     {
+      // Following a flight now happens on the live map; old links open the map with that flight followed.
       path: '/follow/:hex?',
-      name: 'follow',
-      component: () => import('@/views/FollowView.vue')
+      redirect: (to) =>
+        to.params.hex ? { path: '/map', query: { follow: String(to.params.hex) } } : '/map'
     },
     {
       // The 3D view lives in the live map now: old links open it in 3D with the flight added.

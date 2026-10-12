@@ -3,7 +3,7 @@ name: Turbol
 description: >-
   A Turbli-like "how bumpy will my flight be" app. A Scala backend loads NOAA GTGN nowcasts and GTG
   forecasts, samples them along flights in space, altitude and time, and serves a Vue + Leaflet
-  frontend with a live map, a route analyzer, a flight follower and a 3D view.
+  frontend with a live map (where flights are also followed), a route analyzer and a 3D view.
 target:
   type: web
   url: http://localhost:5173
