@@ -1,0 +1,161 @@
+/// <reference lib="webworker" />
+/**
+ * Downloads and prepares a frame's turbulence volume off the main thread, so opening 3D never freezes the page.
+ * Cells are classified, stacked into same-category columns (see mergeColumns in scene3d.ts) and sent back nearest
+ * to the camera first, in a few batches of transferable typed arrays, so the scene fills in from the middle out.
+ */
+import type { Thresholds, TurbulenceVolume } from '@/api/turbulence'
+import type { ColumnBatch, VolumeMessage, VolumeRequest } from '@/components/turbulence/volumeTypes'
+
+const post = (m: VolumeMessage, transfer: Transferable[] = []) => self.postMessage(m, transfer)
+
+function classify(edr: number, t: Thresholds): number {
+  if (edr < t.light) return 0
+  if (edr < t.moderate) return 1
+  if (edr < t.severe) return 2
+  if (edr < t.extreme) return 3
+  return 4
+}
+
+async function download(url: string): Promise<TurbulenceVolume> {
+  const res = await fetch(url)
+  if (!res.ok || !res.body) throw new Error(`volume request failed: ${res.status}`)
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  let lastReport = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    bytes += value.length
+    if (bytes - lastReport > 256 * 1024) {
+      lastReport = bytes
+      post({ type: 'progress', bytes })
+    }
+  }
+  post({ type: 'progress', bytes })
+  const all = new Uint8Array(bytes)
+  let at = 0
+  for (const c of chunks) {
+    all.set(c, at)
+    at += c.length
+  }
+  return JSON.parse(new TextDecoder().decode(all))
+}
+
+function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
+  const levels = v.levelsFt
+  const n = v.voxels.length / 4
+  // Sort cells by grid point, then level, so each point's stack can be walked bottom-up.
+  const order = new Uint32Array(n)
+  for (let i = 0; i < n; i++) order[i] = i
+  const vox = v.voxels
+  order.sort(
+    (a, b) =>
+      vox[a * 4]! - vox[b * 4]! ||
+      vox[a * 4 + 1]! - vox[b * 4 + 1]! ||
+      vox[a * 4 + 2]! - vox[b * 4 + 2]!
+  )
+
+  const cols = {
+    lat: [] as number[],
+    lon: [] as number[],
+    bottomFt: [] as number[],
+    topFt: [] as number[],
+    levelFt: [] as number[],
+    topLevelFt: [] as number[],
+    edr: [] as number[],
+    category: [] as number[]
+  }
+  let last = -1
+  for (const i of order) {
+    const lat = vox[i * 4]!
+    const lon = vox[i * 4 + 1]!
+    const li = vox[i * 4 + 2]!
+    const level = levels[li]!
+    const prev = levels[li - 1]
+    const next = levels[li + 1]
+    const bottom = prev === undefined ? Math.max(level - 1000, 0) : (prev + level) / 2
+    const top = next === undefined ? level + 1000 : (next + level) / 2
+    const edr = vox[i * 4 + 3]! / 200
+    const cat = classify(edr, t)
+    if (
+      last >= 0 &&
+      cols.lat[last] === lat / 100 &&
+      cols.lon[last] === lon / 100 &&
+      cols.category[last] === cat &&
+      cols.topFt[last] === bottom
+    ) {
+      cols.topFt[last] = top
+      cols.topLevelFt[last] = level
+      cols.edr[last] = Math.max(cols.edr[last]!, edr)
+    } else {
+      cols.lat.push(lat / 100)
+      cols.lon.push(lon / 100)
+      cols.bottomFt.push(bottom)
+      cols.topFt.push(top)
+      cols.levelFt.push(level)
+      cols.topLevelFt.push(level)
+      cols.edr.push(edr)
+      cols.category.push(cat)
+      last = cols.lat.length - 1
+    }
+  }
+
+  // Nearest to the camera first.
+  const m = cols.lat.length
+  const cosLat = Math.cos((center[1] * Math.PI) / 180)
+  const dist = new Float32Array(m)
+  for (let i = 0; i < m; i++) {
+    const dx = (cols.lon[i]! - center[0]) * cosLat
+    const dy = cols.lat[i]! - center[1]
+    dist[i] = dx * dx + dy * dy
+  }
+  const byDistance = new Uint32Array(m)
+  for (let i = 0; i < m; i++) byDistance[i] = i
+  byDistance.sort((a, b) => dist[a]! - dist[b]!)
+  return { cols, byDistance }
+}
+
+self.onmessage = async (e: MessageEvent<VolumeRequest>) => {
+  try {
+    const v = await download(e.data.url)
+    const { cols, byDistance } = build(v, e.data.thresholds, e.data.center)
+    const total = byDistance.length
+    post({ type: 'meta', cellKm: v.cellKm, total })
+    // A small first batch paints quickly; later ones grow.
+    let start = 0
+    let size = 8000
+    while (start < total) {
+      const idx = byDistance.subarray(start, Math.min(start + size, total))
+      const pick = <T extends Float32Array | Uint8Array>(
+        src: number[],
+        Out: new (n: number) => T
+      ): T => {
+        const out = new Out(idx.length)
+        for (let j = 0; j < idx.length; j++) out[j] = src[idx[j]!]!
+        return out
+      }
+      const batch: ColumnBatch = {
+        lat: pick(cols.lat, Float32Array),
+        lon: pick(cols.lon, Float32Array),
+        bottomFt: pick(cols.bottomFt, Float32Array),
+        topFt: pick(cols.topFt, Float32Array),
+        levelFt: pick(cols.levelFt, Float32Array),
+        topLevelFt: pick(cols.topLevelFt, Float32Array),
+        edr: pick(cols.edr, Float32Array),
+        category: pick(cols.category, Uint8Array)
+      }
+      post(
+        { type: 'batch', batch },
+        Object.values(batch).map((a) => a.buffer)
+      )
+      start += size
+      size *= 2
+    }
+    post({ type: 'done' })
+  } catch (err) {
+    post({ type: 'error', message: String(err) })
+  }
+}
