@@ -44,5 +44,5 @@ behaviors:
       heading for that destination.
   - id: no-data-outside-coverage
     description: >-
-      Outside GTG coverage the headline says there is no turbulence data here rather than calling the
-      flight smooth.
+      Where neither GTG nor the global layer has data, the headline says there is no turbulence data
+      here rather than calling the flight smooth.

@@ -111,6 +111,10 @@
           GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
           {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
           {{ fmt(analysis.dataSources.forecastUntil) }}
+          <template v-if="analysis.dataSources.globalIssued">
+            · outside the US: NOAA GFS-derived (~28 km), cycle
+            {{ fmt(analysis.dataSources.globalIssued) }}
+          </template>
         </div>
       </v-card>
       <v-card class="panel map-card pa-2">

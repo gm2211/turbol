@@ -88,21 +88,7 @@ class LiveTrafficTest extends BaseTest {
       Place("SRQ", "Sarasota Bradenton", 27.3954, -82.5544)
     )
     def at(lat: Double, lon: Double, track: Double) =
-      LiveAircraft(
-        "abb1de",
-        Some("SWA2767"),
-        None,
-        None,
-        None,
-        lat,
-        lon,
-        Some(35000),
-        false,
-        None,
-        Some(track),
-        None,
-        0
-      )
+      LiveAircraft("abb1de", Some("SWA2767"), None, None, None, lat, lon, Some(35000), false, None, Some(track), None, 0)
     // Real adsb.lol report from 2026-10-11 22:41Z: same callsign, near the MDW-SRQ line, but heading NE on an
     // earlier leg while MDW→SRQ had not departed yet.
     mdwSrq.isFlownBy(at(37.956693, -87.568678, 58.89)) shouldBe false

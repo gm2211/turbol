@@ -79,9 +79,9 @@ class GlobalLayerTest extends BaseTest {
     val volume = VolumeSampler().volume(gtg, Some(global), 8)
     volume.voxels shouldBe empty
     volume.globalLevelsFt shouldBe Vector(35000)
-    volume.globalCellKm shouldBe 112.0
+    volume.globalCellKm shouldBe 168.0
     val voxels = volume.globalVoxels
-    voxels.length / 4 should be > 10000
+    voxels.length / 4 should be > 5000
     (0 until voxels.length by 4).foreach { k =>
       val lat = voxels(k) / 100.0
       val lon = voxels(k + 1) / 100.0

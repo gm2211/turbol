@@ -134,8 +134,11 @@ final class VolumeSampler {
 object VolumeSampler {
   val minShare: Double = 0.25
 
-  /** Global-layer blocks are 4 x 4 GFS cells (1 degree, ~110 km): the whole world at 0.25 degrees is far too many. */
-  val globalStep: Int = 4
+  /**
+   * Global-layer blocks are 6 x 6 GFS cells (1.5 degrees, ~170 km): the whole world at 0.25 degrees is far too many,
+   * and 1-degree blocks added ~2.4 MB (17%) to the volume JSON; these add about 1 MB.
+   */
+  val globalStep: Int = 6
 
   /**
    * Finest block size the API serves. Step 3 needs a few hundred MB of heap to serialise the nowcast, so small

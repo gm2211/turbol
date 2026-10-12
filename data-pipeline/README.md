@@ -381,6 +381,53 @@ real PIREPs/NTDA radar observations that a pure forecast can't see yet.
   nearest mid-flight (F004, ~2h34m after takeoff), with the route and the
   aircraft's estimated mid-flight position marked.
 
+## Part 3: global layer outside GTG (`gfs_turbulence.py`, 2026-10-12)
+
+GTG only covers the contiguous US. For transatlantic and other routes the
+backend computes turbulence from NOAA GFS 0.25 deg (free, public domain,
+same NOMADS server):
+
+```bash
+uv run gfs_turbulence.py collect   # 8 GFS f006 + GTG f006 pairs, ~400 MB
+uv run gfs_turbulence.py fit       # scores 3 indices, writes the backend's table
+uv run gfs_turbulence.py plot      # out/gfs_vs_gtg.png, out/gfs_fl350_global.png
+```
+
+Sources considered:
+
+| Source | Coverage | Resolution | Cadence / range | Access |
+|---|---|---|---|---|
+| GTG / GTGN (in use) | CONUS | 3 km, 51 levels | hourly F0-F18, 15 min nowcast | free, NOMADS |
+| WAFS gridded EDR (WAFC Washington/London) | global | 0.25 deg, FL140-FL450 | 4x daily, T+6 to T+36 | approved WIFS/SADIS account only; NOMADS `wafs/` returns 403 |
+| ECMWF open data | global | 0.25 deg | 4x daily | free (CC-BY), but no turbulence/EDR field |
+| GFS-derived index (chosen) | global | 0.25 deg (~28 km) | 4x daily, hourly to F120 | free, public domain, NOMADS GRIB filter |
+| IATA Turbulence Aware | reports, not forecasts | - | live | commercial |
+
+Method: Ellrod TI1 (vertical wind shear x horizontal deformation) on each
+pair of GFS pressure levels (925-150 hPa), interpolated to GTG's 12 forecast
+altitudes with GFS heights, then mapped to EDR per level by quantile
+matching against GTG over CONUS at the same valid time and lead (6 h).
+Matching the distribution keeps turbol's thresholds meaningful: the same
+share of points lands in each category on both layers.
+
+Scores against GTG on the 4 test cycles (fit on the 4 before), FL200+:
+
+| Index | log r | PSS Light+ | POD Light+ | PSS Mod+ | PSS Light+ (75 km) | Light+ GTG / GFS |
+|---|---|---|---|---|---|---|
+| **TI1** | **0.54** | **0.32** | **0.46** | **0.22** | **0.40** | 22% / 21% |
+| TI2 (Ellrod-Knox) | 0.39 | 0.26 | 0.41 | 0.20 | 0.36 | 22% / 21% |
+| 1/Ri | 0.42 | 0.25 | 0.43 | 0.16 | 0.28 | 22% / 23% |
+
+(The mean of the three scored below TI1 alone.) This is agreement with
+GTG, not skill against PIREPs; for comparison GTG's own 2 h forecast scores
+PSS 0.25 against PIREPs (see "Category recalibration"). It misses
+convective and mountain-wave turbulence, which GFS can't resolve.
+
+The backend (`GfsTurbulence.scala`) fetches U, V and HGT on the 13 levels
+for F003-F030 every 3 h from each new GFS cycle (~27 MB per hour via the
+grib filter, ~3 s to decode on one core), and its test checks it reproduces
+this script's EDR at 8 points within 0.006.
+
 ## Gotchas hit
 
 1. **`inspect.py` name collision** with the stdlib `inspect` module (used

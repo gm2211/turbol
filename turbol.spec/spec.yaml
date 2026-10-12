@@ -9,8 +9,9 @@ target:
   url: http://localhost:5173
 assumptions:
   - description: >-
-      The backend has loaded at least one GTGN nowcast or GTG forecast frame from NOMADS, so
-      turbulence queries return data inside the contiguous-US coverage area.
+      The backend has loaded at least one GTGN nowcast or GTG forecast frame and a GFS cycle for the
+      global layer from NOMADS, so turbulence queries return data worldwide (3 km over the contiguous
+      US, about 28 km elsewhere).
 areas:
   - areas/turbulence-data.yaml
   - areas/categories.yaml

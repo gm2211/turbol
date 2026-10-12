@@ -9,6 +9,7 @@
         categoryLabels[tip.category]
       }}</span>
       · {{ levelLabel }}
+      <span v-if="tip.coarse" class="coarse">· GFS ~28 km</span>
     </template>
     <template v-else>No data · {{ levelLabel }}</template>
   </div>
@@ -16,7 +17,7 @@
 
 <script setup lang="ts">
 /**
- * Cursor-following EDR readout for the live map. Looks up the GTG grid column under the cursor
+ * Cursor-following EDR readout for the live map. Looks up the GTG (outside it, global) column under the cursor
  * (debounced, cached per frame and ~0.1° cell, all levels at once so switching altitude is free).
  * On touch devices a tap shows it at the tap point.
  */
@@ -38,6 +39,8 @@ interface Tip {
   loading: boolean
   edr?: number
   category: TurbulenceCategory
+  /** From the coarse global layer outside GTG. */
+  coarse?: boolean
 }
 
 const tip = ref<Tip>()
@@ -88,7 +91,14 @@ function fetchCell(cell: Cell) {
 
 function render(x: number, y: number, col: TurbulenceColumn | undefined, loading: boolean) {
   const level = col?.levels.find((l) => l.levelFt === props.levelFt)
-  tip.value = { x, y, loading, edr: level?.edr, category: level?.category ?? 'NoData' }
+  tip.value = {
+    x,
+    y,
+    loading,
+    edr: level?.edr,
+    category: level?.category ?? 'NoData',
+    coarse: col?.source === 'Global'
+  }
 }
 
 async function lookup(cell: Cell) {
@@ -160,6 +170,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.coarse {
+  opacity: 0.7;
+}
 .edr-tip {
   position: absolute;
   z-index: 1001;
