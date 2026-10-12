@@ -52,10 +52,12 @@ final case class RouteAnalysis(
   aircraftType: Option[String] = None
 )
 
+/** @param globalIssued the GFS cycle behind the coarse global layer used outside GTG, when loaded */
 final case class DataSources(
   nowcastValid: Option[Instant],
   forecastIssued: Option[Instant],
-  forecastUntil: Option[Instant]
+  forecastUntil: Option[Instant],
+  globalIssued: Option[Instant] = None
 )
 
 /**
@@ -215,7 +217,7 @@ object RouteAnalyzer {
       val alt = profile.altitudeAt(km)
       val minutes = profile.minutesAt(km)
       val time = start.plusSeconds((minutes * 60).toLong)
-      val sample = store.sampleAt(data, LambertGrid.nearestIndex(lat, lon), alt, time)
+      val sample = store.sampleIn(data, lat, lon, alt, time)
       val edr = Option(sample.edr).filterNot(_.isNaN)
       RoutePoint(
         lat,
@@ -240,7 +242,7 @@ object RouteAnalyzer {
       points = points,
       segments = segments(points),
       summary = summarize(points, data, start, forecastUntil),
-      dataSources = DataSources(data.nowcast.map(_.validTime), data.forecastIssued, forecastUntil)
+      dataSources = DataSources(data.nowcast.map(_.validTime), data.forecastIssued, forecastUntil, data.globalIssued)
     )
   }
 
@@ -276,12 +278,17 @@ object RouteAnalyzer {
     val coverage = if (enRoute.isEmpty) 0.0 else 100.0 * withData.size / enRoute.size
 
     val notes = Seq.newBuilder[String]
+    val global = enRoute.count(_.source == EdrSource.Global)
+    if (global > 0) notes +=
+      f"${100.0 * global / enRoute.size}%.0f%% of the route is outside GTG coverage (contiguous US and nearby) and uses " +
+        "the coarser global forecast (NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
     if (coverage < 99.5) {
       val outside = enRoute.count(p => p.edr.isEmpty && LambertGrid.nearestIndex(p.lat, p.lon) < 0)
       if (outside > 0) notes +=
-        f"${100.0 * outside / enRoute.size}%.0f%% of the route is outside GTG coverage (contiguous US and nearby)."
+        f"${100.0 * outside / enRoute.size}%.0f%% of the route is outside GTG coverage (contiguous US and nearby)" +
+          " and the global forecast has no data for it yet."
       forecastUntil.foreach { until =>
-        if (points.lastOption.exists(_.time.isAfter(until)))
+        if (points.exists(p => p.time.isAfter(until) && p.edr.isEmpty))
           notes +=
             s"The forecast only reaches $until (18 h after the latest GTG cycle); later parts of the flight have no data yet."
       }

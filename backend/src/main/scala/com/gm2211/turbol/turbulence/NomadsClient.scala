@@ -21,6 +21,13 @@ final case class GtgCycle(dayUrl: String, cycleHour: String, initTime: Instant) 
   def gribUrl(forecastHour: Int): String = f"${dayUrl}dafs.t${cycleHour}z.gtg.3km.conus.f$forecastHour%03d.grib2"
 }
 
+/** A GFS cycle on NOMADS (0.25 degree pressure-level files, `gfs.YYYYMMDD/HH/atmos/`). */
+final case class GfsCycle(day: LocalDate, cycleHour: String) {
+  val initTime: Instant = day.atStartOfDay().toInstant(ZoneOffset.UTC).plus(cycleHour.toLong, ChronoUnit.HOURS)
+  def fileName(forecastHour: Int): String = f"gfs.t${cycleHour}z.pgrb2.0p25.f$forecastHour%03d"
+  def dir: String = s"/gfs.${day.format(DateTimeFormatter.BASIC_ISO_DATE)}/$cycleHour/atmos"
+}
+
 /**
  * Finds and fetches NOAA turbulence products on NOMADS (layout verified in data-pipeline/: GTGN every 15 minutes
  * under gtgn/prod/gtgn.YYYYMMDD/HH/, GTG forecast hourly under dafs/prod/dafs.YYYYMMDD/).
@@ -32,6 +39,41 @@ object NomadsClient {
   private def days(now: Instant): Seq[LocalDate] = {
     val today = LocalDate.ofInstant(now, ZoneOffset.UTC)
     Seq(today, today.minusDays(1))
+  }
+
+  /**
+   * Most recent GFS cycle whose `lastHour` forecast file is published (GFS writes forecast hours in order, so the
+   * earlier ones are there too). A cycle finishes about 4-5 hours after its init time.
+   */
+  def latestCompleteGfsCycle(lastHour: Int, now: Instant = Instant.now()): Option[GfsCycle] = {
+    val hourRegex = """href="(\d{2})/"""".r
+    days(now).iterator.flatMap { day =>
+      val dayUrl = s"$base/gfs/prod/gfs.${day.format(dayFormat)}/"
+      val hours = Try(Http.getString(dayUrl)).toOption.toSeq
+        .flatMap(listing => hourRegex.findAllMatchIn(listing).map(_.group(1)).toSeq)
+        .distinct
+        .sorted(using Ordering[String].reverse)
+      hours.iterator.map(GfsCycle(day, _)).filter { cycle =>
+        Try(Http.getString(s"$base/gfs/prod${cycle.dir}/${cycle.fileName(lastHour)}.idx", attempts = 1)).isSuccess
+      }
+    }.nextOption()
+  }
+
+  /**
+   * Fetch UGRD, VGRD and HGT on `levelsHpa` for one GFS forecast hour through the NOMADS GRIB filter, which cuts the
+   * ~500 MB file down to the 39 global fields (~27 MB) in one request.
+   */
+  def fetchGfsHour(cycle: GfsCycle, forecastHour: Int, levelsHpa: Seq[Int], destination: Path): Path = {
+    val query = Seq("dir" -> cycle.dir, "file" -> cycle.fileName(forecastHour)) ++
+      Seq("UGRD", "VGRD", "HGT").map(v => s"var_$v" -> "on") ++
+      levelsHpa.map(p => s"lev_${p}_mb" -> "on")
+    val url = s"https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl?" +
+      query.map { case (k, v) => s"$k=${java.net.URLEncoder.encode(v, "UTF-8")}" }.mkString("&")
+    Http.download(url, destination): Unit
+    // The filter answers 200 with an HTML error page when the file isn't there.
+    val magic = Using.resource(java.nio.file.Files.newInputStream(destination))(_.readNBytes(4))
+    if (new String(magic, "US-ASCII") != "GRIB") throw RuntimeException(s"GFS filter returned no GRIB for $url")
+    destination
   }
 
   /** Newest GTGN files first (up to `limit`), searching today and yesterday (UTC). */

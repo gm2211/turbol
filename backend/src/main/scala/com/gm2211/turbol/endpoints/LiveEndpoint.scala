@@ -7,7 +7,14 @@
 package com.gm2211.turbol.endpoints
 
 import cats.effect.IO
-import com.gm2211.turbol.live.{CellSnapshot, LiveAircraft, LiveFlightTracker, LiveFlightUpdate, LiveTrafficClient, LiveTrafficService}
+import com.gm2211.turbol.live.{
+  CellSnapshot,
+  LiveAircraft,
+  LiveFlightTracker,
+  LiveFlightUpdate,
+  LiveTrafficClient,
+  LiveTrafficService
+}
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
@@ -88,7 +95,12 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
   private def cellJson(c: CellSnapshot, nowcastId: String): String =
     cellJsonCache.get(
       (c.cell, c.fetchedAt, nowcastId),
-      () => c.aircraft.filterNot(_.onGround).map(view(store, _, c.fetchedAt).toJson.deepDropNullValues.noSpaces).mkString(",")
+      () =>
+        c.aircraft.filterNot(_.onGround).map(view(
+          store,
+          _,
+          c.fetchedAt
+        ).toJson.deepDropNullValues.noSpaces).mkString(",")
     )
   private val updateEvery = 10.seconds
 
@@ -101,36 +113,37 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
   // Gzip JSON only: the flight stream is server-sent events, which must not be buffered.
   override val routes: HttpRoutes[IO] = GZip(
     HttpRoutes.of[IO] {
-    // Built from each cell's pre-encoded JSON: the instance has a tenth of a CPU, and encoding a whole-country view
-    // (~5,000 aircraft, ~900 KB) per request took 20+ s there. Clients dead-reckon, dedupe and crop to their viewport.
-    case GET -> Root / "aircraft" :? South(south) +& West(west) +& North(north) +& East(east) =>
-      IO.blocking {
-        val traffic0 = traffic.cellsIn(south, west, north, east)
-        val nowcast = store.current.nowcast.fold("")(_.id)
-        val aircraft = traffic0.cells.map(c => cellJson(c, nowcast)).filter(_.nonEmpty).mkString(",")
-        s"""{"aircraft":[$aircraft],"complete":${traffic0.complete},"serverTime":${Instant.now().toEpochMilli}}"""
-      }.flatMap(json => Ok(json).map(_.withContentType(`Content-Type`(MediaType.application.json))))
+      // Built from each cell's pre-encoded JSON: the instance has a tenth of a CPU, and encoding a whole-country view
+      // (~5,000 aircraft, ~900 KB) per request took 20+ s there. Clients dead-reckon, dedupe and crop to their viewport.
+      case GET -> Root / "aircraft" :? South(south) +& West(west) +& North(north) +& East(east) =>
+        IO.blocking {
+          val traffic0 = traffic.cellsIn(south, west, north, east)
+          val data = store.current
+          val nowcast = data.nowcast.fold("")(_.id) + data.globalIssued.fold("")(t => s"_g${t.getEpochSecond}")
+          val aircraft = traffic0.cells.map(c => cellJson(c, nowcast)).filter(_.nonEmpty).mkString(",")
+          s"""{"aircraft":[$aircraft],"complete":${traffic0.complete},"serverTime":${Instant.now().toEpochMilli}}"""
+        }.flatMap(json => Ok(json).map(_.withContentType(`Content-Type`(MediaType.application.json))))
 
-    // Server-sent events: one update about the followed flight every 10 s, until the client disconnects.
-    case GET -> Root / "flights" / hex / "stream" =>
-      val updates = Stream
-        .fixedRateStartImmediately[IO](updateEvery)
-        .evalMap(_ => IO.blocking(tracker.update(hex)).attempt)
-        .map {
-          case Right(update) => ServerSentEvent(data = Some(update.toJson.deepDropNullValues.noSpaces))
-          case Left(e) =>
-            ServerSentEvent(data = Some(s"""{"status":"error","message":"${e.getClass.getSimpleName}"}"""))
+      // Server-sent events: one update about the followed flight every 10 s, until the client disconnects.
+      case GET -> Root / "flights" / hex / "stream" =>
+        val updates = Stream
+          .fixedRateStartImmediately[IO](updateEvery)
+          .evalMap(_ => IO.blocking(tracker.update(hex)).attempt)
+          .map {
+            case Right(update) => ServerSentEvent(data = Some(update.toJson.deepDropNullValues.noSpaces))
+            case Left(e) =>
+              ServerSentEvent(data = Some(s"""{"status":"error","message":"${e.getClass.getSimpleName}"}"""))
+          }
+        Ok(updates)
+
+      case GET -> Root / "flights" / hex =>
+        IO.blocking(tracker.update(hex)).flatMap(update => Ok(update.toJson.deepDropNullValues))
+
+      case GET -> Root / "aircraft" / hex =>
+        IO.blocking(LiveTrafficClient.byHex(hex)).flatMap {
+          case Some(a) => Ok(view(store, a, Instant.now()).toJson.deepDropNullValues)
+          case None => NotFound(s"$hex is not being tracked right now")
         }
-      Ok(updates)
-
-    case GET -> Root / "flights" / hex =>
-      IO.blocking(tracker.update(hex)).flatMap(update => Ok(update.toJson.deepDropNullValues))
-
-    case GET -> Root / "aircraft" / hex =>
-      IO.blocking(LiveTrafficClient.byHex(hex)).flatMap {
-        case Some(a) => Ok(view(store, a, Instant.now()).toJson.deepDropNullValues)
-        case None => NotFound(s"$hex is not being tracked right now")
-      }
     },
     isZippable = _.contentType.exists(_.mediaType == MediaType.application.json)
   )

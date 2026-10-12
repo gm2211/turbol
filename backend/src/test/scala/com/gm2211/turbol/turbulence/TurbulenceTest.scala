@@ -44,7 +44,7 @@ class TurbulenceTest extends BaseTest {
     val index = LambertGrid.nearestIndex(39.0, -98.0)
     frame.levels(30000).data.put(index, EdrLayer.encode(0.30f)) // Moderate, 1 of 64 points: hidden
     frame.levels(35000).data.put(index, EdrLayer.encode(0.50f)) // Severe: always shown
-    val volume = VolumeSampler().volume("test", frame, 8)
+    val volume = VolumeSampler().volume(frame, None, 8)
     volume.voxels.length shouldBe 4
     volume.voxels(0) / 100.0 shouldBe 39.0 +- 0.2
     volume.voxels(1) / 100.0 shouldBe -98.0 +- 0.2
@@ -61,7 +61,7 @@ class TurbulenceTest extends BaseTest {
       i <- i0 until i0 + 4
     } // 16 of the block's 64 points
       frame.levels(35000).data.put(j * LambertGrid.nx + i, EdrLayer.encode(0.30f))
-    val volume = VolumeSampler().volume("test", frame, 8)
+    val volume = VolumeSampler().volume(frame, None, 8)
     volume.voxels.length shouldBe 4
     EdrLayer.decode(volume.voxels(3).toByte) shouldBe 0.30 +- 0.003
   }

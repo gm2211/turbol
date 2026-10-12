@@ -35,7 +35,8 @@ object StaticFrontend {
         else res.putHeaders(`Cache-Control`(CacheDirective.`no-cache`()))
       }
     }
-    val revalidate = HttpRoutes[IO](req => spaFallback.run(req).map(_.putHeaders(`Cache-Control`(CacheDirective.`no-cache`()))))
+    val revalidate =
+      HttpRoutes[IO](req => spaFallback.run(req).map(_.putHeaders(`Cache-Control`(CacheDirective.`no-cache`()))))
     files <+> revalidate
   }
 

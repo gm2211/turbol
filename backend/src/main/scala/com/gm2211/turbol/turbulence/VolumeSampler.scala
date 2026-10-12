@@ -17,8 +17,19 @@ import com.google.common.cache.{Cache, CacheBuilder}
  *
  * @param voxels
  *   flat, 4 ints per voxel: lat * 100, lon * 100, level index into `levelsFt`, EDR byte ([[EdrLayer.encode]])
+ * @param globalVoxels
+ *   the same for the coarse global layer outside GTG's grid, in blocks of `globalCellKm`, level index into
+ *   `globalLevelsFt`
  */
-final case class Volume(levelsFt: Vector[Int], step: Int, cellKm: Double, voxels: Array[Int])
+final case class Volume(
+  levelsFt: Vector[Int],
+  step: Int,
+  cellKm: Double,
+  voxels: Array[Int],
+  globalLevelsFt: Vector[Int] = Vector.empty,
+  globalCellKm: Double = 0,
+  globalVoxels: Array[Int] = Array.emptyIntArray
+)
 
 final class VolumeSampler {
   private val cache: Cache[String, Volume] = CacheBuilder.newBuilder().maximumSize(40).build()
@@ -28,19 +39,51 @@ final class VolumeSampler {
     Array(t.light, t.moderate, t.severe, t.extreme).map(e => EdrLayer.encode(e.toFloat) & 0xff)
   private val alwaysShown = 2 // index of Severe: any point at Severe or worse shows
 
-  /** `cacheKey` must identify the frame. */
-  def volume(cacheKey: String, frame: EdrFrame, step: Int): Volume =
-    cache.get(s"$cacheKey/$step", () => sample(frame, step))
+  def volume(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume =
+    cache.get(s"${frame.id}/${global.fold("-")(_.id)}/$step", () => sample(frame, global, step))
 
-  private def sample(frame: EdrFrame, step: Int): Volume = {
-    val nx = LambertGrid.nx
+  private def sample(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume = {
+    val gtg = blocks(frame, LambertGrid.nx, LambertGrid.ny, step, (i, j) => Some(LambertGrid.latLonAt(i, j)))
+    val globalVoxels = global.fold(Array.emptyIntArray) { g =>
+      // Only blocks whose centre is off GTG's grid, and not over the poles where nobody flies.
+      blocks(
+        g,
+        GlobalGrid.nx,
+        GlobalGrid.ny,
+        VolumeSampler.globalStep,
+        (i, j) => {
+          val lat = GlobalGrid.latOf(math.rint(j).toInt)
+          val lon = GlobalGrid.lonOf(math.rint(i).toInt)
+          if (math.abs(lat) > 80 || LambertGrid.nearestIndex(lat, lon) >= 0) None else Some((lat, lon))
+        }
+      )
+    }
+    Volume(
+      frame.levelsFt,
+      step,
+      step * LambertGrid.dx / 1000,
+      gtg,
+      global.fold(Vector.empty[Int])(_.levelsFt),
+      VolumeSampler.globalStep * GlobalGrid.resolutionKm,
+      globalVoxels
+    )
+  }
+
+  /** Voxels for `step` x `step` blocks of an nx x ny grid; `centre` gives a block centre's lat/lon, None to skip it. */
+  private def blocks(
+    frame: EdrFrame,
+    nx: Int,
+    ny: Int,
+    step: Int,
+    centre: (Double, Double) => Option[(Double, Double)]
+  ): Array[Int] = {
     val bx = (nx + step - 1) / step
-    val by = (LambertGrid.ny + step - 1) / step
+    val by = (ny + step - 1) / step
     val blocks = bx * by
     val centres = Array.tabulate(blocks) { b =>
       val i = math.min(b % bx * step + step / 2.0, nx - 1.0)
-      val j = math.min(b / bx * step + step / 2.0, LambertGrid.ny - 1.0)
-      LambertGrid.latLonAt(i, j)
+      val j = math.min(b / bx * step + step / 2.0, ny - 1.0)
+      centre(i, j).orNull
     }
     val categories = thresholdBytes.length
     val out = Array.newBuilder[Int]
@@ -49,7 +92,7 @@ final class VolumeSampler {
       val count = new Array[Int](blocks * categories) // points at category c or worse
       val sum = new Array[Int](blocks * categories)
       var j = 0
-      while (j < LambertGrid.ny) {
+      while (j < ny) {
         val row = j * nx
         val blockRow = j / step * bx
         var i = 0
@@ -71,23 +114,28 @@ final class VolumeSampler {
       }
       var b = 0
       while (b < blocks) {
-        val needed = math.max(1, math.ceil(valid(b) * VolumeSampler.minShare).toInt)
-        var c = categories - 1
-        while (c >= 0 && count(b * categories + c) < (if (c >= alwaysShown) 1 else needed)) c -= 1
-        if (c >= 0) {
-          val (lat, lon) = centres(b)
-          val edr = math.round(sum(b * categories + c).toDouble / count(b * categories + c)).toInt
-          out ++= Seq(math.round(lat * 100).toInt, math.round(lon * 100).toInt, levelIndex, edr)
+        if (centres(b) != null) {
+          val needed = math.max(1, math.ceil(valid(b) * VolumeSampler.minShare).toInt)
+          var c = categories - 1
+          while (c >= 0 && count(b * categories + c) < (if (c >= alwaysShown) 1 else needed)) c -= 1
+          if (c >= 0) {
+            val (lat, lon) = centres(b)
+            val edr = math.round(sum(b * categories + c).toDouble / count(b * categories + c)).toInt
+            out ++= Seq(math.round(lat * 100).toInt, math.round(lon * 100).toInt, levelIndex, edr)
+          }
         }
         b += 1
       }
     }
-    Volume(frame.levelsFt, step, step * LambertGrid.dx / 1000, out.result())
+    out.result()
   }
 }
 
 object VolumeSampler {
   val minShare: Double = 0.25
+
+  /** Global-layer blocks are 4 x 4 GFS cells (1 degree, ~110 km): the whole world at 0.25 degrees is far too many. */
+  val globalStep: Int = 4
 
   /**
    * Finest block size the API serves. Step 3 needs a few hundred MB of heap to serialise the nowcast, so small

@@ -11,9 +11,9 @@ import io.circe.Encoder
 import java.time.{Duration, Instant}
 import java.util.concurrent.atomic.AtomicReference
 
-/** Where a sampled EDR value came from. */
+/** Where a sampled EDR value came from. Global is the coarse GFS-derived layer outside (or past) GTG. */
 enum EdrSource {
-  case Nowcast, Forecast, Blend, NoData
+  case Nowcast, Forecast, Blend, Global, NoData
 }
 
 object EdrSource {
@@ -22,14 +22,29 @@ object EdrSource {
 
 final case class EdrSample(edr: Double, source: EdrSource)
 
-final case class TurbulenceData(nowcast: Option[EdrFrame], forecast: Vector[EdrFrame]) {
+/** @param global the coarse GFS-derived layer, every few hours of one GFS cycle, sorted by valid time */
+final case class TurbulenceData(
+  nowcast: Option[EdrFrame],
+  forecast: Vector[EdrFrame],
+  global: Vector[EdrFrame] = Vector.empty
+) {
   def forecastIssued: Option[Instant] = forecast.headOption.map(_.issued)
+  def globalIssued: Option[Instant] = global.headOption.map(_.issued)
+
+  /** The global frame closest in time to `time`, within [[TurbulenceStore.globalSlackHours]]: drawn under a GTG frame. */
+  def globalNear(time: Instant): Option[EdrFrame] =
+    global
+      .minByOption(g => math.abs(Duration.between(g.validTime, time).toSeconds))
+      .filter(g => math.abs(Duration.between(g.validTime, time).toSeconds) <= TurbulenceStore.globalSlackHours * 3600)
 }
 
 /**
  * Holds the latest GTGN nowcast and GTG forecast frames and answers "how rough is it at this place, altitude and
  * time". The nowcast folds in live observations, so it wins near its valid time; its weight tapers linearly to zero
  * over [[TurbulenceStore.nowcastBlendHours]] and the forecast takes over (same scheme as data-pipeline/route_forecast.py).
+ *
+ * Outside the GTG grid, or where GTG has no value, the coarse global layer answers instead; across the last
+ * [[LambertGrid.blendCells]] cells inside the grid the two are mixed linearly so there is no seam.
  */
 final class TurbulenceStore {
   private val ref = new AtomicReference(TurbulenceData(None, Vector.empty))
@@ -39,8 +54,25 @@ final class TurbulenceStore {
   def setForecast(frames: Vector[EdrFrame]): Unit =
     ref.updateAndGet(_.copy(forecast = frames.sortBy(_.validTime))): Unit
 
+  def setGlobal(frames: Vector[EdrFrame]): Unit =
+    ref.updateAndGet(_.copy(global = frames.sortBy(_.validTime))): Unit
+
   def sample(lat: Double, lon: Double, altitudeFt: Double, time: Instant): EdrSample =
-    sampleAt(current, LambertGrid.nearestIndex(lat, lon), altitudeFt, time)
+    sampleIn(current, lat, lon, altitudeFt, time)
+
+  /** GTG where it has data, the global layer elsewhere, blended near GTG's edge. */
+  def sampleIn(data: TurbulenceData, lat: Double, lon: Double, altitudeFt: Double, time: Instant): EdrSample = {
+    val gtgIndex = LambertGrid.nearestIndex(lat, lon)
+    val gtg = sampleAt(data, gtgIndex, altitudeFt, time)
+    val weight = if (gtgIndex < 0) 0.0 else LambertGrid.interiorWeightAt(lat, lon)
+    if (weight >= 1.0 && !gtg.edr.isNaN) gtg
+    else {
+      val global = TurbulenceStore.globalAt(data.global, GlobalGrid.nearestIndex(lat, lon), altitudeFt, time)
+      if (global.isNaN) gtg
+      else if (gtg.edr.isNaN) EdrSample(global, EdrSource.Global)
+      else EdrSample(weight * gtg.edr + (1 - weight) * global, if (weight >= 0.5) gtg.source else EdrSource.Global)
+    }
+  }
 
   def sampleAt(data: TurbulenceData, flatIndex: Int, altitudeFt: Double, time: Instant): EdrSample = {
     if (flatIndex < 0) return EdrSample(Double.NaN, EdrSource.NoData)
@@ -59,6 +91,9 @@ final class TurbulenceStore {
 
 object TurbulenceStore {
   val nowcastBlendHours: Double = 1.0
+
+  /** Global frames are 3 hours apart; one is used up to this far from its valid time before the first or after the last. */
+  val globalSlackHours: Double = 3.0
   private val nowcastLookbackHours = 2.0
 
   /** 1 at (and up to 2 h before) the nowcast's valid time, tapering to 0 one hour after it. */
@@ -81,6 +116,25 @@ object TurbulenceStore {
       else Double.NaN
     } else {
       val hi = frames.indexWhere(f => !f.validTime.isBefore(time))
+      val after = frames(hi)
+      val before = frames(hi - 1)
+      val span = Duration.between(before.validTime, after.validTime).toSeconds.toDouble
+      val w = Duration.between(before.validTime, time).toSeconds / span
+      val a = before.edrAtIndex(flatIndex, altitudeFt)
+      val b = after.edrAtIndex(flatIndex, altitudeFt)
+      if (a.isNaN) b else if (b.isNaN) a else a + w * (b - a)
+    }
+  }
+
+  /** Global-layer EDR interpolated in time between the two bracketing frames. NaN when no frame is close enough. */
+  def globalAt(frames: Vector[EdrFrame], flatIndex: Int, altitudeFt: Double, time: Instant): Double = {
+    if (frames.isEmpty || flatIndex < 0) return Double.NaN
+    val hi = frames.indexWhere(f => !f.validTime.isBefore(time))
+    if (hi == 0 || hi < 0) {
+      val nearest = if (hi == 0) frames.head else frames.last
+      val gapHours = math.abs(Duration.between(nearest.validTime, time).toSeconds) / 3600.0
+      if (gapHours <= globalSlackHours) nearest.edrAtIndex(flatIndex, altitudeFt) else Double.NaN
+    } else {
       val after = frames(hi)
       val before = frames(hi - 1)
       val span = Duration.between(before.validTime, after.validTime).toSeconds.toDouble

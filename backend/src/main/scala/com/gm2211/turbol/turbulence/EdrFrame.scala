@@ -31,14 +31,15 @@ object EdrLayer {
 }
 
 enum FrameKind {
-  case Nowcast, Forecast
+  case Nowcast, Forecast, Global
 }
 
 /**
- * All decoded levels valid at one time: either a GTGN nowcast or one forecast hour of a GTG cycle.
+ * All decoded levels valid at one time: a GTGN nowcast or one forecast hour of a GTG cycle, both on the 3 km
+ * [[LambertGrid]], or one forecast hour of the coarse global layer on the 0.25 degree [[GlobalGrid]].
  *
  * @param issued
- *   the GTG cycle init time for forecasts, or the valid time for nowcasts
+ *   the GTG or GFS cycle init time for forecasts, or the valid time for nowcasts
  */
 final case class EdrFrame(kind: FrameKind, validTime: Instant, issued: Instant, levels: SortedMap[Int, EdrLayer]) {
   val levelsFt: Vector[Int] = levels.keys.toVector
@@ -47,11 +48,18 @@ final case class EdrFrame(kind: FrameKind, validTime: Instant, issued: Instant, 
   val id: String = kind match {
     case FrameKind.Nowcast => s"n${validTime.getEpochSecond}"
     case FrameKind.Forecast => s"f${issued.getEpochSecond}-${validTime.getEpochSecond}"
+    case FrameKind.Global => s"g${issued.getEpochSecond}-${validTime.getEpochSecond}"
+  }
+
+  /** Flat index of the nearest point of this frame's grid, or -1 outside it. */
+  def nearestIndex(lat: Double, lon: Double): Int = kind match {
+    case FrameKind.Global => GlobalGrid.nearestIndex(lat, lon)
+    case _ => LambertGrid.nearestIndex(lat, lon)
   }
 
   /** EDR at a location and altitude, linearly interpolated between the two nearest levels. NaN when no data. */
   def edrAt(lat: Double, lon: Double, altitudeFt: Double): Double =
-    edrAtIndex(LambertGrid.nearestIndex(lat, lon), altitudeFt)
+    edrAtIndex(nearestIndex(lat, lon), altitudeFt)
 
   def edrAtIndex(flatIndex: Int, altitudeFt: Double): Double = {
     if (flatIndex < 0 || levels.isEmpty) return Double.NaN
