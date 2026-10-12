@@ -175,7 +175,7 @@ describe('keeping a flight pack current', () => {
     const m = manifest([frame('nowcast', 0), frame('forecast', 1)])
     const s = server({ current: m })
     const fix = { time: departure + 40 * 60_000, lat: 41, lon: -72.6, speedMps: 200 }
-    // Mid-download, the Fly view stores a GPS fix, the way it does: only the fields it owns.
+    // Mid-download, the flight page stores a GPS fix, the way it does: only the fields it owns.
     const slow: typeof fetch = async (input, init) => {
       if (String(input).includes('/slab/'))
         await store.updateFlight(saved.id, (f) => ({ ...f, airborneFix: fix }))

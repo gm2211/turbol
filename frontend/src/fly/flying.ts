@@ -1,5 +1,5 @@
 /**
- * Tells the service worker (src/sw.ts) a saved flight is in the air, until when: it then keeps the build on the
+ * Tells the service worker (src/sw.ts) a downloaded flight is in the air, until when: it then keeps the build on the
  * phone as it is instead of downloading a new one over the plane's Wi-Fi.
  */
 const stateCache = 'turbol-state'

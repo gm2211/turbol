@@ -1,7 +1,7 @@
 /**
  * "How bumpy will this flight be", worked out on the phone: a port of the backend's RouteAnalyzer (and of
- * LiveFlightTracker's next-hour headline) that samples a Flight Pack instead of the server's store, so the Fly view
- * gives the same answers as Analyze with no network. Formulas, rounding and wording match the backend;
+ * LiveFlightTracker's next-hour headline) that samples a Flight Pack instead of the server's store, so a downloaded
+ * flight gives the same answers as Analyze with no network. Formulas, rounding and wording match the backend;
  * src/fly/__tests__/parity.spec.ts checks the port against results the backend computed.
  */
 import type { RouteAnalysis, RoutePoint, RouteSummary, Segment } from '@/api/flights'

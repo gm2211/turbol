@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
+import { downloads } from './fly/downloads'
 
 // Vuetify
 import 'vuetify/styles'
@@ -33,6 +34,9 @@ app.use(router)
 app.use(vuetify)
 
 app.mount('#app')
+
+// Flights downloaded for offline use stay current from whichever page is open (see src/fly/downloads.ts).
+downloads.start()
 
 // The service worker keeps the app on the phone so it opens with no connection (see src/sw.ts).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

@@ -20,18 +20,12 @@ export const navRoutes: NavRoute[] = [
     mobileIcon: 'mdi-map-outline'
   },
   {
-    // Each page gets its own icon so the collapsed bar can be read at a glance.
+    // Each page gets its own icon so the collapsed bar can be read at a glance. Flights downloaded for offline use
+    // live here too, at the top of the page.
     name: 'Analyze a flight',
     short: 'Analyze',
     path: '/analyze',
     mdiIcon: 'mdi-airplane-search',
     mobileIcon: 'mdi-airplane-search'
-  },
-  {
-    name: 'Your flight, offline',
-    short: 'Fly',
-    path: '/fly',
-    mdiIcon: 'mdi-airplane-takeoff',
-    mobileIcon: 'mdi-airplane-takeoff'
   }
 ]
