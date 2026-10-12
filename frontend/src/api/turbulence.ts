@@ -93,6 +93,10 @@ export const categoryLabels: Record<TurbulenceCategory, string> = {
 export const apiBase = () => axios.defaults.baseURL ?? ''
 
 export async function fetchStatus(): Promise<TurbulenceStatus> {
+  // The first call on a 3D link takes the status index.html already started fetching.
+  const early = await window.__status
+  window.__status = undefined
+  if (early) return early
   return (await axios.get('/api/turbulence/status')).data
 }
 
@@ -175,6 +179,8 @@ declare global {
   interface Window {
     /** The opening frame's volume, started by index.html when the page opens in 3D. */
     __openingVolume?: Promise<{ id: string | null; volume: ArrayBuffer } | undefined>
+    /** The status, started by index.html when the page opens in 3D; taken by the first fetchStatus. */
+    __status?: Promise<TurbulenceStatus | undefined>
   }
 }
 

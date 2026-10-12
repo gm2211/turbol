@@ -150,7 +150,9 @@ object LiveTrafficService {
     if (all.size <= maxCells) all
     else {
       val (centerLat, centerLon) = ((south + north) / 2, (west + east) / 2)
-      all.sortBy(c => math.hypot(c.lat - centerLat, (c.lon - centerLon) * math.cos(math.toRadians(c.lat)))).take(maxCells)
+      all.sortBy(c => math.hypot(c.lat - centerLat, (c.lon - centerLon) * math.cos(math.toRadians(c.lat)))).take(
+        maxCells
+      )
     }
   }
 }

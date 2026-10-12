@@ -131,7 +131,12 @@ object LiveTrafficClient {
   }
 
   /** Background (map) calls by default; a route search passes `background = false` and gives up on a 429. */
-  def aircraftAround(lat: Double, lon: Double, radiusNm: Int, background: Boolean = true): (Instant, Seq[LiveAircraft]) =
+  def aircraftAround(
+    lat: Double,
+    lon: Double,
+    radiusNm: Int,
+    background: Boolean = true
+  ): (Instant, Seq[LiveAircraft]) =
     parseAircraftList(
       adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = background, retry = background)
     )
@@ -172,7 +177,11 @@ object LiveTrafficClient {
     val body = Json.obj(
       "planes" -> Json.fromValues(planes.flatMap { a =>
         a.callsign.map(cs =>
-          Json.obj("callsign" -> Json.fromString(cs), "lat" -> Json.fromDoubleOrNull(a.lat), "lng" -> Json.fromDoubleOrNull(a.lon))
+          Json.obj(
+            "callsign" -> Json.fromString(cs),
+            "lat" -> Json.fromDoubleOrNull(a.lat),
+            "lng" -> Json.fromDoubleOrNull(a.lon)
+          )
         )
       })
     )

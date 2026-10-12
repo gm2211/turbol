@@ -23,15 +23,13 @@ final class BackgroundJobsModule(val storageModule: StorageModule, val servicesM
     servicesModule.turbulenceStore,
     onNewFrames = frames => {
       val store = servicesModule.turbulenceStore
+      // The 3D volume of the frame the live map opens on first: it takes seconds on the free plan's CPU, the tiles a
+      // minute, and a 3D link waits on the volume while 2D shows whatever tiles are ready.
+      val data = store.current
+      data.opening().foreach(f => servicesModule.volumeSampler.prewarm(f, data.globalNear(f.validTime)))
       // A new global cycle changes every map tile's edges; re-warm the one people open first, the nowcast.
       val warm = if (frames.forall(_.kind == FrameKind.Global)) store.current.nowcast.toSeq else frames
       warm.foreach(f => servicesModule.tileRenderer.prewarm(f, store.current.globalNear(f.validTime)))
-      // And the 3D volume of the frame the live map opens on.
-      val data = store.current
-      val opening = data.opening()
-      opening.foreach { f =>
-        servicesModule.volumeSampler.prewarm(f, data.globalNear(f.validTime))
-      }
     }
   )
 }
