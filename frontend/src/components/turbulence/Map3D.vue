@@ -83,7 +83,7 @@ import {
   type MapViewState,
   type PickingInfo
 } from '@deck.gl/core'
-import { IconLayer, LineLayer, PathLayer } from '@deck.gl/layers'
+import { IconLayer, LineLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
 import { CubeGeometry } from '@luma.gl/engine'
 import {
@@ -103,6 +103,7 @@ import {
   type VolumeRequest,
   columnCategories
 } from '@/components/turbulence/volumeTypes'
+import { planeFill, planePath, ringColor } from '@/components/turbulence/planeIcon'
 import { useMobile } from '@/util/useMobile'
 
 /** A map view in Leaflet terms: zoom counts 256 px tiles. */
@@ -199,12 +200,13 @@ const visible = computed(() => {
   return { count, index, bottom, top }
 })
 
+// The same neutral plane as the 2D map: slate fill, white outline.
 const planeSvg =
   'data:image/svg+xml;charset=utf-8,' +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"><path fill="#fff" d="M12 2c.6 0 1 .5 1 1.2V9l8 4.6v2l-8-2.4v5.3l2.3 1.7V22L12 21l-3.3 1v-1.8L11 18.5v-5.3L3 15.6v-2L11 9V3.2C11 2.5 11.4 2 12 2z"/></svg>'
+    `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"><g transform="translate(1.2 1.2) scale(.9)"><path fill="${planeFill}" stroke="#fff" stroke-width="1.4" d="${planePath}"/></g></svg>`
   )
-const planeIconDef = { url: planeSvg, width: 48, height: 48, mask: true }
+const planeIconDef = { url: planeSvg, width: 48, height: 48, mask: false }
 
 let deck: Deck | undefined
 let viewState: MapViewState
@@ -227,10 +229,7 @@ const fromDeck = (v: MapViewState): MapView => ({
   bearing: v.bearing ?? 0
 })
 
-const categoryRgba = (a: AircraftView, alpha: number): [number, number, number, number] => [
-  ...hexRgb(categoryColors[a.category]),
-  alpha
-]
+const stalkRgba: [number, number, number, number] = [...hexRgb(planeFill), 120]
 
 function buildLayers(): Layer[] {
   const layers: Layer[] = [basemapLayer()]
@@ -285,6 +284,7 @@ function buildLayers(): Layer[] {
     )
   }
   const flying = props.aircraft.filter((a) => a.altitudeFt !== undefined)
+  const ringed = flying.filter((a) => ringColor(a.category))
   layers.push(
     // A stalk from the ground to each plane shows its altitude.
     new LineLayer<AircraftView>({
@@ -292,10 +292,25 @@ function buildLayers(): Layer[] {
       data: flying,
       getSourcePosition: (a) => [a.lon, a.lat, 0],
       getTargetPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
-      getColor: (a) => categoryRgba(a, 140),
+      getColor: stalkRgba,
       getWidth: 1,
       widthUnits: 'pixels',
       updateTriggers: { getTargetPosition: exaggeration.value }
+    }),
+    // The turbulence a plane is in shows as a ring around it, as on the 2D map, only for Light or worse.
+    new ScatterplotLayer<AircraftView>({
+      id: 'aircraft-rings',
+      data: ringed,
+      getPosition: (a) => [a.lon, a.lat, z(a.onGround ? 0 : (a.altitudeFt ?? 0))],
+      getRadius: 13,
+      radiusUnits: 'pixels',
+      stroked: true,
+      lineWidthUnits: 'pixels',
+      getLineWidth: 2,
+      getLineColor: (a) => [...hexRgb(ringColor(a.category)!), 255],
+      getFillColor: (a) => [...hexRgb(ringColor(a.category)!), 56],
+      parameters: { depthCompare: 'always' },
+      updateTriggers: { getPosition: exaggeration.value }
     }),
     new IconLayer<AircraftView>({
       id: 'aircraft',
@@ -307,7 +322,6 @@ function buildLayers(): Layer[] {
       getAngle: (a) => -(a.trackDeg ?? 0),
       getSize: 20,
       sizeUnits: 'pixels',
-      getColor: (a) => categoryRgba(a, 255),
       pickable: true,
       // Kept in front of the turbulence blocks so planes flying through rough air stay visible.
       parameters: { depthCompare: 'always' },
