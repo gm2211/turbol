@@ -12,3 +12,9 @@ behaviors:
     description: >-
       On Render the backend pings its own public URL so the free instance does not sleep between
       nowcasts.
+  - id: ci-disabled
+    description: >-
+      GitHub Actions workflows run only on manual dispatch; no push or PR triggers CI, and merges
+      never wait on CI.
+    source:
+      text: never wait on ci - in fact, disable ci

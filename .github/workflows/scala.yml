@@ -5,13 +5,9 @@
 
 name: Scala CI
 
+# CI disabled at the owner's request: manual runs only.
 on:
-  push:
-    branches: [ "develop" ]
-    tags:
-      - "[1-9]+.[1-9]+.[1-9]+"
-  pull_request:
-    branches: [ "develop" ]
+  workflow_dispatch:
 
 permissions:
   contents: read
