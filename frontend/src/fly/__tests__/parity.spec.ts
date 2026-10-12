@@ -88,7 +88,7 @@ describe('pack sampler', () => {
   it('reads back the EDR the backend sampled: nowcast, forecast and the global layer, blended the same way', () => {
     const sources = new Set<string>()
     for (const s of fixture.sampler) {
-      const manifest = s.manifest as PackManifest
+      const manifest = s.manifest as unknown as PackManifest
       const slabs = s.slabs as unknown as Record<string, string>
       const grid = gridOf(manifest)
       const frames = manifest.frames.map((f) => packFrame(f, bytesOf(slabs[f.url]), manifest.cols))
