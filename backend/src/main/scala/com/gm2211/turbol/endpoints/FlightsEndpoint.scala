@@ -28,7 +28,7 @@ import org.http4s.circe.*
 import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 
 import java.time.format.DateTimeFormatter
-import java.time.{Duration, Instant, ZoneOffset}
+import java.time.{Duration, Instant, LocalDate, ZoneOffset}
 import java.util.concurrent.ConcurrentHashMap
 import scala.util.Try
 
@@ -51,14 +51,23 @@ final case class AnalyzeRequest(
   departure: Option[Instant] = None,
   cruiseAltitudeFt: Option[Int] = None,
   callsign: Option[String] = None,
-  flown: Option[FlownRef] = None
+  flown: Option[FlownRef] = None,
+  /** The path asked for ("filed", "average", "flown", "greatCircle"); the best available one when absent or unavailable. */
+  path: Option[String] = None
 )
 
 /** Names a flown leg: the airframe and the time it took off. */
 final case class FlownRef(hex: String, takeoff: Instant)
 
 /** Flights from origin to destination taking off between `from` and `until` (the person's local day). */
-final case class ScheduleRequest(origin: Place, destination: Place, from: Instant, until: Instant)
+final case class ScheduleRequest(
+  origin: Place,
+  destination: Place,
+  from: Instant,
+  until: Instant,
+  /** The chosen date, as the origin's local calendar day. */
+  day: Option[LocalDate] = None
+)
 
 final case class RouteSearchRequest(origin: Place, destination: Place)
 
@@ -94,7 +103,8 @@ final class FlightsEndpoint(
     case req @ POST -> Root / "scheduled" =>
       for {
         request <- req.as[ScheduleRequest]
-        result <- IO.blocking(schedules.schedule(request.origin, request.destination, request.from, request.until))
+        result <-
+          IO.blocking(schedules.schedule(request.origin, request.destination, request.from, request.until, request.day))
         resp <- Ok(result.toJson.deepDropNullValues)
       } yield resp
 
@@ -144,26 +154,75 @@ final class FlightsEndpoint(
       .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))
       .getOrElse(AircraftResponse.assumedFor(distanceKm))
 
-    // The path, best first: a filed flight plan (not public, so never), the average of the route's recent tracks
-    // when they agree, the flight's own recent track, a great circle.
+    // The paths, best first. The person can pick any available one; otherwise the best available is followed.
     val day = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneOffset.UTC)
-    val average = RouteScheduleService.averagePath(Try(schedules.cachedLegs(origin, destination)).getOrElse(Seq.empty))
-    val path: Option[(IndexedSeq[PathPoint], PathInfo)] = average
-      .map(a =>
-        a.points -> PathInfo(
-          "average",
-          s"Average of ${a.legs} tracks flown on this route in the last day (all within ${math.round(a.spreadKm)} km of it)"
+    val recent = Try(schedules.cachedLegs(origin, destination)).toOption.flatten
+    val mean = recent.flatMap(RouteScheduleService.meanPath(_))
+    val average = mean.filter(_.spreadKm <= RouteScheduleService.similarKm)
+    val km = (d: Double) => f"${math.rint(d / 10) * 10}%,.0f"
+    val options = Seq(
+      PathOption(
+        "filed",
+        "Filed plan",
+        available = false,
+        Some("Not public: airlines file them only with air traffic control")
+      ),
+      average match {
+        case Some(a) =>
+          PathOption(
+            "average",
+            s"Average of ${a.legs} past flights",
+            available = true,
+            Some(s"Every track from the last two days stays within ${km(a.spreadKm)} km of it")
+          )
+        case None =>
+          val why = (recent, mean) match {
+            case (None, _) => "The route's recent flights aren't loaded yet"
+            case (_, Some(m)) =>
+              s"Past flights' tracks are too spread to average (up to ${km(m.spreadKm)} km apart; the limit is ${km(RouteScheduleService.similarKm)} km)"
+            case _ => "Fewer than two flights on this route in the last two days"
+          }
+          PathOption("average", "Average of past flights", available = false, Some(why))
+      },
+      own match {
+        case Some(l) => PathOption(
+            "flown",
+            s"${l.callsign}'s last track",
+            available = true,
+            Some(s"Flown on ${day.format(l.takeoff)} (UTC)")
+          )
+        case None =>
+          PathOption(
+            "flown",
+            "This flight's last track",
+            available = false,
+            Some(if (request.flown.isDefined) "Its recent track couldn't be loaded"
+            else "Pick a flight that flew in the last two days")
+          )
+      },
+      PathOption("greatCircle", "Geodesic", available = true, Some("The shortest path between the airports"))
+    )
+    val chosen = request.path.flatMap(k => options.find(o => o.kind == k && o.available))
+      .getOrElse(options.find(_.available).get)
+    val path: Option[(IndexedSeq[PathPoint], PathInfo)] = chosen.kind match {
+      case "average" =>
+        average.map(a =>
+          a.points -> PathInfo(
+            "average",
+            s"Average of ${a.legs} past flights' tracks (last two days, all within ${km(a.spreadKm)} km of it)"
+          )
         )
-      )
-      .orElse(own.map(l =>
-        RouteScheduleService.pathOf(l) -> PathInfo(
-          "flown",
-          s"${l.callsign}'s flown track on ${day.format(l.takeoff)} (UTC), moved to this departure; " +
-            "the route's recent tracks differ too much to average",
-          Some(l.takeoff)
+      case "flown" =>
+        own.map(l =>
+          RouteScheduleService.pathOf(l) -> PathInfo(
+            "flown",
+            s"${l.callsign}'s last track, flown ${day.format(l.takeoff)} (UTC), moved to this departure",
+            Some(l.takeoff)
+          )
         )
-      ))
-    val analysis = path match {
+      case _ => None
+    }
+    val analysis = (path match {
       case Some((points, info)) => RouteAnalyzer.analyzePath(store, points, departure, aircraft).copy(path = Some(info))
       case None =>
         RouteAnalyzer
@@ -177,15 +236,10 @@ final class FlightsEndpoint(
             request.cruiseAltitudeFt,
             aircraft
           )
-          .copy(path =
-            Some(PathInfo("greatCircle", "Great-circle route: no filed or recent flown routes to follow"))
-          )
-    }
+          .copy(path = Some(PathInfo("greatCircle", "Geodesic: the shortest path between the airports")))
+    }).copy(pathOptions = options)
 
     val typeCode = own.flatMap(_.typeCode).orElse(live.flatMap(_.typeCode))
-    val pathNote = Option.when(request.flown.isDefined && own.isEmpty)(
-      "This flight's recent track couldn't be loaded."
-    )
     val assumed = {
       val km = f"${math.rint(distanceKm / 100) * 100}%,.0f"
       if (aircraft.aircraftClass == AircraftClass.Heavy)
@@ -202,7 +256,7 @@ final class FlightsEndpoint(
     )
     analysis.copy(
       aircraftType = typeCode,
-      summary = analysis.summary.copy(notes = analysis.summary.notes ++ pathNote ++ note ++ typeNote)
+      summary = analysis.summary.copy(notes = analysis.summary.notes ++ note ++ typeNote)
     )
   }
 

@@ -53,14 +53,19 @@ final case class RouteAnalysis(
   aircraftType: Option[String] = None,
   /** How strongly this aircraft feels turbulence (its wing loading, or its size class when the type is unknown). */
   aircraft: AircraftResponse = AircraftResponse.medium,
-  path: Option[PathInfo] = None
+  path: Option[PathInfo] = None,
+  /** The paths the analysis could follow, best first, and whether each is available; `path` is the one followed. */
+  pathOptions: Seq[PathOption] = Seq.empty
 )
 
 /**
- * Where the route's line came from: "greatCircle" (origin to destination), or "flown" (the track this flight number
- * flew on an earlier day, `flownOn`, shifted to the new departure).
+ * Where the route's line came from: "filed" (the filed flight plan), "average" (the mean of the route's recent tracks),
+ * "flown" (the track this flight flew recently, `flownOn`, shifted to the new departure) or "greatCircle".
  */
 final case class PathInfo(kind: String, description: String, flownOn: Option[Instant] = None)
+
+/** A path the person can pick: `label` names it; `note` says why it isn't available, or what it is when it is. */
+final case class PathOption(kind: String, label: String, available: Boolean, note: Option[String] = None)
 
 /** One point of a path to analyse: minutes after the start, position and altitude. */
 final case class PathPoint(minutes: Double, lat: Double, lon: Double, altitudeFt: Double)

@@ -109,39 +109,62 @@
     </div>
 
     <template v-if="analysis && !flightId">
-      <v-card v-if="scheduleShown" class="panel flights-card px-3 py-2">
-        <div class="flights-head">
-          <span class="eyebrow">Flights {{ scheduleDay }}</span>
-          <span v-if="scheduleLoading" class="muted small">
-            <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
-            Finding this route's flights in the last day of ADS-B history…
-          </span>
-          <span v-else-if="schedule?.note" class="muted small">{{ schedule.note }}</span>
-          <span v-else-if="schedule" class="muted small">
-            Times and paths from each flight's last day of ADS-B tracks
-          </span>
-        </div>
-        <div class="flight-chips">
+      <v-card v-if="scheduleShown || pathOptions.length" class="panel flights-card px-3 py-2">
+        <template v-if="scheduleShown">
+          <div class="flights-head">
+            <span class="eyebrow">Flights {{ scheduleDay }}</span>
+            <span v-if="scheduleLoading" class="muted small">
+              <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
+              Finding this route's flights and their recent tracks…
+            </span>
+            <span v-else-if="schedule?.note" class="muted small">{{ schedule.note }}</span>
+            <span v-else-if="schedule?.timetableDay" class="muted small">
+              Timetable for {{ timetableDayLabel }} (same weekday; later days aren't published yet)
+              · local times at each airport
+            </span>
+            <span v-else-if="schedule" class="muted small">
+              Scheduled local times at each airport
+            </span>
+          </div>
+          <div class="flight-chips">
+            <button
+              type="button"
+              class="fchip"
+              :class="{ active: !selectedFlight }"
+              @click="pickFlight(undefined)"
+            >
+              <b>Any flight</b>
+              <span class="muted">Departing {{ localTime(departureIso) }}</span>
+            </button>
+            <button
+              v-for="f in schedule?.flights ?? []"
+              :key="f.callsign + f.departure"
+              type="button"
+              class="fchip"
+              :class="{ active: selectedFlight === f }"
+              :title="f.codeshares.length ? `Also sold as ${f.codeshares.join(', ')}` : undefined"
+              @click="pickFlight(f)"
+            >
+              <b>{{ f.flightNumber ?? f.callsign }}</b>
+              <span class="times">{{ flightTimes(f) }}</span>
+              <span class="muted">{{ [f.airline, f.typeCode].filter(Boolean).join(' · ') }}</span>
+            </button>
+          </div>
+        </template>
+        <div class="path-row" :class="{ 'mt-2': scheduleShown }">
+          <span class="eyebrow path-title">Path</span>
           <button
+            v-for="o in pathOptions"
+            :key="o.kind"
             type="button"
-            class="fchip"
-            :class="{ active: !selectedFlight }"
-            @click="pickFlight(undefined)"
+            class="pchip"
+            :class="{ active: analysis.path?.kind === o.kind }"
+            :disabled="!o.available"
+            :title="o.note"
+            @click="choosePath(o.kind)"
           >
-            <b>Any flight</b>
-            <span class="muted">Typical path at {{ localTime(departureIso) }}</span>
-          </button>
-          <button
-            v-for="f in schedule?.flights ?? []"
-            :key="f.callsign + f.flownTakeoff"
-            type="button"
-            class="fchip"
-            :class="{ active: selectedFlight?.callsign === f.callsign }"
-            @click="pickFlight(f)"
-          >
-            <b>{{ f.flightNumber ?? f.callsign }}</b>
-            <span class="times">{{ localTime(f.takeoff) }} → {{ localTime(f.landing) }}</span>
-            <span class="muted">{{ [f.airline, f.typeCode].filter(Boolean).join(' · ') }}</span>
+            <b>{{ o.label }}</b>
+            <span class="pnote">{{ o.note }}</span>
           </button>
         </div>
       </v-card>
@@ -182,7 +205,10 @@
             Explore in 3D
           </v-btn>
         </div>
-        <div class="verdict mt-2 mb-3">{{ analysis.summary.verdict }}</div>
+        <div class="verdict mt-2 mb-1">{{ analysis.summary.verdict }}</div>
+        <div v-if="pathLabel" class="muted small mb-3">
+          Along: <b>{{ pathLabel }}</b>
+        </div>
         <div class="stats">
           <div>
             <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
@@ -242,7 +268,9 @@
         />
       </v-card>
       <v-card class="panel timeline-card px-4 py-2">
-        <div class="eyebrow mb-1">Turbulence timeline</div>
+        <div class="eyebrow mb-1">
+          Turbulence timeline<span v-if="pathLabel" class="path-tag"> · along {{ pathLabel }}</span>
+        </div>
         <TimelineBar
           :segments="analysis.segments"
           :start-label="`Departure ${localTime(analysis.start)}`"
@@ -280,6 +308,7 @@ import {
   airportByCode,
   type RouteSchedule,
   type ScheduledFlight,
+  type PathKind,
   analyzeFlight,
   fetchSchedule,
   formatDuration,
@@ -430,6 +459,36 @@ const arrival = computed(() =>
 )
 
 const departureIso = computed(() => new Date(departureLocal.value).toISOString())
+const pathOptions = computed(() => analysis.value?.pathOptions ?? [])
+/** The path the shown analysis follows, as the picker names it. */
+const pathLabel = computed(
+  () => pathOptions.value.find((o) => o.kind === analysis.value?.path?.kind)?.label
+)
+/** The path the person picked; the best available one when unset or unavailable for the flight. */
+const pathWanted = ref<PathKind>()
+const timetableDayLabel = computed(() =>
+  schedule.value?.timetableDay
+    ? new Date(schedule.value.timetableDay + 'T12:00').toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      })
+    : ''
+)
+/** Published times are local at each airport; ADS-B-only flights show their takeoff and landing in this browser's time. */
+function flightTimes(f: ScheduledFlight) {
+  if (f.departureLocal && f.arrivalLocal)
+    return `${f.departureLocal} → ${f.arrivalLocal}${f.arrivalDayOffset > 0 ? ` +${f.arrivalDayOffset}` : ''}`
+  return `takeoff ${localTime(f.takeoff)} → ${localTime(f.landing)}`
+}
+
+function choosePath(kind: PathKind) {
+  if (kind === analysis.value?.path?.kind && kind === pathWanted.value) return
+  pathWanted.value = kind
+  if (mode.value === 'route' && analyzedOrigin.value) void pickFlight(selectedFlight.value)
+  else void analyze()
+}
+
 const scheduleShown = computed(
   () => mode.value === 'route' && (scheduleLoading.value || !!schedule.value)
 )
@@ -509,7 +568,8 @@ async function analyze() {
       origin: from!,
       destination: to!,
       departure: new Date(departureLocal.value).toISOString(),
-      callsign: mode.value === 'flight' ? lookup.value?.callsign : undefined
+      callsign: mode.value === 'flight' ? lookup.value?.callsign : undefined,
+      path: pathWanted.value
     })
     analyzedOrigin.value = from
     analyzedDestination.value = to
@@ -540,7 +600,7 @@ async function loadSchedule(from: Place, to: Place) {
   schedule.value = undefined
   scheduleLoading.value = true
   try {
-    const result = await fetchSchedule(from, to, start, end)
+    const result = await fetchSchedule(from, to, start, end, departureLocal.value.slice(0, 10))
     if (key !== scheduleKey) return
     schedule.value = result
     await pickDefault()
@@ -564,7 +624,7 @@ async function pickDefault() {
   const chosen = new Date(departureLocal.value).getTime()
   const f = wanted
     ? flights.find((x) => x.callsign === wanted || x.flightNumber === wanted)
-    : (flights.find((x) => new Date(x.takeoff).getTime() >= chosen - 30 * 60000) ?? flights[0])
+    : (flights.find((x) => new Date(x.departure).getTime() >= chosen - 30 * 60000) ?? flights[0])
   if (f) await pickFlight(f)
 }
 
@@ -585,9 +645,10 @@ async function pickFlight(f: ScheduledFlight | undefined) {
             destination: to,
             departure: f.takeoff,
             callsign: f.callsign,
-            flown: { hex: f.hex, takeoff: f.flownTakeoff }
+            flown: f.hex && f.flownTakeoff ? { hex: f.hex, takeoff: f.flownTakeoff } : undefined,
+            path: pathWanted.value
           }
-        : { origin: from, destination: to, departure: departureIso.value }
+        : { origin: from, destination: to, departure: departureIso.value, path: pathWanted.value }
     )
     if (selectedFlight.value === f) analysis.value = result
     scheduleRetry()
@@ -1127,5 +1188,74 @@ onMounted(async () => {
 .fchip.active b,
 .fchip.active .muted {
   color: white;
+}
+.path-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.path-title {
+  align-self: center;
+  flex: none;
+  min-width: 40px;
+}
+.pchip {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  max-width: 260px;
+  padding: 5px 12px;
+  border: 1.5px solid rgba(16, 50, 79, 0.25);
+  border-radius: 10px;
+  background: white;
+  color: #10324f;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.pchip .pnote {
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.25;
+}
+.pchip.active {
+  background: #10324f;
+  border-color: #10324f;
+  color: white;
+}
+.pchip.active .pnote {
+  color: rgba(255, 255, 255, 0.8);
+}
+.pchip:disabled {
+  cursor: default;
+  border-style: dashed;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+.pchip:disabled .pnote {
+  color: #94a3b8;
+}
+@media (max-width: 600px) {
+  /* Every path stays in view on a phone: two to a row instead of a sideways scroll. */
+  .path-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .path-title {
+    width: 100%;
+  }
+  .pchip {
+    flex: 1 1 140px;
+    max-width: none;
+  }
+}
+.path-tag {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
 }
 </style>

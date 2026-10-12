@@ -42,7 +42,7 @@ final case class FlownLeg(
 }
 
 /**
- * What flew yesterday and today, from adsb.lol's public history (ODbL), with no API key:
+ * What flew in the last two days, from adsb.lol's public history (ODbL), with no API key:
  *   - heatmap slots (`globe_history/YYYY/MM/DD/heatmap/NN.bin.ttf`): every aircraft seen in each half hour, with its
  *     callsign, which maps a flight number to the airframe (ICAO hex) that flew it;
  *   - traces (`data/traces/xx/trace_full_<hex>.json` for the last day or so, `globe_history/.../traces/...` for older
@@ -70,7 +70,7 @@ object FlightHistory extends BackendLogging {
 
   // The slot being written (and the one just before it, still being uploaded) changes; older slots are final.
   private val slots: Cache[String, SlotIndex] =
-    CacheBuilder.newBuilder().maximumSize(120).expireAfterWrite(Duration.ofHours(30)).build()
+    CacheBuilder.newBuilder().maximumSize(120).expireAfterWrite(Duration.ofHours(54)).build()
 
   private val heatmapMarker = 0x0e7f7c9d
 
@@ -138,29 +138,41 @@ object FlightHistory extends BackendLogging {
 
   /**
    * The leg `callsign` flew on airframe `hex` from `origin` to `destination` that was in the air at `seen` (or took off
-   * at `seen`, for a leg looked up again by its takeoff). A leg cut by the start of the rolling trace is completed from
-   * the archive of the day it took off.
+   * at `seen`, for a leg looked up again by its takeoff). The rolling trace covers about the last day; older legs come
+   * from the daily archives, and a leg split across files (the rolling trace's start, midnight UTC) is stitched back
+   * together. None when the leg at `seen` flew elsewhere (callsigns are reused for onward legs) or hasn't landed yet.
    */
   def findLeg(callsign: String, hex: String, seen: Instant, origin: Place, destination: Place): Option[FlownLeg] = {
-    def matching(legs: Vector[FlownLeg]) = legs.find(l =>
-      !l.takeoff.isAfter(seen.plusSeconds(1800)) && !l.landing.isBefore(seen.minusSeconds(1800)) &&
-        l.callsign.equalsIgnoreCase(callsign)
-    )
+    def at(pool: Seq[FlownLeg]) = FlightHistory
+      .stitch(pool.filter(_.callsign.equalsIgnoreCase(callsign)))
+      .find(l => !l.takeoff.isAfter(seen.plusSeconds(1800)) && !l.landing.isBefore(seen.minusSeconds(1800)))
     val recent = legs(hex)
-    matching(recent).flatMap { leg =>
-      if (leg.flies(origin, destination)) Some(leg)
-      else {
-        // Started before the rolling trace: stitch on the archived start of the same leg.
-        val day = LocalDate.ofInstant(leg.takeoff, ZoneOffset.UTC)
-        val earlier = (legs(hex, Some(day)) ++ legs(hex, Some(day.minusDays(1))))
-          .filter(l => l.callsign.equalsIgnoreCase(callsign) && l.takeoff.isBefore(leg.takeoff))
-          .maxByOption(_.takeoff)
-          .filter(l => Duration.between(l.landing, leg.takeoff).toMinutes < 30)
-        val stitched = earlier.map(e => leg.copy(points = e.points.filter(_.time.isBefore(leg.takeoff)) ++ leg.points))
-        stitched.filter(_.flies(origin, destination))
+    val found = at(recent).filter(_.flies(origin, destination)).orElse {
+      val day = LocalDate.ofInstant(seen, ZoneOffset.UTC)
+      val today = LocalDate.now(ZoneOffset.UTC)
+      // Today's archive is only written once the day is over.
+      val archived =
+        Seq(day.minusDays(1), day, day.plusDays(1)).filter(_.isBefore(today)).flatMap(d => legs(hex, Some(d)))
+      at(archived ++ recent)
+    }
+    found.filter(_.flies(origin, destination))
+  }
+
+  /**
+   * Joins pieces of one flight cut apart by file boundaries: same callsign, the next starting within 30 minutes of the
+   * last point of the one before (or overlapping it, where the rolling trace and an archive both have it).
+   */
+  private[live] def stitch(pieces: Seq[FlownLeg]): Seq[FlownLeg] =
+    pieces.sortBy(_.takeoff).foldLeft(Vector.empty[FlownLeg]) { (out, leg) =>
+      out.lastOption match {
+        case Some(prev)
+            if prev.callsign.equalsIgnoreCase(leg.callsign) &&
+              !leg.takeoff.isAfter(prev.landing.plusSeconds(1800)) =>
+          val points = (prev.points ++ leg.points).distinctBy(_.time).sortBy(_.time)
+          out.init :+ prev.copy(points = points)
+        case _ => out :+ leg
       }
     }
-  }
 
   /** Splits a readsb trace_full JSON into legs: a leg ends on the ground, at a new-leg flag, or at a long low gap. */
   private[live] def parseLegs(body: String): Vector[FlownLeg] = {
@@ -214,12 +226,13 @@ object FlightHistory extends BackendLogging {
   /**
    * Start times of the half-hour slots to scan so that every flight of the last day shows up in at least one. Over
    * oceans there is no ADS-B coverage, so a long-haul flight is only visible for an hour or two at each end (taxi,
-   * climb, descent): slots are hourly, on the hour, so searches for different routes share them. Only hops shorter
+   * climb, descent): slots are hourly, on the hour, so searches for different routes share them. Two days, so a flight
+   * still in the air today (no landing yet) or one that skipped a day has an earlier leg to follow. Only hops shorter
    * than about an hour gate to gate can fall between two.
    */
   def slotsToScan(now: Instant = Instant.now()): Seq[Instant] = {
     // The current slot is still being written and the previous one may not be uploaded yet.
     val newest = (now.getEpochSecond - 3600) / 3600 * 3600
-    (0 until 24).map(k => Instant.ofEpochSecond(newest - k * 3600))
+    (0 until 48).map(k => Instant.ofEpochSecond(newest - k * 3600))
   }
 }

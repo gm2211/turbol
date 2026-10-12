@@ -27,7 +27,7 @@ final class RouteDirectory(dir: Path = TurbulenceDataUpdater.defaultDataDir.reso
   private val url = "https://vrs-standing-data.adsb.lol/routes.csv.gz"
   private val file = dir.resolve("routes.csv.gz")
   private val maxAge = Duration.ofDays(7)
-  private val pairs: Cache[String, Seq[String]] =
+  private val pairs: Cache[String, Seq[RouteEntry]] =
     CacheBuilder.newBuilder().maximumSize(2000).expireAfterWrite(Duration.ofHours(12)).build()
 
   private def ensureFile(): Unit = synchronized {
@@ -45,7 +45,10 @@ final class RouteDirectory(dir: Path = TurbulenceDataUpdater.defaultDataDir.reso
   }
 
   /** Callsigns whose route has `fromIcao` immediately followed by `toIcao` (one leg of a possibly multi-leg route). */
-  def callsigns(fromIcao: String, toIcao: String): Seq[String] = {
+  def callsigns(fromIcao: String, toIcao: String): Seq[String] = entries(fromIcao, toIcao).map(_.callsign)
+
+  /** The directory's rows for the airport pair, with each callsign's airline (ICAO) and flight number. */
+  def entries(fromIcao: String, toIcao: String): Seq[RouteEntry] = {
     val leg = s"${fromIcao.toUpperCase}-${toIcao.toUpperCase}"
     pairs.get(
       leg,
@@ -60,17 +63,27 @@ final class RouteDirectory(dir: Path = TurbulenceDataUpdater.defaultDataDir.reso
             .continually(reader.readLine())
             .takeWhile(_ != null)
             .filter(_.contains(leg))
-            .flatMap(RouteDirectory.parse)
-            .collect { case (callsign, airports) if RouteDirectory.hasLeg(airports, fromIcao, toIcao) => callsign }
+            .flatMap(RouteDirectory.parseEntry)
+            .filter(e => RouteDirectory.hasLeg(e.airports, fromIcao, toIcao))
             .toVector
-            .distinct
+            .distinctBy(_.callsign)
         }
       }
     )
   }
 }
 
+/** A directory row: `UAE206,UAE,206,UAE,KJFK-LIMC-OMDB`. */
+final case class RouteEntry(callsign: String, airline: String, number: String, airports: Seq[String])
+
 object RouteDirectory {
+  def parseEntry(line: String): Option[RouteEntry] =
+    line.split(',') match {
+      case Array(callsign, code, number, _, airports) if callsign.nonEmpty =>
+        Some(RouteEntry(callsign.trim.toUpperCase, code.trim.toUpperCase, number.trim, airports.split('-').toSeq))
+      case _ => None
+    }
+
   /** `Callsign,Code,Number,AirlineCode,AirportCodes` -> (callsign, airports in order). */
   def parse(line: String): Option[(String, Seq[String])] =
     line.split(',') match {

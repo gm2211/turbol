@@ -87,7 +87,9 @@ export interface RouteAnalysis {
     loading?: string[]
   }
   /** Where the line came from: the average of the route's recent tracks, one flight's own track, or a great circle. */
-  path?: { kind: 'greatCircle' | 'average' | 'flown'; description: string; flownOn?: string }
+  path?: { kind: PathKind; description: string; flownOn?: string }
+  /** The paths it could follow, best first; `path` is the one followed. */
+  pathOptions?: PathOption[]
 }
 
 export interface AnalyzeRequest {
@@ -98,20 +100,45 @@ export interface AnalyzeRequest {
   callsign?: string
   /** Follow the leg this airframe flew from that takeoff (a ScheduledFlight's hex and flownTakeoff). */
   flown?: { hex: string; takeoff: string }
+  /** The path to follow; the best available one when absent or unavailable. */
+  path?: PathKind
 }
 
-/** A flight on the route, its times moved to the requested day from the leg it flew in the last day. */
+export type PathKind = 'filed' | 'average' | 'flown' | 'greatCircle'
+
+/** A path the analysis could follow; `note` says why it isn't available, or what it is. */
+export interface PathOption {
+  kind: PathKind
+  label: string
+  available: boolean
+  note?: string
+}
+
+/**
+ * A flight on the route on the chosen day: its published times (timetable) or, when no timetable could be read, its
+ * observed takeoff moved to the day (adsb); `hex` and `flownTakeoff` name its most recent leg on the route, if any.
+ */
 export interface ScheduledFlight {
   callsign: string
   flightNumber?: string
   airline?: string
+  departure: string
+  arrival: string
+  /** "16:40" at the origin, as published. */
+  departureLocal?: string
+  /** "06:45" at the destination, arrivalDayOffset days later. */
+  arrivalLocal?: string
+  arrivalDayOffset: number
+  codeshares: string[]
+  /** When the analysis starts: shortly after the gate time. */
   takeoff: string
   landing: string
   typeCode?: string
   aircraftClass: AircraftClass
   registration?: string
-  hex: string
-  flownTakeoff: string
+  hex?: string
+  flownTakeoff?: string
+  source: 'timetable' | 'adsb'
 }
 
 export interface RouteSchedule {
@@ -119,19 +146,23 @@ export interface RouteSchedule {
   candidates: number
   slotsScanned: number
   note?: string
+  source?: 'timetable' | 'adsb'
+  /** The day whose timetable was read, when the chosen day is beyond its reach. */
+  timetableDay?: string
 }
 
-/** Flights from origin to destination taking off between `from` and `until`, from what flew in the last day. */
+/** Flights on the route on `day` (the origin's date): the published timetable, with ADS-B tracks for their paths. */
 export async function fetchSchedule(
   origin: Place,
   destination: Place,
   from: Date,
-  until: Date
+  until: Date,
+  day: string
 ): Promise<RouteSchedule> {
   return (
     await axios.post(
       '/api/flights/scheduled',
-      { origin, destination, from: from.toISOString(), until: until.toISOString() },
+      { origin, destination, from: from.toISOString(), until: until.toISOString(), day },
       { timeout: 180000 }
     )
   ).data
