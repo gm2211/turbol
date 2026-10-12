@@ -71,7 +71,11 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
           .void
       )
 
-    Resource.eval(takeOverNowcast).flatMap(_ => appServer)
+    // Then render the tiles and 3D volume the map opens on before answering, rather than while the first visitors
+    // wait: on a tenth of a CPU and a cold JVM, their tiles took up to 17 s.
+    val loadData = IO.blocking(appModule.backgroundJobsModule.turbulenceDataUpdater.loadCached())
+
+    Resource.eval(takeOverNowcast >> loadData).flatMap(_ => appServer)
       .use(_ =>
         for {
           _ <- appModule
