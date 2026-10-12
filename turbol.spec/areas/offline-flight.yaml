@@ -2,19 +2,23 @@ id: offline-flight
 name: Flying with a bad connection
 prose: >-
   Keep a passenger's own flight useful when the network isn't: offline from boarding until the plane
-  is in the air, and slow, filtered or spotty Wi-Fi once it is. Proposal, not decided: the design
-  doc "Turbol Offline Flight Mode" (https://claude.ai/artifact/2BbUK1y6ZyxyBei4rdNmHS) suggests a
-  Flight Pack of raw EDR for the flight's corridor downloaded before boarding, the backend's sampler
-  and route analyzer ported to the phone, a position engine (GPS, dead reckoning along the route, an
-  ADS-B fix whenever a window opens), and one small request per Wi-Fi window. It also proposes
-  splitting the app into two flows, Plan (ahead of time, including finding the best flight for a
-  route) and Fly (the day of and during the flight). Giulio floated both ideas ("Maybe we need two
-  clear separate flows", "what would be cool there is specfically trying to find best flight for a
-  given route") without deciding them, so they are not behaviors yet. Background prefetching would
-  follow the same good-connection and supersession rule as live-map/smooth-forecast-scrub. The
-  proposal replaces Follow's event stream with short requests while in the air and keeps the
-  10-second refresh on the phone, so adopting it would mean revisiting
-  follow-flight/follow-updates-every-ten-seconds.
+  is in the air, and slow, filtered or spotty Wi-Fi once it is. The design doc "Turbol Offline Flight
+  Mode" (https://claude.ai/artifact/2BbUK1y6ZyxyBei4rdNmHS) lays out the approach. Decided: Giulio
+  chose to build the offline Fly view first, answering "Offline Fly" to "Build which first: the
+  offline Fly view or the best-flight Plan flow?" (decision card, Offline and low-bandwidth UX design
+  thread, 2026-10-12 00:44Z). Its first phase is a Flight Pack of raw EDR for the flight's corridor,
+  downloaded at the gate (the backend serves it at /api/packs/manifest and /api/packs/slab, and
+  /api/ping tells a working connection from a captive portal), an app shell that opens with no
+  network, the backend's sampler and route analyzer ported to the phone, and a Fly view. Still
+  proposals, not decided: a position engine that also takes an ADS-B fix whenever a Wi-Fi window
+  opens, one small request per window, and splitting the app into two flows, Plan (ahead of time,
+  including finding the best flight for a route) and Fly (the day of and during the flight). Giulio
+  floated both flows ("Maybe we need two clear separate flows", "what would be cool there is
+  specfically trying to find best flight for a given route") without deciding them, so they are not
+  behaviors yet. Background prefetching would follow the same good-connection and supersession rule
+  as live-map/smooth-forecast-scrub. The proposal replaces Follow's event stream with short requests
+  while in the air and keeps the 10-second refresh on the phone, so adopting it would mean
+  revisiting follow-flight/follow-updates-every-ten-seconds.
 behaviors:
   - id: usable-from-gate-until-airborne
     description: >-

@@ -42,7 +42,9 @@ object AppServer extends BackendLogging {
         appModule.endpointsModule.flightsEndpoint,
         appModule.endpointsModule.frontendConfigEndpoint,
         appModule.endpointsModule.turbulenceEndpoint,
-        appModule.endpointsModule.liveEndpoint
+        appModule.endpointsModule.liveEndpoint,
+        appModule.endpointsModule.packEndpoint,
+        appModule.endpointsModule.pingEndpoint
       )
         .map(endpoint => s"/api/${endpoint.basePath.dropWhile(_ == '/')}" -> endpoint.routes)
         .toList
