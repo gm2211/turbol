@@ -96,7 +96,9 @@ behaviors:
     details: >-
       The offline app shell from the first phase Giulio picked. Opened with no connection, Turbol goes
       straight to the downloaded flight in the air or leaving next instead of the live map, which needs
-      the network. When the connection works, opening the app still gets the latest deploy, except
+      the network. When the connection works, opening the app still gets the latest deploy (if the
+      server takes more than a second to send the page, that open uses the copy on the phone so the map
+      shows at once, per live-map/load-time-goal, and the deploy shows up on a later open), except
       while a downloaded flight is in the air (see updates-in-short-windows): then it opens the build
       on the phone and updates after landing. Implementation choice, not a requirement: opening that
       flight while it is in the air even with a connection, so slow plane Wi-Fi isn't spent on the

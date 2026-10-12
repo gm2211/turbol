@@ -8,6 +8,7 @@ package com.gm2211.turbol.modules
 
 import com.gm2211.turbol.background.airportdata.*
 import com.gm2211.turbol.turbulence.{FrameKind, TurbulenceDataUpdater}
+import com.gm2211.turbol.util.Visitors
 import com.softwaremill.macwire.*
 
 import scala.annotation.unused
@@ -26,9 +27,15 @@ final class BackgroundJobsModule(val storageModule: StorageModule, val servicesM
       // The 3D volume of the frame the live map opens on first: it takes seconds on the free plan's CPU, the tiles a
       // minute, and a 3D link waits on the volume while 2D shows whatever tiles are ready.
       val data = store.current
-      data.opening().foreach(f => servicesModule.volumeSampler.prewarm(f, data.globalNear(f.validTime)))
-      // A new global cycle changes every map tile's edges; re-warm the one people open first, the nowcast.
-      val warm = if (frames.forall(_.kind == FrameKind.Global)) store.current.nowcast.toSeq else frames
+      data.opening().foreach { f =>
+        Visitors.waitForQuiet()
+        servicesModule.volumeSampler.prewarm(f, data.globalNear(f.validTime))
+      }
+      // A new global cycle changes every map tile's edges; re-warm the one people open first, the nowcast. It goes
+      // last, so a forecast's 18 hours of tiles don't push it out of the tile cache.
+      val nowcast = store.current.nowcast.toSeq
+      val warm = if (frames.forall(_.kind == FrameKind.Global)) nowcast
+      else frames.filterNot(f => nowcast.exists(_.id == f.id)) ++ nowcast
       warm.foreach(f => servicesModule.tileRenderer.prewarm(f, store.current.globalNear(f.validTime)))
     }
   )

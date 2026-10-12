@@ -28,7 +28,12 @@ behaviors:
       selected level. A restart or deploy counts: the map must not sit without turbulence for
       minutes while the server reloads data. The 12:54Z blank map was Leaflet starting before the
       stylesheet applied (seen in WebKit on a warm, service-worker-served load): Leaflet pinned the
-      container to position: relative and it stayed 0 px high.
+      container to position: relative and it stayed 0 px high. Measured on 2026-10-12 after that fix:
+      the remaining Safari delay was the server itself. On its tenth of a CPU, rendering a new
+      forecast's tiles in the background held the page back up to 6 s and the first turbulence tile up
+      to 15 s, and a warm load still waited up to 3 s for the page before falling back to the copy on
+      the phone. Background rendering now steps aside while a visitor is being served, and a warm load
+      waits under a second.
   - id: flights-toggle
     description: >-
       The map opens with turbulence only, and its Flights selector starts on None on every visit (an

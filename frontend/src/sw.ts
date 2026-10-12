@@ -17,8 +17,11 @@ declare const __SHELL_INDEX_HTML__: string
 const sw = self as unknown as ServiceWorkerGlobalScope
 const shellCache = `turbol-shell-${__SHELL_VERSION__}`
 const shellFiles = new Set(__SHELL_FILES__)
-/** How long opening the app waits for the network before using the copy on the phone. */
-const navigationTimeoutMs = 3000
+/**
+ * How long opening the app waits for the network before using the copy on the phone. Short, so the map shows within
+ * about a second even when the server is busy: on its tenth of a CPU the page alone sometimes took 3 s.
+ */
+const navigationTimeoutMs = 800
 const stateCache = 'turbol-state'
 const flyingKey = '/__turbol/flying'
 
@@ -84,8 +87,9 @@ async function install(): Promise<void> {
 }
 
 /**
- * Opening the app asks the network first, so a deploy shows up on the next reload, but gives up after a few seconds
- * and opens the copy on the phone: on a dead or crawling connection the app opens anyway.
+ * Opening the app asks the network first, so a deploy shows up on the next reload, but gives up after under a second
+ * and opens the copy on the phone: on a dead or crawling connection, or a busy server, the app opens anyway, and a
+ * deploy it missed shows up once the browser has fetched the new service worker.
  */
 async function navigate(request: Request): Promise<Response> {
   if (await flying()) {
