@@ -143,7 +143,9 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
       Try(candidates.grouped(200).flatMap(LiveTrafficClient.routeSet).toMap).toOption.filter(_.nonEmpty).getOrElse {
         candidates.take(25).flatMap { a =>
           val cs = a.callsign.get
-          traffic.route(cs).map(r => cs -> Seq(r.origin, r.destination).map(p => Stop(Some(p.code), None, p.lat, p.lon)))
+          traffic.route(cs).map(r =>
+            cs -> Seq(r.origin, r.destination).map(p => Stop(Some(p.code), None, p.lat, p.lon))
+          )
         }.toMap
       }
     val flights = candidates.flatMap { a =>

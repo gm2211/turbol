@@ -139,14 +139,15 @@ final class VolumeSampler {
   def volumeGzip(frame: EdrFrame, global: Option[EdrFrame], step: Int): Array[Byte] =
     binaryCache.get(
       s"${frame.id}/${global.fold("-")(_.id)}/$step",
-      () => building.synchronized {
-        val raw = sample(frame, global, step).toBinary
-        val out = new java.io.ByteArrayOutputStream(raw.length / 3)
-        val gz = new java.util.zip.GZIPOutputStream(out) { `def`.setLevel(java.util.zip.Deflater.BEST_COMPRESSION) }
-        gz.write(raw)
-        gz.close()
-        out.toByteArray
-      }
+      () =>
+        building.synchronized {
+          val raw = sample(frame, global, step).toBinary
+          val out = new java.io.ByteArrayOutputStream(raw.length / 3)
+          val gz = new java.util.zip.GZIPOutputStream(out) { `def`.setLevel(java.util.zip.Deflater.BEST_COMPRESSION) }
+          gz.write(raw)
+          gz.close()
+          out.toByteArray
+        }
     )
 
   /** Builds the volume a new frame will be opened with in 3D, so the first visitor doesn't wait for it. */
