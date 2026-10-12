@@ -20,6 +20,7 @@
       if (/^\/(map\/?)?$/.test(location.pathname) && !/(^|[?&])(view|follow|flights)=/.test(location.search)) {
         (function () {
           var mobile = matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px)').matches
+          var left = mobile ? 4 : 72, top = mobile ? 52 : 68
           var w = innerWidth - (mobile ? 8 : 88), h = innerHeight - (mobile ? 112 : 80)
           var z = 5, scale = 256 * Math.pow(2, z)
           var cx = ((-97 + 180) / 360) * scale
@@ -33,13 +34,36 @@
           tiles.sort(function (a, b) {
             return Math.hypot(a[0] + 0.5 - cx / 256, a[1] + 0.5 - cy / 256) - Math.hypot(b[0] + 0.5 - cx / 256, b[1] + 0.5 - cy / 256)
           })
+          // Leaflet's pixel origin for this view, so the preview below lines up with the map that replaces it.
+          var ox = Math.round(cx - w / 2), oy = Math.round(cy - h / 2)
           window.__openingTiles = []
           tiles.forEach(function (t) {
             var base = new Image(), turb = new Image()
             base.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/' + z + '/' + t[1] + '/' + t[0]
             turb.src = '/api/turbulence/tiles/latest/35000/' + z + '/' + t[0] + '/' + t[1] + '.png'
+            turb.style.opacity = '0.85'
+            ;[base, turb].forEach(function (img) {
+              img.alt = ''
+              img.onerror = function () { img.remove() }
+              img.style.position = 'absolute'
+              img.style.left = t[0] * 256 - ox + 'px'
+              img.style.top = t[1] * 256 - oy + 'px'
+              img.style.width = img.style.height = '256px'
+            })
             window.__openingTiles.push(base, turb)
           })
+          // Until the app's code has loaded and Leaflet draws, show those tiles where the map will be, so the map is
+          // there from the first paint. LiveMapView removes this once Leaflet's basemap has loaded.
+          window.__mapPreview = function () {
+            var preview = document.createElement('div')
+            preview.id = 'map-preview'
+            preview.setAttribute('aria-hidden', 'true')
+            preview.style.cssText = 'position:fixed;overflow:hidden;pointer-events:none;z-index:2000;border-radius:8px;background:#e4e4e2;' +
+              'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px'
+            window.__openingTiles.forEach(function (img) { preview.appendChild(img) })
+            document.body.appendChild(preview)
+            setTimeout(function () { preview.remove() }, 15000)
+          }
         })()
       }
     </script>
@@ -57,6 +81,9 @@
 </head>
 <body>
 <div id="app"></div>
+<script>
+  if (window.__mapPreview) window.__mapPreview()
+</script>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
