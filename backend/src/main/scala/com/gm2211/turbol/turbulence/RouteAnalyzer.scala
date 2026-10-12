@@ -285,7 +285,7 @@ object RouteAnalyzer {
     val global = enRoute.count(_.source == EdrSource.Global)
     if (global > 0) notes +=
       f"${100.0 * global / enRoute.size}%.0f%% of the route is outside GTG coverage (contiguous US and nearby) and uses " +
-        "the coarser global forecast (NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
+        "the coarser global forecast (WAFS and NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
     if (coverage < 99.5) {
       val outside = enRoute.count(p => p.edr.isEmpty && LambertGrid.nearestIndex(p.lat, p.lon) < 0)
       if (outside > 0) notes +=

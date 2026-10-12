@@ -32,6 +32,7 @@ object TurbulenceDataUpdater {
    */
   val globalForecastHours: Range = 3 to 30 by 3
   private val completeMarker = "COMPLETE"
+  private val wafsMarker = "WAFS"
 
   def defaultDataDir: Path =
     sys.env.get("TURBOL_DATA_DIR").map(Paths.get(_)).getOrElse(Paths.get("var", "data", "turbulence"))
@@ -107,7 +108,7 @@ final class TurbulenceDataUpdater(
       .foreach { dir =>
         val issued = Instant.ofEpochSecond(dir.getFileName.toString.toLong)
         val frames = loadHours(dir, issued, FrameKind.Global)
-        store.setGlobal(frames)
+        store.setGlobal(frames, wafsIssued(dir))
         log.info("Loaded cached global turbulence layer", safe("issued", issued), safe("frames", frames.size))
       }
   }
@@ -214,11 +215,11 @@ final class TurbulenceDataUpdater(
         val frames = globalForecastHours.map { hour =>
           val frame = fetchGlobalHour(cycle, hour, cycleDir)
           // First run: publish hour by hour so the map fills in before the whole cycle is in.
-          if (current.isEmpty) store.setGlobal(store.current.global :+ frame)
+          if (current.isEmpty) store.setGlobal(store.current.global :+ frame, wafsIssued(cycleDir))
           frame
         }.toVector
         Files.writeString(cycleDir.resolve(completeMarker), cycle.dir): Unit
-        store.setGlobal(frames)
+        store.setGlobal(frames, wafsIssued(cycleDir))
         Try(onNewFrames(frames)): Unit
         log.info("Updated global turbulence layer", safe("init", cycle.initTime), safe("frames", frames.size))
         subdirs(globalDir).filterNot(_ == cycleDir).foreach(deleteRecursively)
@@ -232,9 +233,27 @@ final class TurbulenceDataUpdater(
     val tmp = Files.createTempFile(cycleDir, "gfs", ".grib2")
     try {
       NomadsClient.fetchGfsHour(cycle, hour, GfsTurbulence.pressureLevelsHpa, tmp): Unit
-      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir)
-      log.info("Fetched GFS hour for the global layer", safe("hour", hour), safe("levels", layers.size))
-      EdrFrame(FrameKind.Global, cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS), cycle.initTime, layers)
+      val valid = cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS)
+      // WAFS from AWC is blended in where available; without it the hour is GFS-only rather than missing.
+      val wafs = Try(Wafs.fetch(valid, cycle.initTime)).toOption.flatten
+      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir, wafs.map(_._2))
+      wafs.foreach { case (wafsCycle, _) =>
+        Files.writeString(hourDir.resolve(wafsMarker), wafsCycle.getEpochSecond.toString): Unit
+      }
+      log.info(
+        "Fetched GFS hour for the global layer",
+        safe("hour", hour),
+        safe("levels", layers.size),
+        safe("wafsCycle", wafs.map(_._1.toString).getOrElse("none"))
+      )
+      EdrFrame(FrameKind.Global, valid, cycle.initTime, layers)
     } finally Files.deleteIfExists(tmp): Unit
   }
+
+  /** Newest WAFS cycle blended into any hour of a global cycle directory. */
+  private def wafsIssued(cycleDir: Path): Option[Instant] =
+    subdirs(cycleDir)
+      .flatMap(d => Try(Files.readString(d.resolve(wafsMarker)).trim.toLong).toOption)
+      .maxOption
+      .map(Instant.ofEpochSecond)
 }

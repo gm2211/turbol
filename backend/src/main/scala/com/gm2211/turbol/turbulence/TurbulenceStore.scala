@@ -26,7 +26,9 @@ final case class EdrSample(edr: Double, source: EdrSource)
 final case class TurbulenceData(
   nowcast: Option[EdrFrame],
   forecast: Vector[EdrFrame],
-  global: Vector[EdrFrame] = Vector.empty
+  global: Vector[EdrFrame] = Vector.empty,
+  /** Newest WAFS cycle blended into the global layer, if any (see [[Wafs]]). */
+  globalWafsIssued: Option[Instant] = None
 ) {
   def forecastIssued: Option[Instant] = forecast.headOption.map(_.issued)
   def globalIssued: Option[Instant] = global.headOption.map(_.issued)
@@ -54,8 +56,8 @@ final class TurbulenceStore {
   def setForecast(frames: Vector[EdrFrame]): Unit =
     ref.updateAndGet(_.copy(forecast = frames.sortBy(_.validTime))): Unit
 
-  def setGlobal(frames: Vector[EdrFrame]): Unit =
-    ref.updateAndGet(_.copy(global = frames.sortBy(_.validTime))): Unit
+  def setGlobal(frames: Vector[EdrFrame], wafsIssued: Option[Instant] = None): Unit =
+    ref.updateAndGet(_.copy(global = frames.sortBy(_.validTime), globalWafsIssued = wafsIssued)): Unit
 
   def sample(lat: Double, lon: Double, altitudeFt: Double, time: Instant): EdrSample =
     sampleIn(current, lat, lon, altitudeFt, time)

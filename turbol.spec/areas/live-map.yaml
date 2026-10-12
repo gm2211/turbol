@@ -72,9 +72,9 @@ behaviors:
       regions around its centre.
   - id: coarse-layer-visible
     description: >-
-      The map draws GTG's edge as a dashed line. The legend explains it (US: GTG 3 km, outside: GFS
-      about 28 km), the panel names the global layer's source, resolution and GFS cycle, the hover
-      readout adds "GFS ~28 km" outside GTG, and the attribution credits both sources. The coarse
+      The map draws GTG's edge as a dashed line. The legend explains it (US: GTG 3 km, outside:
+      WAFS/GFS about 28 km), the panel names the global layer's source, resolution and GFS cycle, the
+      hover readout adds "WAFS/GFS ~28 km" outside GTG, and the attribution credits all sources. The coarse
       layer is drawn in its native blocks rather than smoothed.
     source:
       text: can we add at least transatlantic coverage?

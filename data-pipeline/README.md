@@ -399,6 +399,7 @@ Sources considered:
 |---|---|---|---|---|
 | GTG / GTGN (in use) | CONUS | 3 km, 51 levels | hourly F0-F18, 15 min nowcast | free, NOMADS |
 | WAFS gridded EDR (WAFC Washington/London) | global | 0.25 deg, FL140-FL450 | 4x daily, T+6 to T+36 | approved WIFS/SADIS account only; NOMADS `wafs/` returns 403 |
+| WAFS EDR images (AWC WAFS viewer, used from FL140 up) | global to 76 deg | ~0.4 deg Mercator PNG, 8 levels FL140-FL450, ~45 colour steps | 4x daily, T+6 to T+48 every 3 h | public, no account (`aviationweather.gov/data/products/wafs/`) |
 | ECMWF open data | global | 0.25 deg | 4x daily | free (CC-BY), but no turbulence/EDR field |
 | GFS-derived index (chosen) | global | 0.25 deg (~28 km) | 4x daily, hourly to F120 | free, public domain, NOMADS GRIB filter |
 | IATA Turbulence Aware | reports, not forecasts | - | live | commercial |
@@ -427,6 +428,25 @@ The backend (`GfsTurbulence.scala`) fetches U, V and HGT on the 13 levels
 for F003-F030 every 3 h from each new GFS cycle (~27 MB per hour via the
 grib filter, ~3 s to decode on one core), and its test checks it reproduces
 this script's EDR at 8 points within 0.006.
+
+### WAFS blend (`wafs_blend.py`, 2026-10-12)
+
+AWC's public WAFS viewer serves each WAFS EDR field as a 900x600 Mercator
+PNG (lat +-75.94) on a fixed colour ramp, clear below about EDR 0.1. Each
+colour step maps to EDR by quantile matching against GTG (pooled over
+levels); per GTG altitude from 15,000 ft up, WAFS (interpolated between its
+flight levels) is mixed 80/20 with the TI1 EDR and quantile-mapped to GTG
+again. Same test cycles and scores, FL200+:
+
+| Layer | log r | PSS Light+ | PSS Mod+ | PSS Light+ (75 km) | Light+ GTG / layer |
+|---|---|---|---|---|---|
+| TI1 alone | 0.54 | 0.32 | 0.23 | 0.40 | 22.1% / 21.5% |
+| **WAFS 80% + TI1 20%** | **0.63** | **0.47** | **0.35** | **0.49** | 22.1% / 22.6% |
+
+(WAFS alone, step-mapped: log r 0.54, PSS Light+ 0.41, Mod+ 0.31.) The
+backend (`Wafs.scala`) fetches the 8 PNGs (~40 KB each) per GFS hour from
+the newest WAFS cycle that covers it, and falls back to TI1 alone when none
+does; its test reproduces this script's blend at 6 points within 0.008.
 
 ## Gotchas hit
 

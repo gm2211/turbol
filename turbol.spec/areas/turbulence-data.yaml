@@ -3,9 +3,11 @@ name: Turbulence data
 prose: >-
   Turbulence comes from NOAA's free NOMADS feeds over HTTPS: the GTGN nowcast (every 15 minutes) and
   the GTG v4 forecast (hourly cycles, F000 to F018). Both are EDR on the 3 km HRRR Lambert grid and
-  cover the contiguous US only. Everywhere else a coarse global layer derived from NOAA GFS fills in
-  (data-pipeline/gfs_turbulence.py has the method and its verification). Free gridded EDR from the
-  World Area Forecast System needs an approved WIFS account, so it is not used.
+  cover the contiguous US only. Everywhere else a coarse global layer fills in: the World Area
+  Forecast System (WAFS) turbulence forecast blended with an index derived from NOAA GFS winds
+  (data-pipeline/gfs_turbulence.py and wafs_blend.py have the method and its verification). Gridded
+  WAFS GRIB needs an approved WIFS account, so the WAFS values are read from the public images the
+  Aviation Weather Center publishes for its WAFS viewer.
 behaviors:
   - id: nowcast-picked-up-quickly
     description: >-
@@ -62,6 +64,22 @@ behaviors:
       FL200 and above: log correlation 0.54, Peirce skill 0.32 for Light or worse (0.40 on 75 km
       neighbourhoods), and 21% of points Light or worse vs GTG's 22%. TI1 beat the Ellrod-Knox and
       Richardson-number indices and their mean.
+  - id: global-layer-uses-wafs
+    description: >-
+      From FL140 up, the global layer blends WAFS turbulence (80%) with the GFS index (20%), mapped
+      to EDR by matching GTG over the US like the GFS index alone. WAFS comes from AWC's public WAFS
+      viewer images (8 levels FL140 to FL450, read on the 0.25 degree grid). Below FL140, or when no
+      WAFS cycle covers an hour, the GFS index is used alone. The status reports the WAFS cycle.
+    details: >-
+      WAFS images are colour-ramp PNGs (900x600 Mercator, about 0.4 degree, clear below about EDR
+      0.1); each colour step maps to an EDR fitted against GTG. Scored like the GFS index on the
+      same 4 later cycles at FL200 and above: log correlation 0.63 (GFS alone 0.54), Peirce skill
+      0.47 for Light or worse (0.32) and 0.35 for Moderate or worse (0.23), 22.6% of points Light or
+      worse vs GTG's 22.1%. For each GFS hour the newest WAFS cycle that has it (6 to 48 hours ahead)
+      is used.
+    source:
+      text: I see WAFS without any registration
+      reference: Giulio, Transatlantic turbulence coverage thread, 2026-10-12 01:03Z
   - id: global-blend-at-gtg-edge
     description: >-
       Across the last 40 grid cells (120 km) inside GTG's edge, GTG and the global layer are mixed

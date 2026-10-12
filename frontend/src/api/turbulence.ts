@@ -18,6 +18,8 @@ export interface GlobalLayerInfo {
   resolutionKm: number
   issued: string
   validTimes: string[]
+  /** WAFS cycle blended in from FL140 up, when one was available. */
+  wafsIssued?: string
 }
 
 export interface TurbulenceStatus {

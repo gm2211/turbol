@@ -120,4 +120,58 @@ class GlobalLayerTest extends BaseTest {
       }
     }
   }
+
+  test("WAFS levels bracket GTG altitudes and the blend rises with either input") {
+    Wafs.bracket(30000) shouldBe ((Wafs.table.levelsFl.indexOf(300), 0.0))
+    val (k, t) = Wafs.bracket(35000)
+    Wafs.table.levelsFl(k) shouldBe 340
+    t shouldBe 0.2 +- 1e-9
+    Wafs.bracket(10000) shouldBe ((0, 0.0))
+    Wafs.blendLevel(10000) shouldBe None
+    val level = Wafs.blendLevel(35000).get
+    val grid = Range.inclusive(0, 60).map(_ * 0.01)
+    grid.zip(grid.tail).foreach { case (a, b) =>
+      Wafs.blend(level, b, 0.1) should be >= Wafs.blend(level, a, 0.1)
+      Wafs.blend(level, 0.1, b) should be >= Wafs.blend(level, 0.1, a)
+    }
+    Wafs.blend(level, 2.0, 2.0) should be <= 1.0
+  }
+
+  test("a WAFS image decodes to the fitted EDR of its ramp colour, nothing poleward of 76 degrees") {
+    import java.awt.image.BufferedImage
+    val image = new BufferedImage(900, 600, BufferedImage.TYPE_INT_ARGB)
+    val orange = Wafs.table.ramp(9) // step 10
+    for (x <- Range(0, 450); y <- Range(0, 600)) image.setRGB(x, y, (0xff << 24) | (orange(0) << 16) | (orange(1) << 8) | orange(2))
+    val out = new java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(image, "png", out)
+    val layer = Wafs.decodePng(out.toByteArray)
+    EdrLayer.decode(layer(GlobalGrid.nearestIndex(40, -100))) shouldBe Wafs.table.stepEdr(10) +- 0.003
+    EdrLayer.decode(layer(GlobalGrid.nearestIndex(40, 100))) shouldBe Wafs.table.stepEdr(0) +- 0.003
+    EdrLayer.decode(layer(GlobalGrid.nearestIndex(80, -100))).isNaN shouldBe true
+  }
+
+  // Same as above with the WAFS images of the same cycle blended in (data-pipeline/wafs_blend.py collect).
+  test("blends real WAFS images the same way as the pipeline") {
+    val cwd = Paths.get(sys.props.getOrElse("user.dir", ".")).toAbsolutePath
+    val dir = Seq(cwd, cwd.getParent).map(_.resolve("data-pipeline/data/gfs_cal")).find(Files.isDirectory(_))
+    val grib = dir.map(_.resolve("gfs.2026101118.f006.grib2")).filter(Files.exists(_))
+    val pngs = dir.map(d => Wafs.table.levelsHpa.map(hPa => d.resolve(s"wafs/2026101118_$hPa.png")))
+    assume(grib.isDefined && pngs.exists(_.forall(Files.exists(_))), "no GFS/WAFS sample files")
+    val wafs = pngs.get.map(p => Wafs.decodePng(Files.readAllBytes(p)))
+    val layers = GfsTurbulence.decodeToLayers(grib.get, Files.createTempDirectory("wafs-test"), Some(wafs))
+    val frame = EdrFrame(FrameKind.Global, t0, t0, layers)
+    // (lat, lon, EDR at 20,000 / 30,000 / 35,000 / 39,000 ft) from data-pipeline
+    Seq(
+      (51.5, -30.0, Seq(0.1170, 0.1990, 0.1234, 0.1497)),
+      (45.0, -40.0, Seq(0.1032, 0.0393, 0.0925, 0.0945)),
+      (55.0, 10.0, Seq(0.0802, 0.0602, 0.0459, 0.0514)),
+      (30.0, 140.0, Seq(0.0542, 0.0569, 0.0618, 0.0748)),
+      (-35.0, 150.0, Seq(0.1732, 0.1348, 0.1173, 0.1129)),
+      (60.0, -20.0, Seq(0.1408, 0.1076, 0.0818, 0.0640))
+    ).foreach { case (lat, lon, expected) =>
+      Seq(20000, 30000, 35000, 39000).zip(expected).foreach { case (ft, edr) =>
+        withClue(s"$lat,$lon at $ft ft: ") { frame.edrAt(lat, lon, ft) shouldBe edr +- 0.008 }
+      }
+    }
+  }
 }
