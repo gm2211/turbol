@@ -183,10 +183,6 @@ export interface TurbulenceColumn {
   levels: ColumnLevel[]
 }
 
-export async function fetchVolume(frameId: string, step = 6): Promise<TurbulenceVolume> {
-  return (await axios.get(`/api/turbulence/volume/${frameId}`, { params: { step } })).data
-}
-
 export async function fetchColumn(
   frameId: string,
   lat: number,

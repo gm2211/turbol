@@ -16,10 +16,25 @@ behaviors:
       text: too slow - 40s to fully load - should take under 1s - if we want to gradually populate aircrafts, that's ok
   - id: flights-toggle
     description: >-
-      The map opens with turbulence only. A "Show all flights" toggle (off by default, remembered
-      per browser) adds every airborne aircraft in view.
+      The map opens with turbulence only. A Flights selector (None by default, remembered per
+      browser) adds either every airborne aircraft in view or a random sample of 100.
     source:
       text: starting with just the map with turbulence, then having a toggle to show all flights
+  - id: random-flights-sample
+    description: >-
+      "100 random" shows a random sample of 100 airborne flights from the searched area and draws a
+      fresh sample every 30 seconds. After the map moves, a "Search this area" button samples the
+      new view instead of reloading on every pan.
+    source:
+      text: >-
+        I should be able to "show 100 random flights" (and rotate them, or something like the
+        "search in this area" that google maps does)
+  - id: flights-stream-in
+    description: >-
+      Showing all flights adds planes a few at a time (a few milliseconds of work per frame, nearest
+      the centre first) and moves existing ones in place, so the page never freezes, in 2D and 3D.
+    source:
+      text: selecting load all flights should load them a few at a time, smoothly and without freezing the page
   - id: add-flight-by-number
     description: >-
       A field on the map adds a specific flight by flight number or callsign: it is drawn highlighted
@@ -42,15 +57,28 @@ behaviors:
     description: >-
       Airborne aircraft in view are shown with the turbulence category they are flying through right
       now, from the nowcast at their position and altitude. Aircraft on the ground are hidden.
+  - id: neutral-planes-with-turbulence-ring
+    description: >-
+      Planes are drawn in one neutral colour. Turbulence at a plane's own altitude shows as a ring in
+      the category colour, only for Light or worse, and the legend explains the ring. Popups keep the
+      full detail.
+    source:
+      text: green vs yellow vs red aircrafts are confusing
   - id: wide-views-fill-in
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to
       refresh: the map polls every few seconds until the view is complete. Aircraft from older data
-      are dead-reckoned so they line up with fresher ones.
+      are dead-reckoned so they line up with fresher ones. A view too wide to fetch whole keeps the
+      regions around its centre.
   - id: edr-on-hover
     description: >-
       Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and
-      selected flight level for the grid cell under the pointer, for the selected frame.
+      selected flight level for the grid cell under the pointer, for the selected frame. While a
+      cell's value is loading it shows "EDR … · … · <level>", never a reading from another cell.
+  - id: inspect-cursor
+    description: >-
+      Over the map the pointer is a thin precision crosshair (not a gun-sight); it becomes a
+      grabbing hand while dragging and a pointer over aircraft and controls, in 2D and 3D.
   - id: shift-drag-into-3d
     description: >-
       Shift+dragging the live map tilts and rotates it into 3D, where aircraft sit at their altitude
@@ -60,3 +88,7 @@ behaviors:
     description: >-
       A 2D/3D toggle on the live map flattens back to the 2D map, or tilts up into 3D. The 3D
       library loads only the first time 3D is opened, so the 2D map stays light.
+  - id: altitude-rail
+    description: >-
+      A vertical flight-level rail on the map picks the level of the turbulence overlay in 2D, and
+      the band of levels shown in 3D.

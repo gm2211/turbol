@@ -56,6 +56,13 @@ class LiveTrafficTest extends BaseTest {
     }
   }
 
+  test("a view too wide for the cell budget keeps the cells around its centre") {
+    val cells = LiveTrafficService.cellsCovering(-60, -180, 80, 180) // most of the world
+    cells.size shouldBe 120
+    cells.exists(c => math.abs(c.lat - 7.5) < 3 && math.abs(c.lon) < 10) shouldBe true // centre is covered
+    cells.map(_.lat).max should be > 20.0 // not just the southern rows
+  }
+
   test("dead-reckons stale positions along the track") {
     val a = LiveTrafficClient.parseAircraftList(adsbLol)._2.head.copy(lat = 40.0, lon = -100.0, trackDeg = Some(90.0))
     val moved = LiveTrafficService.extrapolate(a, 60) // 485.8 kt for a minute is ~15 km east

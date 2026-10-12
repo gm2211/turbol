@@ -46,7 +46,7 @@
             variant="flat"
             class="ml-2"
             prepend-icon="mdi-crosshairs-gps"
-            :to="`/follow/${lookup.live.hex}`"
+            :to="`/map?follow=${lookup.live.hex}`"
           >
             Follow live
           </v-btn>
@@ -62,7 +62,7 @@
           variant="flat"
           class="ml-2"
           prepend-icon="mdi-cube-outline"
-          :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`"
+          :to="`/map?view=3d&flights=${encodeURIComponent(flightQuery.trim().toUpperCase())}`"
         >
           View in 3D
         </v-btn>

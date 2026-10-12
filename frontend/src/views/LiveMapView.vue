@@ -1,6 +1,6 @@
 <template>
   <div class="map-page" :class="{ 'is-3d': mode === '3d', mobile }">
-    <div ref="mapEl" class="map" />
+    <div ref="mapEl" class="map inspect-cursor" :style="{ '--inspect-cursor': inspectCursor }" />
 
     <component
       :is="Map3D"
@@ -11,12 +11,13 @@
       :frame="selectedFrame"
       :status="status"
       :level-ft="levelFt"
+      :band="band"
       @move="on3dMove"
       @select="on3dSelect"
     />
 
     <v-btn-toggle
-      v-show="!(mobile && showControls)"
+      v-show="!(mobile && (showControls || followHex))"
       :model-value="mode"
       mandatory
       density="compact"
@@ -36,6 +37,16 @@
       >
     </v-btn-toggle>
 
+    <v-btn
+      v-if="trafficMode === 'sample' && areaMoved"
+      class="search-area glass-panel"
+      theme="dark"
+      prepend-icon="mdi-refresh"
+      rounded="pill"
+      @click="searchThisArea"
+      >Search this area</v-btn
+    >
+
     <div class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
       <div class="muted" v-if="status?.nowcast && !mobile">
@@ -43,18 +54,36 @@
       </div>
       <div class="muted" v-else-if="statusLoaded && !status?.nowcast">Turbulence data loading…</div>
 
-      <v-switch
-        v-model="showAll"
-        label="Show all flights"
-        density="compact"
-        hide-details
-        theme="dark"
-        color="var(--my-accent)"
-        class="mt-1"
-      />
-      <div class="muted" v-if="showAll">
-        {{ aircraftCount.toLocaleString() }} aircraft in view
-        <span v-if="!trafficComplete"> (loading more)</span>
+      <div class="flights-row mt-2">
+        <span class="muted">Flights</span>
+        <v-btn-toggle
+          v-model="trafficMode"
+          mandatory
+          density="compact"
+          theme="dark"
+          color="var(--my-accent)"
+          variant="outlined"
+          divided
+        >
+          <v-btn value="off" size="small">None</v-btn>
+          <v-btn
+            value="sample"
+            size="small"
+            :title="`${sampleSize} random flights, reshuffled every 30 s`"
+            >{{ sampleSize }} random</v-btn
+          >
+          <v-btn value="all" size="small">All</v-btn>
+        </v-btn-toggle>
+      </div>
+      <div class="muted" v-if="trafficMode !== 'off'">
+        <template v-if="trafficMode === 'sample'">
+          {{ shownCount.toLocaleString() }} of {{ aircraftCount.toLocaleString() }} aircraft in this
+          area
+        </template>
+        <template v-else>{{ shownCount.toLocaleString() }} aircraft in view</template>
+        <span v-if="!trafficComplete || shownCount < Math.min(targetCount, aircraftCount)">
+          (loading more)</span
+        >
       </div>
 
       <form class="add-flight mt-2" @submit.prevent="addFlight">
@@ -80,7 +109,8 @@
           theme="dark"
           :color="t.aircraft ? categoryColors[t.aircraft.category] : undefined"
           variant="flat"
-          @click="panTo(t)"
+          :class="{ following: t.hex === followHex }"
+          @click="follow(t.hex)"
           @click:close="removeFlight(t.hex)"
         >
           {{ t.label }}<span v-if="!t.aircraft">&nbsp;(landed?)</span>
@@ -93,7 +123,7 @@
       icon="mdi-tune-variant"
       theme="dark"
       class="glass-panel controls-fab"
-      aria-label="Map altitude and time"
+      aria-label="Forecast time"
       @click="showControls = true"
     />
     <div
@@ -102,7 +132,7 @@
       :class="{ sheet: mobile }"
     >
       <div v-if="mobile" class="d-flex align-center justify-space-between mb-2">
-        <span class="panel-title">Map settings</span>
+        <span class="panel-title">Forecast time</span>
         <v-btn
           icon="mdi-close"
           size="small"
@@ -112,16 +142,6 @@
           @click="showControls = false"
         />
       </div>
-      <v-select
-        v-model="levelFt"
-        :items="levelItems"
-        label="Map altitude"
-        density="compact"
-        hide-details
-        variant="outlined"
-        theme="dark"
-        class="mb-3"
-      />
       <div class="text-caption mb-1">
         {{ selectedFrameLabel }}
       </div>
@@ -149,6 +169,17 @@
       </div>
     </div>
 
+    <AltitudeRail
+      v-show="!(mobile && showControls)"
+      class="altitude-rail"
+      :range="mode === '3d'"
+      :level="levelFt"
+      :band="band"
+      :compact="mobile"
+      @update:level="levelFt = $event"
+      @update:band="band = $event"
+    />
+
     <EdrHover
       :map="leafletMap"
       :frame-id="selectedFrame?.id"
@@ -156,8 +187,20 @@
       :level-label="levelLabel"
     />
 
-    <div class="bottom-left">
-      <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" :compact="mobile" />
+    <FollowStrip
+      v-if="followHex"
+      :hex="followHex"
+      :mobile="mobile"
+      @update="onFollowUpdate"
+      @close="unfollow"
+    />
+
+    <div v-show="!followHex" class="bottom-left">
+      <TurbulenceLegend
+        :title="`Turbulence at ${levelLabel}`"
+        :compact="mobile"
+        :aircraft-key="trafficMode !== 'off' || tracked.length > 0 || !!followHex"
+      />
     </div>
   </div>
 </template>
@@ -177,10 +220,14 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
+import AltitudeRail from '@/components/turbulence/AltitudeRail.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
-import { canvasPlane, planeIcon } from '@/components/turbulence/planeIcon'
+import { inspectCursor } from '@/components/turbulence/mapCursor'
+import FollowStrip from '@/components/turbulence/FollowStrip.vue'
+import { canvasPlane, planeIcon, updateCanvasPlane } from '@/components/turbulence/planeIcon'
 import {
   type AircraftView,
+  type Bounds,
   type FrameInfo,
   type TurbulenceStatus,
   categoryColors,
@@ -193,6 +240,7 @@ import {
   tileUrl
 } from '@/api/turbulence'
 import { lookupFlight } from '@/api/flights'
+import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
@@ -215,7 +263,15 @@ const levelFt = ref(35000)
 const frameIndex = ref(0)
 const aircraftCount = ref(0)
 const trafficComplete = ref(true)
-const showAll = ref(readShowAll())
+type TrafficMode = 'off' | 'sample' | 'all'
+const trafficMode = ref<TrafficMode>(readTrafficMode())
+const sampleSize = 100
+const sampleRotateMs = 30000
+const shownCount = ref(0)
+const targetCount = computed(() => (trafficMode.value === 'sample' ? sampleSize : Infinity))
+/** In sample mode, flights come from the area searched last; moving the map offers "Search this area". */
+const areaMoved = ref(false)
+let searchedBounds: Bounds | undefined
 const flightQuery = ref('')
 const adding = ref(false)
 const addError = ref('')
@@ -223,21 +279,19 @@ const tracked = ref<TrackedFlight[]>([])
 const mobile = useMobile()
 const showControls = ref(false)
 
-function readShowAll(): boolean {
+function readTrafficMode(): TrafficMode {
   try {
-    return localStorage.getItem('turbol.showAllFlights') === 'true'
+    const saved = localStorage.getItem('turbol.trafficMode')
+    if (saved === 'off' || saved === 'sample' || saved === 'all') return saved
+    return localStorage.getItem('turbol.showAllFlights') === 'true' ? 'all' : 'off'
   } catch {
-    return false
+    return 'off'
   }
 }
 
-const levelItems = [10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000].map(
-  (ft) => ({
-    title: ft >= 18000 ? `FL${ft / 100}` : `${ft.toLocaleString()} ft`,
-    value: ft
-  })
-)
-const levelLabel = computed(() => levelItems.find((i) => i.value === levelFt.value)?.title ?? '')
+const levelLabel = computed(() => flightLevel(levelFt.value))
+/** Levels the 3D view shows: around the map altitude until the rail's band is moved; the full range is every level. */
+const band = ref<[number, number]>([levelFt.value - 4000, levelFt.value + 4000])
 
 /** Nowcast first, then forecast hours that are still in the future. */
 const frames = computed<FrameInfo[]>(() => {
@@ -358,8 +412,8 @@ function popupHtml(a: AircraftView): string {
   const color = categoryColors[a.category]
   const edr = a.edr != null ? `<span class="pp-edr">EDR ${a.edr.toFixed(2)}</span>` : ''
   const q = a.callsign ? encodeURIComponent(a.callsign) : undefined
-  const action = (href: string, icon: string, label: string) =>
-    `<a class="pp-action" href="${href}" data-route="${href}">` +
+  const action = (href: string, icon: string, label: string, followHex?: string) =>
+    `<a class="pp-action" href="${href}" data-route="${href}"${followHex ? ` data-follow="${followHex}"` : ''}>` +
     `<i class="mdi ${icon}"></i><span>${label}</span></a>`
   return (
     `<div class="pp">` +
@@ -370,10 +424,10 @@ function popupHtml(a: AircraftView): string {
     `<div class="pp-turb"><span class="pp-badge" style="--c:${color}"><span class="pp-dot"></span>` +
     `${categoryLabels[a.category]}</span>${edr}</div>` +
     `<div class="pp-actions">` +
-    action(`/follow/${a.hex}`, 'mdi-crosshairs-gps', 'Follow') +
+    action(`/map?follow=${a.hex}`, 'mdi-crosshairs-gps', 'Follow', a.hex) +
     (q
       ? action(`/analyze?q=${q}`, 'mdi-airplane-search', 'Analyze') +
-        action(`/3d?q=${q}`, 'mdi-cube-outline', '3D')
+        action(`/map?view=3d&flights=${q}`, 'mdi-cube-outline', '3D')
       : '') +
     `</div></div>`
   )
@@ -385,7 +439,10 @@ function onPopupClick(e: MouseEvent) {
   const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-route]')
   if (!link) return
   e.preventDefault()
-  router.push(link.dataset.route!)
+  if (link.dataset.follow) {
+    map?.closePopup()
+    follow(link.dataset.follow)
+  } else router.push(link.dataset.route!)
 }
 
 const popupOptions: L.PopupOptions = { className: 'plane-popup', closeButton: true, minWidth: 220 }
@@ -402,52 +459,142 @@ function viewBounds() {
   }
 }
 
-/** Polls every 15 s, or every 3 s while the server is still filling in the view, so planes appear as they arrive. */
+let sample: { hexes: string[]; at: number } | undefined
+
+/** Keeps the current sample while it's fresh (topping it up when flights leave), and draws a new one every 30 s. */
+function pickSample(all: AircraftView[]): AircraftView[] {
+  const byHex = new Map(all.map((a) => [a.hex, a]))
+  const fresh = sample && Date.now() - sample.at < sampleRotateMs
+  const kept = fresh ? sample!.hexes.filter((h) => byHex.has(h)) : []
+  const keptSet = new Set(kept)
+  const rest = all.filter((a) => !keptSet.has(a.hex))
+  // Partial Fisher-Yates: only as many swaps as picks.
+  const need = Math.min(sampleSize - kept.length, rest.length)
+  for (let i = 0; i < need; i++) {
+    const j = i + Math.floor(Math.random() * (rest.length - i))
+    ;[rest[i], rest[j]] = [rest[j]!, rest[i]!]
+  }
+  const hexes = [...kept, ...rest.slice(0, need).map((a) => a.hex)]
+  sample = { hexes, at: fresh ? sample!.at : Date.now() }
+  return hexes.map((h) => byHex.get(h)!)
+}
+
+/**
+ * Polls every 15 s (every 3 s while the server is still filling in the area). Each poll is applied by
+ * `applyTraffic`, which spreads the marker work over animation frames so the page never freezes.
+ */
 async function refreshTraffic() {
   window.clearTimeout(trafficTimer)
-  if (!map || !showAll.value) return
+  if (!map || trafficMode.value === 'off') return
   const request = ++trafficRequest
   let complete = true
   try {
-    const response = await fetchTraffic(viewBounds())
-    if (request !== trafficRequest || !showAll.value) return
-    const trackedHexes = new Set(tracked.value.map((t) => t.hex))
-    planes.clearLayers()
-    trafficMarkers.clear()
-    const size = planeSize()
-    for (const a of response.aircraft) {
-      if (trackedHexes.has(a.hex)) continue
-      const marker = canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
-        .bindPopup(() => popupHtml(a), popupOptions)
-        .addTo(planes)
-      trafficMarkers.set(a.hex, marker)
-    }
-    traffic.value = response.aircraft
+    const bounds = trafficMode.value === 'sample' ? (searchedBounds ??= viewBounds()) : viewBounds()
+    const response = await fetchTraffic(bounds)
+    // Switching modes bumps trafficRequest, so a stale response is dropped here.
+    if (request !== trafficRequest) return
+    const shown = trafficMode.value === 'sample' ? pickSample(response.aircraft) : response.aircraft
     aircraftCount.value = response.aircraft.length
     trafficComplete.value = complete = response.complete
+    applyTraffic(shown)
   } catch (e) {
     console.warn('traffic refresh failed', e)
   }
-  if (request === trafficRequest && showAll.value) {
+  if (request === trafficRequest) {
     trafficTimer = window.setTimeout(refreshTraffic, complete ? 15000 : 3000)
   }
 }
 
-watch(showAll, (on) => {
+const trafficData = new Map<string, AircraftView>()
+let applyJob = 0
+
+/**
+ * Moves planes that are still there, drops the ones that left and adds new ones, nearest the centre first, within
+ * ~6 ms per animation frame. The 3D view gets the growing list a few times a second rather than every frame.
+ */
+function applyTraffic(list: AircraftView[]) {
+  if (!map) return
+  const job = ++applyJob
+  const trackedHexes = new Set(tracked.value.map((t) => t.hex))
+  if (followHex.value) trackedHexes.add(followHex.value)
+  const wanted = new Map(list.filter((a) => !trackedHexes.has(a.hex)).map((a) => [a.hex, a]))
+  for (const [hex, marker] of trafficMarkers) {
+    if (!wanted.has(hex)) {
+      planes.removeLayer(marker)
+      trafficMarkers.delete(hex)
+      trafficData.delete(hex)
+    }
+  }
+  const c = map.getCenter()
+  const pending = [...wanted.values()].sort(
+    (a, b) => Math.hypot(a.lat - c.lat, a.lon - c.lng) - Math.hypot(b.lat - c.lat, b.lon - c.lng)
+  )
+  const size = planeSize()
+  let i = 0
+  let published = 0
+  const publish = () => {
+    traffic.value = [...trafficData.values()]
+    shownCount.value = trafficMarkers.size
+    published = performance.now()
+  }
+  const step = () => {
+    if (job !== applyJob) return
+    const until = performance.now() + 6
+    while (i < pending.length && performance.now() < until) {
+      for (const end = Math.min(i + 25, pending.length); i < end; i++) {
+        const a = pending[i]!
+        trafficData.set(a.hex, a)
+        const marker = trafficMarkers.get(a.hex)
+        if (marker) updateCanvasPlane(marker, [a.lat, a.lon], a.category, a.trackDeg ?? 0, size)
+        else {
+          const hex = a.hex
+          trafficMarkers.set(
+            hex,
+            canvasPlane([a.lat, a.lon], a.category, a.trackDeg ?? 0, size, planeRenderer)
+              .bindPopup(() => popupHtml(trafficData.get(hex) ?? a), popupOptions)
+              .addTo(planes)
+          )
+        }
+      }
+    }
+    if (i < pending.length) {
+      if (performance.now() - published > 250) publish()
+      requestAnimationFrame(step)
+    } else publish()
+  }
+  requestAnimationFrame(step)
+}
+
+function clearTraffic() {
+  applyJob++
+  planes.clearLayers()
+  trafficMarkers.clear()
+  trafficData.clear()
+  traffic.value = []
+  shownCount.value = 0
+  aircraftCount.value = 0
+}
+
+function searchThisArea() {
+  searchedBounds = viewBounds()
+  sample = undefined
+  areaMoved.value = false
+  refreshTraffic()
+}
+
+watch(trafficMode, (m) => {
   try {
-    localStorage.setItem('turbol.showAllFlights', String(on))
+    localStorage.setItem('turbol.trafficMode', m)
   } catch {
-    // private mode: the toggle just isn't remembered
+    // private mode: the choice just isn't remembered
   }
-  if (on) refreshTraffic()
-  else {
-    window.clearTimeout(trafficTimer)
-    trafficRequest++
-    planes.clearLayers()
-    trafficMarkers.clear()
-    traffic.value = []
-    aircraftCount.value = 0
-  }
+  window.clearTimeout(trafficTimer)
+  trafficRequest++
+  clearTraffic()
+  sample = undefined
+  searchedBounds = undefined
+  areaMoved.value = false
+  if (m !== 'off') refreshTraffic()
 })
 
 function drawTracked() {
@@ -455,7 +602,7 @@ function drawTracked() {
   trackedMarkers.clear()
   for (const t of tracked.value) {
     const a = t.aircraft
-    if (!a) continue
+    if (!a || t.hex === followHex.value) continue
     const marker = L.marker([a.lat, a.lon], {
       icon: planeIcon(a.category, a.trackDeg ?? 0, 28, true),
       zIndexOffset: 1000
@@ -498,6 +645,7 @@ async function track(query: string, pan: boolean): Promise<string | undefined> {
       ? `${lookup.callsign ?? query} isn't airborne right now.`
       : `Couldn't find a flight called ${query}.`
   }
+  lastTrackedHex = a.hex
   if (!tracked.value.some((t) => t.hex === a.hex)) {
     tracked.value.push({
       query,
@@ -521,6 +669,7 @@ async function addFlight() {
     if (error) addError.value = error
     else {
       flightQuery.value = ''
+      if (lastTrackedHex) follow(lastTrackedHex)
       syncUrl()
     }
   } catch (e) {
@@ -531,13 +680,100 @@ async function addFlight() {
 }
 
 function removeFlight(hex: string) {
+  if (hex === followHex.value) unfollow()
   tracked.value = tracked.value.filter((t) => t.hex !== hex)
   drawTracked()
   syncUrl()
 }
 
-function panTo(t: TrackedFlight) {
-  if (t.aircraft && map) map.setView([t.aircraft.lat, t.aircraft.lon], Math.max(map.getZoom(), 6))
+// Following one flight: a strip along the bottom of the map with its live status, and on the map its trail so far
+// and the next 90 minutes (or the rest of its route) drawn as a turbulence ribbon. The followed flight is in the URL
+// (?follow=<hex>) so a followed view can be shared, and old /follow/<hex> links land here.
+const followHex = ref<string>()
+const followLayer = L.layerGroup()
+let followTrail: [number, number][] = []
+let followCentered = false
+let followLevelSet = false
+let lastTrackedHex: string | undefined
+let followMarker: L.Marker | undefined
+
+function follow(hex: string) {
+  if (hex === followHex.value) {
+    if (followMarker && map) map.setView(followMarker.getLatLng(), Math.max(map.getZoom(), 7))
+    return
+  }
+  followHex.value = hex
+  followTrail = []
+  followCentered = false
+  followLevelSet = false
+  followLayer.clearLayers()
+  followMarker = undefined
+  router.replace({ query: { ...route.query, follow: hex } })
+  drawTracked()
+  if (trafficMode.value !== 'off') refreshTraffic()
+}
+
+function unfollow() {
+  followHex.value = undefined
+  followLayer.clearLayers()
+  followMarker = undefined
+  router.replace({ query: { ...route.query, follow: undefined } })
+  drawTracked()
+  if (trafficMode.value !== 'off') refreshTraffic()
+}
+
+function onFollowUpdate(u: LiveFlightUpdate) {
+  const a = u.aircraft
+  if (!map || !a || u.aircraft?.hex !== followHex.value) return
+  const last = followTrail.at(-1)
+  if (!last || last[0] !== a.lat || last[1] !== a.lon) followTrail.push([a.lat, a.lon])
+  followLayer.clearLayers()
+  // One polyline per run of same-category points, so the path ahead reads as a turbulence ribbon.
+  const pts = u.ahead?.points ?? []
+  let start = 0
+  for (let i = 1; i <= pts.length; i++) {
+    if (i === pts.length || pts[i]!.category !== pts[start]!.category) {
+      const run = pts
+        .slice(start, Math.min(i + 1, pts.length))
+        .map((p) => [p.lat, p.lon] as [number, number])
+      L.polyline(run, {
+        color: categoryColors[pts[start]!.category],
+        weight: 5,
+        opacity: 0.9
+      }).addTo(followLayer)
+      start = i
+    }
+  }
+  if (followTrail.length > 1) {
+    L.polyline(followTrail, { color: '#334155', weight: 3, dashArray: '4 6', opacity: 0.8 }).addTo(
+      followLayer
+    )
+  }
+  const category = u.upcoming?.nowCategory ?? 'NoData'
+  const label = u.route?.iataCallsign ?? a.callsign ?? a.hex
+  followMarker = L.marker([a.lat, a.lon], {
+    icon: planeIcon(category, a.trackDeg ?? 0, 30, true),
+    zIndexOffset: 2000
+  })
+    .bindTooltip(label, {
+      permanent: true,
+      direction: 'right',
+      offset: [14, 0],
+      className: 'flight-label'
+    })
+    .addTo(followLayer)
+  // Show the turbulence at the flight's own altitude, once, so the ribbon and the map agree.
+  if (!followLevelSet && a.altitudeFt !== undefined) {
+    followLevelSet = true
+    // The rail moves in 1,000 ft steps.
+    levelFt.value = Math.min(Math.max(Math.round(a.altitudeFt / 1000) * 1000, 1000), 45000)
+  }
+  // Centre on the plane first, then only move the map when it nears the edge, so panning around isn't fought.
+  const inner = map.getBounds().pad(-0.25)
+  if (!followCentered) {
+    followCentered = true
+    map.setView([a.lat, a.lon], Math.max(map.getZoom(), 7))
+  } else if (!inner.contains([a.lat, a.lon])) map.panTo([a.lat, a.lon])
 }
 
 async function refreshStatus() {
@@ -573,6 +809,10 @@ const aircraft3d = computed<AircraftView[]>(() => {
   return [...added, ...traffic.value.filter((a) => !addedHexes.has(a.hex))]
 })
 
+async function loadMap3D() {
+  Map3D.value ??= (await import('@/components/turbulence/Map3D.vue')).default
+}
+
 async function enter3d(pitch = 0, bearing = 0) {
   if (!map || mode.value === '3d') return
   const c = map.getCenter()
@@ -580,7 +820,7 @@ async function enter3d(pitch = 0, bearing = 0) {
   if (!Map3D.value) {
     loading3d.value = true
     try {
-      Map3D.value = (await import('@/components/turbulence/Map3D.vue')).default
+      await loadMap3D()
     } finally {
       loading3d.value = false
     }
@@ -618,6 +858,25 @@ async function on3dSelect(hex: string) {
     marker.openPopup()
   }
 }
+
+/**
+ * "?view=3d" (old /3d links, the popup's and Analyze's 3D buttons) opens 3D, adding any "?flights=" not yet
+ * on the map. On this page already, the router only changes the query, so it's watched rather than read on mount.
+ */
+watch(
+  () => route.query.view,
+  async (view) => {
+    if (view !== '3d') return
+    const wanted = String(route.query.flights ?? '')
+      .split(',')
+      .map((q) => q.trim().toUpperCase())
+      .filter((q) => q && !tracked.value.some((t) => t.query === q))
+    await Promise.all(wanted.map((q) => track(q, true).catch(() => undefined)))
+    if (wanted.length) syncUrl()
+    await setMode('3d')
+    router.replace({ query: { ...route.query, view: undefined } })
+  }
+)
 
 // Shift+drag on the 2D map opens 3D and keeps tilting and rotating for the rest of that drag.
 function onShiftDrag(e: PointerEvent) {
@@ -683,19 +942,37 @@ onMounted(() => {
   mapEl.value!.addEventListener('touchstart', onTouchStart, { passive: true })
   mapEl.value!.addEventListener('touchmove', onTouchMove, { passive: true })
   trackedPlanes.addTo(map)
+  followLayer.addTo(map)
   map.on('moveend', () => {
-    if (showAll.value) refreshTraffic()
+    if (trafficMode.value === 'all') refreshTraffic()
+    else if (trafficMode.value === 'sample') areaMoved.value = true
   })
   refreshStatus()
   statusTimer = window.setInterval(refreshStatus, 120000)
-  if (showAll.value) refreshTraffic()
+  if (trafficMode.value !== 'off') refreshTraffic()
 
   const fromUrl = String(route.query.flights ?? '')
     .split(',')
     .map((q) => q.trim().toUpperCase())
     .filter(Boolean)
-  Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(syncUrl)
+  Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(() => {
+    syncUrl()
+    if (route.query.view === '3d') {
+      setMode('3d')
+      router.replace({ query: { ...route.query, view: undefined } })
+    }
+  })
+  const followFromUrl = String(route.query.follow ?? '').trim()
+  if (followFromUrl) follow(followFromUrl)
   trackedTimer = window.setInterval(refreshTracked, 15000)
+  // Fetch the 3D code once the 2D map is up and the browser is idle, so opening 3D doesn't wait on it.
+  const warm3d = () => {
+    if (goodConnection()) loadMap3D().catch(() => undefined)
+  }
+  // Safari has no requestIdleCallback.
+  if (typeof window.requestIdleCallback === 'function')
+    window.requestIdleCallback(warm3d, { timeout: 5000 })
+  else setTimeout(warm3d, 3000)
 })
 
 onBeforeUnmount(() => {
@@ -709,6 +986,16 @@ onBeforeUnmount(() => {
   map?.remove()
 })
 </script>
+
+<style>
+/* Inspect cursor instead of Leaflet's open hand; grabbing while dragging, pointer over planes stays. */
+.inspect-cursor.leaflet-grab {
+  cursor: var(--inspect-cursor);
+}
+.leaflet-dragging .inspect-cursor.leaflet-grab {
+  cursor: grabbing;
+}
+</style>
 
 <style scoped>
 .map-page {
@@ -751,6 +1038,19 @@ onBeforeUnmount(() => {
   bottom: 24px;
   left: 12px;
 }
+.altitude-rail {
+  position: absolute;
+  z-index: 1000;
+  right: 12px;
+  top: 150px;
+  bottom: 72px;
+  max-height: 420px;
+}
+.mobile .altitude-rail {
+  right: 8px;
+  top: 60px;
+  bottom: 104px;
+}
 .mode-toggle {
   position: absolute;
   z-index: 1000;
@@ -761,7 +1061,8 @@ onBeforeUnmount(() => {
 .mobile .top-left {
   top: 8px;
   left: 8px;
-  right: 60px;
+  /* Clear of the flight-level rail. */
+  right: 92px;
   width: auto;
   padding: 6px 10px;
   font-size: 12px;
@@ -808,9 +1109,24 @@ onBeforeUnmount(() => {
 .is-3d :deep(.edr-tip) {
   display: none;
 }
+.flights-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-area {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
 .error-text {
   color: #fca5a5;
   margin-top: 4px;
+}
+.tracked :deep(.v-chip.following) {
+  outline: 2px solid #fff;
 }
 .tracked {
   display: flex;
