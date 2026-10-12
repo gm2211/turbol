@@ -131,13 +131,23 @@ function show(e: L.LeafletMouseEvent, delay: number) {
   update(e.latlng, e.containerPoint.x, e.containerPoint.y, delay)
 }
 
+/** While the map pans or zooms the readout stays hidden: no lookups or redraws on every move. */
+let moving = false
+
 function hide() {
   window.clearTimeout(timer)
   currentKey = undefined
   tip.value = undefined
 }
 
-const onMove = (e: L.LeafletMouseEvent) => show(e, 60)
+const onMoveStart = () => {
+  moving = true
+  hide()
+}
+const onMoveEnd = () => (moving = false)
+const onMove = (e: L.LeafletMouseEvent) => {
+  if (!moving) show(e, 60)
+}
 const onTap = (e: L.LeafletMouseEvent) => {
   if ((e.originalEvent as PointerEvent).pointerType === 'mouse') return
   show(e, 0)
@@ -152,8 +162,18 @@ function refresh() {
 watch(
   () => props.map,
   (map, old) => {
-    old?.off('mousemove', onMove).off('mouseout', hide).off('movestart', hide).off('click', onTap)
-    map?.on('mousemove', onMove).on('mouseout', hide).on('movestart', hide).on('click', onTap)
+    old
+      ?.off('mousemove', onMove)
+      .off('mouseout', hide)
+      .off('movestart', onMoveStart)
+      .off('moveend', onMoveEnd)
+      .off('click', onTap)
+    map
+      ?.on('mousemove', onMove)
+      .on('mouseout', hide)
+      .on('movestart', onMoveStart)
+      .on('moveend', onMoveEnd)
+      .on('click', onTap)
   },
   { immediate: true }
 )
@@ -164,7 +184,8 @@ onBeforeUnmount(() => {
   props.map
     ?.off('mousemove', onMove)
     .off('mouseout', hide)
-    .off('movestart', hide)
+    .off('movestart', onMoveStart)
+    .off('moveend', onMoveEnd)
     .off('click', onTap)
 })
 </script>

@@ -235,7 +235,9 @@ const toDeck = (v: MapView): MapViewState => ({
   zoom: v.zoom - 1,
   pitch: v.pitch,
   bearing: v.bearing,
-  maxPitch
+  maxPitch,
+  // The 2D map's limit (the basemap's last level).
+  maxZoom: 11
 })
 const fromDeck = (v: MapViewState): MapView => ({
   lat: v.latitude,
