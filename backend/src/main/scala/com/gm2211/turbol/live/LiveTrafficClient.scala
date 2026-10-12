@@ -32,6 +32,13 @@ final case class LiveAircraft(
   seenSecondsAgo: Double
 )
 
+/** One airport on a callsign's route. */
+final case class Stop(iata: Option[String], icao: Option[String], lat: Double, lon: Double) {
+  def is(place: Place): Boolean =
+    iata.contains(place.code.toUpperCase) || icao.contains(place.code.toUpperCase) ||
+      com.gm2211.turbol.turbulence.RouteAnalyzer.greatCircleKm(lat, lon, place.lat, place.lon) < 5
+}
+
 /** A scheduled route for a callsign. */
 final case class Place(code: String, name: String, lat: Double, lon: Double)
 final case class FlightRoute(
@@ -70,10 +77,13 @@ object FlightRoute {
  * Keyless public data sources:
  *   - positions: adsb.lol (`/v2/lat/{lat}/lon/{lon}/dist/{nm}`, `/v2/hex`, `/v2/callsign`), ODbL, readsb JSON format
  *   - routes: adsbdb.com (`/v0/callsign/{callsign}`), which also accepts IATA flight numbers like "UA1"
+ *   - batch routes: adsb.im's routeset (the adsb.lol project's route database), which uses each plane's position to
+ *     pick the leg it is plausibly flying
  */
 object LiveTrafficClient {
   private val adsbLol = "https://api.adsb.lol/v2"
   private val adsbDb = "https://api.adsbdb.com/v0"
+  private val routeSetUrl = "https://adsb.im/api/0/routeset"
 
   private def enc(s: String): String = URLEncoder.encode(s, StandardCharsets.UTF_8)
 
@@ -120,8 +130,11 @@ object LiveTrafficClient {
     }
   }
 
-  def aircraftAround(lat: Double, lon: Double, radiusNm: Int): (Instant, Seq[LiveAircraft]) =
-    parseAircraftList(adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = true))
+  /** Background (map) calls by default; a route search passes `background = false` and gives up on a 429. */
+  def aircraftAround(lat: Double, lon: Double, radiusNm: Int, background: Boolean = true): (Instant, Seq[LiveAircraft]) =
+    parseAircraftList(
+      adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = background, retry = background)
+    )
 
   def byHex(hex: String): Option[LiveAircraft] =
     parseAircraftList(adsbLolGet(s"$adsbLol/hex/${enc(hex.toLowerCase)}"))._2.headOption
@@ -153,6 +166,33 @@ object LiveTrafficClient {
     Try(Http.getString(s"$adsbDb/callsign/${enc(callsign.toUpperCase)}", attempts = 2)).toOption
       .flatMap(body => parse(body).toOption)
       .flatMap(json => parseRoute(json.hcursor.downField("response").downField("flightroute")))
+
+  /** Airports a callsign flies through, in order (multi-leg flight numbers list every stop), keyed by callsign. */
+  def routeSet(planes: Seq[LiveAircraft]): Map[String, Seq[Stop]] = {
+    val body = Json.obj(
+      "planes" -> Json.fromValues(planes.flatMap { a =>
+        a.callsign.map(cs =>
+          Json.obj("callsign" -> Json.fromString(cs), "lat" -> Json.fromDoubleOrNull(a.lat), "lng" -> Json.fromDoubleOrNull(a.lon))
+        )
+      })
+    )
+    parseRouteSet(Http.postJson(routeSetUrl, body.noSpaces))
+  }
+
+  private[live] def parseRouteSet(body: String): Map[String, Seq[Stop]] =
+    parse(body).toOption.flatMap(_.asArray).getOrElse(Vector.empty).flatMap { j =>
+      val c = j.hcursor
+      for {
+        callsign <- c.get[String]("callsign").toOption
+        airports <- c.downField("_airports").values
+      } yield callsign.toUpperCase -> airports.toSeq.flatMap { a =>
+        val ac = a.hcursor
+        for {
+          lat <- ac.get[Double]("lat").toOption
+          lon <- ac.get[Double]("lon").toOption
+        } yield Stop(ac.get[String]("iata").toOption, ac.get[String]("icao").toOption, lat, lon)
+      }
+    }.toMap
 
   private[live] def parseRoute(c: ACursor): Option[FlightRoute] = {
     def place(field: String): Option[Place] = {

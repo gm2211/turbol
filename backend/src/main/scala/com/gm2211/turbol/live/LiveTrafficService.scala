@@ -12,7 +12,8 @@ import com.google.common.cache.{Cache, CacheBuilder}
 
 import java.time.{Duration, Instant}
 import java.util.concurrent.{ConcurrentHashMap, Executors}
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationLong
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Try
 
 /** One lattice cell's aircraft as last fetched from adsb.lol. */
@@ -37,6 +38,48 @@ final class LiveTrafficService extends BackendLogging {
 
   def route(callsign: String): Option[FlightRoute] =
     routeCache.get(callsign.toUpperCase, () => LiveTrafficClient.route(callsign))
+
+  private val alongPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+
+  /**
+   * Every aircraft within reach of the great circle between two points: the lattice cells along it, from the cache
+   * when fresh and fetched now otherwise (a person is waiting on a route search, so these are foreground calls).
+   */
+  def aircraftAlong(fromLat: Double, fromLon: Double, toLat: Double, toLon: Double): Seq[LiveAircraft] = {
+    val steps = math.max(1, math.ceil(RouteAnalyzer.greatCircleKm(fromLat, fromLon, toLat, toLon) / alongStepKm).toInt)
+    // Each step re-aims at the destination, so the points stay on the great circle.
+    val points = Iterator
+      .iterate((fromLat, fromLon)) { case (lat, lon) =>
+        val step = math.min(alongStepKm, RouteAnalyzer.greatCircleKm(lat, lon, toLat, toLon))
+        RouteAnalyzer.destination(lat, lon, RouteAnalyzer.bearing(lat, lon, toLat, toLon), step)
+      }
+      .take(steps + 1)
+      .toSeq
+    val wanted = points.flatMap { case (la, lo) => cellsCovering(la, lo, la, lo) }.distinct
+    val now = Instant.now()
+    def cached(cell: Cell): Seq[LiveAircraft] = Option(cells.get(cell)).fold(Seq.empty)(_._2)
+    val fetched = wanted.map { cell =>
+      Option(cells.get(cell)).filter(c => Duration.between(c._1, now).compareTo(alongMaxAge) <= 0) match {
+        case Some((_, aircraft)) => Future.successful(aircraft)
+        case None =>
+          Future {
+            Try(LiveTrafficClient.aircraftAround(cell.lat, cell.lon, cellRadiusNm, background = false)).fold(
+              e => {
+                log.warn("adsb.lol fetch failed", safe("cell", cell.toString), unsafe("error", e.getMessage))
+                cached(cell)
+              },
+              { case (_, aircraft) => cells.put(cell, (Instant.now(), aircraft)); aircraft }
+            )
+          }(using alongPool)
+      }
+    }
+    // A long route can outrun adsb.lol's rate limit: answer with what arrived in time (late cells still fill the cache).
+    val deadline = System.nanoTime() + alongTimeout.toNanos
+    val all = wanted.zip(fetched).flatMap { case (cell, f) =>
+      Try(Await.result(f, math.max(0L, deadline - System.nanoTime()).nanos)).getOrElse(cached(cell))
+    }
+    all.groupBy(_.hex).values.map(_.minBy(_.seenSecondsAgo)).toSeq
+  }
 
   /**
    * The cached cells covering a viewport, as they are: never waits on adsb.lol. Stale or missing cells are queued for a
@@ -73,6 +116,9 @@ object LiveTrafficService {
   private val cellDeg = 5.0
   val cellRadiusNm = 250 // adsb.lol's maximum
   val maxFetchesPerRequest = 20
+  private val alongStepKm = 400.0
+  private val alongMaxAge = Duration.ofSeconds(180)
+  private val alongTimeout = Duration.ofSeconds(15)
   // A whole-country view is more cells than the API budget refreshes quickly, but planes there are a few pixels wide.
   private def ttlFor(cellsInView: Int): Duration =
     if (cellsInView > 24) Duration.ofSeconds(180) else Duration.ofSeconds(60)

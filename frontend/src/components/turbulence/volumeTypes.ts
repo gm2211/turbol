@@ -2,10 +2,21 @@
 import type { Thresholds } from '@/api/turbulence'
 
 export interface VolumeRequest {
-  url: string
+  /** The binary volume (see prefetchVolume): a copy, as the page keeps its own. */
+  volume: ArrayBuffer
   thresholds: Thresholds
   /** [lon, lat] the columns are ordered from. */
   center: [number, number]
+}
+
+/** A decoded binary volume: voxels are 4 ints each (lat * 100, lon * 100, level index, EDR * 200). */
+export interface BinaryVolume {
+  levelsFt: number[]
+  cellKm: number
+  voxels: Int32Array
+  globalLevelsFt: number[]
+  globalCellKm: number
+  globalVoxels: Int32Array
 }
 
 /** Struct-of-arrays columns, index-aligned. Category is an index into columnCategories. */
@@ -23,7 +34,6 @@ export interface ColumnBatch {
 }
 
 export type VolumeMessage =
-  | { type: 'progress'; bytes: number }
   | { type: 'meta'; cellKm: number; total: number }
   | { type: 'batch'; batch: ColumnBatch }
   | { type: 'done' }

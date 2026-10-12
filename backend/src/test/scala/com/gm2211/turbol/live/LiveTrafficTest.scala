@@ -96,4 +96,21 @@ class LiveTrafficTest extends BaseTest {
     mdwSrq.isFlownBy(at(36.0, -100.0, 160)) shouldBe false // far off the route
     mdwSrq.isFlownBy(at(27.6, -82.4, 0)) shouldBe true // on approach, any heading
   }
+
+  test("reads routeset stops and matches one leg of a multi-leg route") {
+    val stops = LiveTrafficClient.parseRouteSet(
+      """[{"callsign":"UAL123","_airport_codes_iata":"ORD-SAN-DEN","_airports":[
+        |{"iata":"ORD","icao":"KORD","lat":41.97,"lon":-87.90},
+        |{"iata":"SAN","icao":"KSAN","lat":32.73,"lon":-117.19},
+        |{"iata":"DEN","icao":"KDEN","lat":39.86,"lon":-104.67}]}]""".stripMargin
+    )("UAL123")
+    stops.flatMap(_.iata) shouldBe Seq("ORD", "SAN", "DEN")
+    val ord = Place("ORD", "Chicago", 41.97, -87.90)
+    val san = Place("SAN", "San Diego", 32.73, -117.19)
+    val den = Place("KDEN", "Denver", 39.86, -104.67)
+    com.gm2211.turbol.endpoints.FlightsEndpoint.flies(stops, ord, san) shouldBe true
+    com.gm2211.turbol.endpoints.FlightsEndpoint.flies(stops, san, den) shouldBe true
+    com.gm2211.turbol.endpoints.FlightsEndpoint.flies(stops, ord, den) shouldBe false
+    com.gm2211.turbol.endpoints.FlightsEndpoint.flies(stops, san, ord) shouldBe false
+  }
 }

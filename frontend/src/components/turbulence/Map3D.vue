@@ -87,7 +87,8 @@ import {
   type Layer,
   LinearInterpolator,
   type MapViewState,
-  type PickingInfo
+  type PickingInfo,
+  WebMercatorViewport
 } from '@deck.gl/core'
 import { IconLayer, LineLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
@@ -98,9 +99,9 @@ import {
   type TurbulenceStatus,
   categoryColors,
   categoryLabels,
-  apiBase,
   flightLevel,
-  overlayRgba
+  overlayRgba,
+  prefetchVolume
 } from '@/api/turbulence'
 import { basemapLayer, blue, ftToM, hexRgb, tooltipStyle } from '@/components/turbulence/scene3d'
 import {
@@ -381,22 +382,36 @@ const columnData = computed(() => ({ length: visible.value.count }))
 
 let loadedFrame: string | undefined
 let worker: Worker | undefined
-function loadVolume() {
+async function loadVolume() {
   const frame = props.frame
   const thresholds = props.status?.thresholds.Medium
   if (!frame || !thresholds || loadedFrame === frame.id) return
   loadedFrame = frame.id
   worker?.terminate()
-  worker = new Worker(new URL('./volumeWorker.ts', import.meta.url), { type: 'module' })
-  let total = 0
-  let received = 0
+  worker = undefined
   loadState.value = 'Loading turbulence…'
   loadProgress.value = undefined
-  worker.onmessage = (e: MessageEvent<VolumeMessage>) => {
+  let volume: ArrayBuffer
+  try {
+    volume = await prefetchVolume(frame.id)
+  } catch (e) {
+    console.warn('volume load failed', e)
+    if (loadedFrame === frame.id) {
+      loadState.value = ''
+      loadedFrame = undefined
+    }
+    return
+  }
+  // Another frame was picked, or 3D closed, while this one downloaded.
+  if (loadedFrame !== frame.id || !deck) return
+  const current = new Worker(new URL('./volumeWorker.ts', import.meta.url), { type: 'module' })
+  worker = current
+  let total = 0
+  let received = 0
+  current.onmessage = (e: MessageEvent<VolumeMessage>) => {
+    if (worker !== current) return
     const m = e.data
-    if (m.type === 'progress') {
-      loadState.value = `Loading turbulence… ${(m.bytes / 1e6).toFixed(1)} MB`
-    } else if (m.type === 'meta') {
+    if (m.type === 'meta') {
       // A newer frame: drop the old columns only now, so the scene doesn't go blank while downloading.
       store = emptyBatch(m.total)
       storeLength = 0
@@ -409,23 +424,41 @@ function loadVolume() {
     } else {
       if (m.type === 'error') console.warn('volume load failed', m.message)
       loadState.value = ''
-      worker?.terminate()
+      current.terminate()
       worker = undefined
     }
   }
   const request: VolumeRequest = {
-    url: `${apiBase()}/api/turbulence/volume/${frame.id}?step=6`,
+    volume,
     // Plain copies: the reactive props are proxies, which can't cross into the worker.
     thresholds: { ...toRaw(thresholds) },
     center: [Number(viewState.longitude), Number(viewState.latitude)]
   }
-  worker.postMessage(request)
+  current.postMessage(request)
 }
 
 /** Sets tilt and rotation directly (used while the shift+drag that opened 3D is still going). */
 function setRotation(pitch: number, bearing: number) {
   viewState = { ...viewState, pitch: Math.min(Math.max(pitch, 0), maxPitch), bearing }
   deck?.setProps({ initialViewState: viewState })
+}
+
+/** Moves the camera by screen pixels (the W/A/S/D keys), as if the ground were dragged the other way. */
+function panBy(dx: number, dy: number) {
+  const el = canvasEl.value
+  if (!deck || !el) return
+  const { clientWidth: width, clientHeight: height } = el
+  const viewport = new WebMercatorViewport({ ...viewState, width, height })
+  const [longitude, latitude] = viewport.unproject([width / 2 + dx, height / 2 + dy])
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
+  viewState = {
+    ...viewState,
+    longitude: longitude!,
+    latitude: Math.max(Math.min(latitude!, 85), -85)
+  }
+  deck.setProps({ initialViewState: viewState })
+  window.clearTimeout(moveTimer)
+  moveTimer = window.setTimeout(() => emit('move', fromDeck(viewState)), 400)
 }
 
 function animateTo(pitch: number, bearing: number, duration = 600): Promise<MapView> {
@@ -448,7 +481,7 @@ const tiltUp = () => animateTo(50, viewState.bearing === 0 ? -15 : (viewState.be
 /** Animates back to flat and north-up, then gives the view to hand back to the 2D map. */
 const flatten = () => animateTo(0, 0, 450)
 
-defineExpose({ setRotation, tiltUp, flatten })
+defineExpose({ setRotation, tiltUp, flatten, panBy })
 
 // Clicks are picked by hand (deck's onClick doesn't fire in Chromium with deck.gl 9.4).
 let downAt: [number, number] = [0, 0]

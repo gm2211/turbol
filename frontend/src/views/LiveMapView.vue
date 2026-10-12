@@ -106,7 +106,7 @@
       <form class="add-flight mt-2" @submit.prevent="addFlight">
         <v-text-field
           v-model="flightQuery"
-          placeholder="Add flight, e.g. UA1517"
+          placeholder="UA1517 or JFK LAX"
           density="compact"
           hide-details
           variant="outlined"
@@ -116,7 +116,64 @@
           @click:append-inner="addFlight"
         />
       </form>
+      <div class="route-day" v-if="routeQuery || routeResults">
+        <span class="muted">Day</span>
+        <input v-model="searchDay" type="date" class="day-input" aria-label="Day" />
+        <button
+          v-if="searchDay !== todayLocal()"
+          type="button"
+          class="link-btn"
+          @click="searchDay = todayLocal()"
+        >
+          Today
+        </button>
+      </div>
       <div class="error-text" v-if="addError">{{ addError }}</div>
+      <div class="route-results" v-if="routeResults">
+        <div class="route-head">
+          <span>
+            {{ routeResults.from.code }} → {{ routeResults.to.code }}:
+            <template v-if="!routeResults.live">{{ dayLabel(routeResults.day) }}</template>
+            <template v-else-if="routeResults.flights.length">
+              {{ routeResults.flights.length }} in the air now
+            </template>
+            <template v-else>none in the air now</template>
+          </span>
+          <v-btn
+            icon="mdi-close"
+            size="x-small"
+            variant="text"
+            theme="dark"
+            aria-label="Close results"
+            @click="routeResults = undefined"
+          />
+        </div>
+        <button
+          v-for="f in routeResults.flights"
+          :key="f.aircraft.hex"
+          type="button"
+          class="route-result"
+          @click="pickRouteFlight(f)"
+        >
+          <span class="dot" :style="{ background: categoryColors[f.aircraft.category] }" />
+          <b>{{ f.callsign }}</b>
+          <span class="muted">
+            {{
+              [f.aircraft.typeCode, flightLevel(f.aircraft.altitudeFt)].filter(Boolean).join(' · ')
+            }}
+            <template v-if="f.minutesToGo !== undefined">
+              · {{ formatDuration(f.minutesToGo) }} left</template
+            >
+          </span>
+        </button>
+        <div class="muted small" v-if="!routeResults.live">
+          The map only shows flights in the air now.
+        </div>
+        <router-link class="analyze-link" :to="analyzeLink(routeResults)">
+          Forecast {{ routeResults.from.code }} → {{ routeResults.to.code }}
+          {{ routeResults.live ? 'in Analyze' : `for ${dayLabel(routeResults.day)}` }} ›
+        </router-link>
+      </div>
       <div class="tracked" v-if="tracked.length">
         <v-chip
           v-for="t in tracked"
@@ -258,13 +315,23 @@ import {
   fetchTraffic,
   flightLevel,
   formatUtc,
+  prefetchVolume,
   tileUrl
 } from '@/api/turbulence'
-import { lookupFlight } from '@/api/flights'
+import {
+  type Place,
+  type RouteFlight,
+  airportByCode,
+  formatDuration,
+  lookupFlight,
+  parseRouteQuery,
+  searchRoute
+} from '@/api/flights'
 import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
+import { listenKeyPan } from '@/util/keyPan'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
 
 interface TrackedFlight {
@@ -295,7 +362,8 @@ const frameIndex = ref(0)
 const aircraftCount = ref(0)
 const trafficComplete = ref(false)
 type TrafficMode = 'off' | 'sample' | 'all'
-const trafficMode = ref<TrafficMode>(readTrafficMode())
+// Every visit opens with no flights; the choice isn't remembered.
+const trafficMode = ref<TrafficMode>('off')
 const sampleSize = 100
 const sampleRotateMs = 30000
 const shownCount = ref(0)
@@ -309,16 +377,6 @@ const addError = ref('')
 const tracked = ref<TrackedFlight[]>([])
 const mobile = useMobile()
 const showControls = ref(false)
-
-function readTrafficMode(): TrafficMode {
-  try {
-    const saved = localStorage.getItem('turbol.trafficMode')
-    if (saved === 'off' || saved === 'sample' || saved === 'all') return saved
-    return localStorage.getItem('turbol.showAllFlights') === 'true' ? 'all' : 'off'
-  } catch {
-    return 'off'
-  }
-}
 
 const levelLabel = computed(() => flightLevel(levelFt.value))
 /** Levels the 3D view shows: around the map altitude until the rail's band is moved; the full range is every level. */
@@ -615,11 +673,6 @@ function searchThisArea() {
 }
 
 watch(trafficMode, (m) => {
-  try {
-    localStorage.setItem('turbol.trafficMode', m)
-  } catch {
-    // private mode: the choice just isn't remembered
-  }
   window.clearTimeout(trafficTimer)
   trafficRequest++
   clearTraffic()
@@ -694,8 +747,11 @@ async function track(query: string, pan: boolean): Promise<string | undefined> {
 async function addFlight() {
   const query = flightQuery.value.trim().toUpperCase()
   if (!query || adding.value) return
+  const pair = parseRouteQuery(query)
+  if (pair) return searchByRoute(pair)
   adding.value = true
   addError.value = ''
+  routeResults.value = undefined
   try {
     const error = await track(query, true)
     if (error) addError.value = error
@@ -709,6 +765,77 @@ async function addFlight() {
   } finally {
     adding.value = false
   }
+}
+
+// Route search: "JFK LAX" in the add box lists the flights in the air now on that route, to pick one. Live positions
+// exist only for now, so another day links to Analyze's forecast for the route on that day instead.
+interface RouteResults {
+  from: Place
+  to: Place
+  day: string
+  live: boolean
+  flights: RouteFlight[]
+}
+const routeResults = ref<RouteResults>()
+const searchDay = ref(todayLocal())
+const routeQuery = computed(() => parseRouteQuery(flightQuery.value))
+
+function todayLocal(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function dayLabel(day: string): string {
+  return new Date(`${day}T12:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+function analyzeLink(r: RouteResults) {
+  return {
+    path: '/analyze',
+    query: { from: r.from.code, to: r.to.code, day: r.live ? undefined : r.day }
+  }
+}
+
+async function searchByRoute([fromCode, toCode]: [string, string]) {
+  adding.value = true
+  addError.value = ''
+  routeResults.value = undefined
+  try {
+    const [from, to] = await Promise.all([airportByCode(fromCode), airportByCode(toCode)])
+    if (!from || !to) {
+      addError.value = `Couldn't find an airport called ${from ? toCode : fromCode}.`
+      return
+    }
+    const day = searchDay.value
+    const live = day === todayLocal()
+    routeResults.value = { from, to, day, live, flights: live ? await searchRoute(from, to) : [] }
+  } catch (e) {
+    addError.value = `Route search failed: ${(e as Error).message}`
+  } finally {
+    adding.value = false
+  }
+}
+
+watch(searchDay, () => {
+  const r = routeResults.value
+  if (r && !adding.value) searchByRoute([r.from.code, r.to.code])
+})
+
+function pickRouteFlight(f: RouteFlight) {
+  const a = f.aircraft
+  if (!tracked.value.some((t) => t.hex === a.hex))
+    tracked.value.push({ query: f.callsign, label: f.callsign, hex: a.hex, aircraft: a })
+  routeResults.value = undefined
+  flightQuery.value = ''
+  drawTracked()
+  if (map) map.setView([a.lat, a.lon], Math.max(map.getZoom(), 6))
+  follow(a.hex)
+  syncUrl()
 }
 
 function removeFlight(hex: string) {
@@ -821,6 +948,13 @@ async function refreshStatus() {
 
 watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
 
+// The 3D volume of the frame the map opens on, fetched as soon as it's known, so opening 3D draws without waiting.
+const stopVolumeWarm = watch(selectedFrame, (f) => {
+  if (!f) return
+  stopVolumeWarm()
+  if (goodConnection() || mode.value === '3d') prefetchVolume(f.id).catch(() => undefined)
+})
+
 // GTG's edge: 3 km inside, the coarse GFS-derived layer outside.
 let gtgOutline: L.Polyline | undefined
 watch(
@@ -843,6 +977,7 @@ const stopConnectionWatch = onConnectionChange(() => {
 // 3D mode: deck.gl drawn over the Leaflet map, loaded only the first time it's opened so 2D stays light.
 interface Map3DHandle {
   setRotation(pitch: number, bearing: number): void
+  panBy(dx: number, dy: number): void
   tiltUp(): Promise<MapView>
   flatten(): Promise<MapView>
 }
@@ -975,6 +1110,21 @@ function onTouchMove(e: TouchEvent) {
   } else if (pinch > 40) twoFinger = undefined
 }
 
+// W/A/S/D pan the map, in 2D and 3D, while held.
+let keyPanning = false
+const stopKeyPan = listenKeyPan(
+  (dx, dy) => {
+    keyPanning = true
+    if (mode.value === '3d') map3d.value?.panBy(dx, dy)
+    else map?.panBy([dx, dy], { animate: false })
+  },
+  () => {
+    if (!keyPanning) return
+    keyPanning = false
+    if (mode.value === '2d') map?.fire('moveend')
+  }
+)
+
 onMounted(() => {
   if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
   // boxZoom off: shift+drag opens 3D instead.
@@ -993,6 +1143,8 @@ onMounted(() => {
   trackedPlanes.addTo(map)
   followLayer.addTo(map)
   map.on('moveend', () => {
+    // Held W/A/S/D move the map every frame: fetch once they're let go.
+    if (keyPanning) return
     if (trafficMode.value === 'all') refreshTraffic()
     else if (trafficMode.value === 'sample') areaMoved.value = true
   })
@@ -1025,6 +1177,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopKeyPan()
   topLeftObserver.disconnect()
   window.clearTimeout(trafficTimer)
   window.clearInterval(trackedTimer)
@@ -1199,6 +1352,76 @@ onBeforeUnmount(() => {
   top: 12px;
   left: 50%;
   transform: translateX(-50%);
+}
+.route-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.day-input {
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  color-scheme: dark;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: #93c5fd;
+  font: inherit;
+}
+.route-results {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.route-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 500;
+}
+.route-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  color: #fff;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.route-result:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.route-result .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.analyze-link {
+  color: #93c5fd;
+  text-decoration: none;
+  margin-top: 2px;
+}
+.small {
+  font-size: 0.85em;
 }
 .error-text {
   color: #fca5a5;

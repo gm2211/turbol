@@ -11,9 +11,9 @@ import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.generic.auto.*
 import org.http4s.circe.*
-import org.http4s.headers.{`Cache-Control`, `Content-Type`}
+import org.http4s.headers.{`Cache-Control`, `Content-Encoding`, `Content-Type`}
 import org.http4s.server.middleware.GZip
-import org.http4s.{CacheDirective, HttpRoutes, MediaType}
+import org.http4s.{CacheDirective, ContentCoding, HttpRoutes, MediaType}
 
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -184,6 +184,24 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
                 Ok(body).map(
                   _.withContentType(`Content-Type`(MediaType.application.json))
                     .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour)))
+                )
+              }
+            case None => NotFound("frame not loaded")
+          }
+
+        // The 3D map's form: binary, gzipped once when built (see Volume.toBinary), so serving it costs no CPU.
+        case GET -> Root / "volume" / id / "bin" :? StepParam(step) =>
+          frame(id) match {
+            case Some(f) =>
+              val s = step.getOrElse(VolumeSampler.defaultStep).max(VolumeSampler.minStep).min(24)
+              val global = store.current.globalNear(f.validTime)
+              IO.blocking(volumes.volumeGzip(f, global, s)).flatMap { gz =>
+                Ok(gz).map(
+                  _.withContentType(`Content-Type`(MediaType.application.`octet-stream`))
+                    .putHeaders(
+                      `Content-Encoding`(ContentCoding.gzip),
+                      `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour))
+                    )
                 )
               }
             case None => NotFound("frame not loaded")

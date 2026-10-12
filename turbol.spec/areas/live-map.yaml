@@ -16,10 +16,15 @@ behaviors:
       text: too slow - 40s to fully load - should take under 1s - if we want to gradually populate aircrafts, that's ok
   - id: flights-toggle
     description: >-
-      The map opens with turbulence only. A Flights selector (None by default, remembered per
-      browser) adds either every airborne aircraft in view or a random sample of 100.
+      The map opens with turbulence only, and its Flights selector starts on None on every visit (an
+      earlier choice is not remembered). Picking an option adds either every airborne aircraft in
+      view or a random sample of 100.
     source:
       text: starting with just the map with turbulence, then having a toggle to show all flights
+    details: >-
+      Changed 2026-10-12: the selector used to remember the last choice per browser; Giulio asked
+      for it to always start on None ("default selection should be no flights displayed", turbol
+      project chat, 2026-10-12 05:40Z).
   - id: flights-toggle-fits-panel
     description: >-
       The Flights selector fits inside the map's panel on desktop and phone widths, with every
@@ -27,6 +32,13 @@ behaviors:
     source:
       text: ui mangled
       reference: Giulio, turbol project chat, 2026-10-12 04:22Z (screenshot of "All" clipped at the panel edge)
+  - id: wasd-pan
+    description: >-
+      Holding W, A, S or D pans the live map up, left, down or right, smoothly and continuously, in
+      2D and 3D. The keys are ignored while typing in a text field such as Add flight.
+    source:
+      text: wasd should pan map
+      reference: Giulio, turbol project chat, 2026-10-12 05:42Z
   - id: random-flights-sample
     description: >-
       "100 random" shows a random sample of 100 airborne flights from the searched area and draws a
@@ -49,6 +61,19 @@ behaviors:
       airborne get a message instead.
     source:
       text: the ability to add a specific flight number right here
+  - id: add-flight-by-route
+    description: >-
+      The same field also takes a route ("JFK LAX", "JFK-LAX", ICAO codes too) and a day, today by
+      default. For today it lists the flights in the air now on that route; picking one adds it to
+      the map and follows it. Another day links to Analyze's forecast for the route on that day.
+    source:
+      text: I should be able to search aircraft by route and day, not just number straight from map
+      reference: Giulio, turbol project thread, 2026-10-12 05:41Z
+    details: >-
+      Only live positions are available (no keyless schedule source), so "in the air now" is the
+      only list; the other-day link is the assumed default for days with no live flights.
+      Candidates are aircraft near the great circle and heading for the destination, kept when the
+      adsb.im routeset (adsbdb as fallback) lists origin then destination as consecutive stops.
   - id: smooth-forecast-scrub
     description: >-
       Moving the forecast time slider swaps between preloaded hours without waiting for tiles, and a

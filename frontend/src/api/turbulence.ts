@@ -164,6 +164,31 @@ export function tileUrl(frameId: string, levelFt: number): string {
   return `${apiBase()}/api/turbulence/tiles/${frameId}/${levelFt}/{z}/{x}/{y}.png`
 }
 
+/** The 3D view's turbulence volume for a frame (binary, see volumeWorker.ts), at the block size it draws. */
+export function volumeUrl(frameId: string): string {
+  return `${apiBase()}/api/turbulence/volume/${frameId}/bin?step=6`
+}
+
+const volumes = new Map<string, Promise<ArrayBuffer>>()
+
+/**
+ * A frame's 3D volume, downloaded once and kept for the last two frames asked for. The live map starts it while 2D is
+ * idle, so opening 3D draws without waiting on the network.
+ */
+export function prefetchVolume(frameId: string): Promise<ArrayBuffer> {
+  let volume = volumes.get(frameId)
+  if (!volume) {
+    volume = fetch(volumeUrl(frameId)).then((res) => {
+      if (!res.ok) throw new Error(`volume request failed: ${res.status}`)
+      return res.arrayBuffer()
+    })
+    volume.catch(() => volumes.delete(frameId))
+    volumes.set(frameId, volume)
+    if (volumes.size > 2) volumes.delete(volumes.keys().next().value!)
+  }
+  return volume
+}
+
 export function formatUtc(iso: string): string {
   const d = new Date(iso)
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}Z`

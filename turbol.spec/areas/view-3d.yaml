@@ -35,3 +35,10 @@ behaviors:
       text: >-
         since we have 3d view in live map, no need for dedicated tab (but we should borrow the
         "vertical" FL control)
+  - id: operable-in-3s
+    description: >-
+      3D loads and is operable within 3 seconds: the map, the turbulence columns for the shown levels,
+      and pan, tilt and rotate. The volume comes as compact binary, compressed once when a frame is
+      built (the opening frame ahead of time), and the live map fetches it while 2D is up.
+    source:
+      text: 3d view loads and is operable within 3 seconds

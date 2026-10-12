@@ -58,6 +58,57 @@ final case class Volume(
     ints("globalVoxels", globalVoxels)
     out.append('}').toString
   }
+
+  /**
+   * The compact form the 3D map reads, ~4x smaller than the JSON once gzipped. Little-endian:
+   *
+   * {{{
+   * int32 magic "TVB1"
+   * per set (GTG, then global): int32 levelCount, int32 levelsFt[levelCount], float32 cellKm, int32 n
+   * per set: int16 lat*100 delta[n], int16 lon*100 delta[n], uint8 level index[n], uint8 EDR byte[n]
+   * }}}
+   *
+   * Each lat/lon is the change from the previous voxel's (the first from 0), wrapping around in 16 bits (a jump from
+   * lon -179 to 179 overflows; adding it back with the same wrap restores the value): neighbouring blocks are close,
+   * so the deltas are small and gzip squeezes them hard.
+   */
+  def toBinary: Array[Byte] = {
+    def header(levels: Vector[Int]) = 4 * (levels.length + 3)
+    def body(vox: Array[Int]) = vox.length / 4 * 6
+    val size = 4 + header(levelsFt) + header(globalLevelsFt) + body(voxels) + body(globalVoxels)
+    val buf = java.nio.ByteBuffer.allocate(size).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    buf.put("TVB1".getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+    def head(levels: Vector[Int], km: Double, vox: Array[Int]): Unit = {
+      buf.putInt(levels.length)
+      levels.foreach(buf.putInt)
+      buf.putFloat(km.toFloat).putInt(vox.length / 4): Unit
+    }
+    def put(vox: Array[Int]): Unit = {
+      val n = vox.length / 4
+      for (field <- 0 to 1) {
+        var prev = 0
+        var k = 0
+        while (k < n) {
+          val v = vox(k * 4 + field)
+          buf.putShort((v - prev).toShort)
+          prev = v
+          k += 1
+        }
+      }
+      for (field <- 2 to 3) {
+        var k = 0
+        while (k < n) {
+          buf.put(vox(k * 4 + field).toByte)
+          k += 1
+        }
+      }
+    }
+    head(levelsFt, cellKm, voxels)
+    head(globalLevelsFt, globalCellKm, globalVoxels)
+    put(voxels)
+    put(globalVoxels)
+    buf.array()
+  }
 }
 
 final class VolumeSampler {
@@ -67,6 +118,7 @@ final class VolumeSampler {
     .maximumWeight(VolumeSampler.cacheChars)
     .weigher((_: String, json: String) => json.length)
     .build()
+  // One volume build at a time (binary or JSON): each holds tens of MB while it runs, and the heap is sized for one.
   private val building = new Object
   private val t = Thresholds.byClass(AircraftClass.Medium)
   // Light, Moderate, Severe, Extreme as encoded bytes, worst last.
@@ -74,13 +126,37 @@ final class VolumeSampler {
     Array(t.light, t.moderate, t.severe, t.extreme).map(e => EdrLayer.encode(e.toFloat) & 0xff)
   private val alwaysShown = 2 // index of Severe: any point at Severe or worse shows
 
+  // Gzipped [[Volume.toBinary]]: built and compressed once per frame, so a request just copies bytes out.
+  private val binaryCache: Cache[String, Array[Byte]] = CacheBuilder
+    .newBuilder()
+    .maximumWeight(VolumeSampler.cacheBinaryBytes)
+    .weigher((_: String, bytes: Array[Byte]) => bytes.length)
+    .build()
+
   def volume(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume = sample(frame, global, step)
+
+  /** [[Volume.toBinary]] of [[volume]], gzipped and cached: serve it with `Content-Encoding: gzip`. */
+  def volumeGzip(frame: EdrFrame, global: Option[EdrFrame], step: Int): Array[Byte] =
+    binaryCache.get(
+      s"${frame.id}/${global.fold("-")(_.id)}/$step",
+      () => building.synchronized {
+        val raw = sample(frame, global, step).toBinary
+        val out = new java.io.ByteArrayOutputStream(raw.length / 3)
+        val gz = new java.util.zip.GZIPOutputStream(out) { `def`.setLevel(java.util.zip.Deflater.BEST_COMPRESSION) }
+        gz.write(raw)
+        gz.close()
+        out.toByteArray
+      }
+    )
+
+  /** Builds the volume a new frame will be opened with in 3D, so the first visitor doesn't wait for it. */
+  def prewarm(frame: EdrFrame, global: Option[EdrFrame]): Unit =
+    volumeGzip(frame, global, VolumeSampler.defaultStep): Unit
 
   /** [[Volume.toJsonString]] of [[volume]], cached. */
   def volumeJson(frame: EdrFrame, global: Option[EdrFrame], step: Int): String =
     cache.get(
       s"${frame.id}/${global.fold("-")(_.id)}/$step",
-      // One build at a time: each holds ~40 MB while it runs, and the heap is sized for one.
       () => building.synchronized(sample(frame, global, step).toJsonString)
     )
 
@@ -175,6 +251,12 @@ final class VolumeSampler {
 
 object VolumeSampler {
   val minShare: Double = 0.25
+
+  /** Gzipped binary volumes kept in memory: a step-6 country with the global layer is ~0.3 MB. */
+  val cacheBinaryBytes: Long = 8_000_000L
+
+  /** Block size the 3D map asks for. */
+  val defaultStep: Int = 6
 
   /**
    * Volume JSON kept in memory across frames and steps (~2.5 MB each at the production step, so ~6). JSON is ASCII,
