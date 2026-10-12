@@ -658,17 +658,14 @@ function applyTraffic(list: AircraftView[]) {
   const trackedHexes = new Set(tracked.value.map((t) => t.hex))
   if (followHex.value) trackedHexes.add(followHex.value)
   const wanted = new Map(list.filter((a) => !trackedHexes.has(a.hex)).map((a) => [a.hex, a]))
-  for (const [hex, marker] of trafficMarkers) {
-    if (!wanted.has(hex)) {
-      planes.removeLayer(marker)
-      trafficMarkers.delete(hex)
-      trafficData.delete(hex)
-    }
-  }
+  // Planes that left are dropped within the same per-frame budget as the rest: after a pan they can be thousands.
+  const leaving = [...trafficMarkers.keys()].filter((hex) => !wanted.has(hex))
   const c = map.getCenter()
-  const pending = [...wanted.values()].sort(
-    (a, b) => Math.hypot(a.lat - c.lat, a.lon - c.lng) - Math.hypot(b.lat - c.lat, b.lon - c.lng)
-  )
+  // Distances computed once, not in every comparison (a whole-view poll is ~7,000 planes).
+  const pending = [...wanted.values()]
+    .map((a) => ({ a, d: (a.lat - c.lat) ** 2 + (a.lon - c.lng) ** 2 }))
+    .sort((x, y) => x.d - y.d)
+    .map((o) => o.a)
   const size = planeSize()
   let i = 0
   let published = 0
@@ -680,6 +677,14 @@ function applyTraffic(list: AircraftView[]) {
   const step = () => {
     if (job !== applyJob) return
     const until = performance.now() + 6
+    while (leaving.length && performance.now() < until) {
+      for (const hex of leaving.splice(-100)) {
+        const marker = trafficMarkers.get(hex)
+        if (marker) planes.removeLayer(marker)
+        trafficMarkers.delete(hex)
+        trafficData.delete(hex)
+      }
+    }
     while (i < pending.length && performance.now() < until) {
       for (const end = Math.min(i + 25, pending.length); i < end; i++) {
         const a = pending[i]!
@@ -697,7 +702,7 @@ function applyTraffic(list: AircraftView[]) {
         }
       }
     }
-    if (i < pending.length) {
+    if (leaving.length || i < pending.length) {
       if (performance.now() - published > 250) publish()
       requestAnimationFrame(step)
     } else publish()
@@ -1247,8 +1252,11 @@ onMounted(() => {
     schedulePreload()
     // Held W/A/S/D move the map every frame: fetch once they're let go.
     if (keyPanning) return
-    if (trafficMode.value === 'all') refreshTraffic()
-    else if (trafficMode.value === 'sample') areaMoved.value = true
+    // A moment after the map stops, so pan after pan doesn't fetch (and redraw thousands of planes) after each one.
+    if (trafficMode.value === 'all') {
+      window.clearTimeout(trafficTimer)
+      trafficTimer = window.setTimeout(refreshTraffic, 400)
+    } else if (trafficMode.value === 'sample') areaMoved.value = true
   })
   refreshStatus()
   if (trafficMode.value !== 'off') refreshTraffic()

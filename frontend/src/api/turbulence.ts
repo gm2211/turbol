@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { type TrafficWorkerReply, type TrafficWorkerRequest, cropTraffic } from '@/api/traffic'
+import TrafficWorker from '@/api/trafficWorker?worker'
 
 export type TurbulenceCategory = 'NoData' | 'Smooth' | 'Light' | 'Moderate' | 'Severe' | 'Extreme'
 export type AircraftClass = 'Light' | 'Medium' | 'Heavy'
@@ -143,58 +145,44 @@ export async function fetchStatus(): Promise<TurbulenceStatus> {
   return (await axios.get('/api/turbulence/status')).data
 }
 
-/** Where an aircraft is now, dead-reckoned along its track from a report `ageSeconds` old. */
-export function deadReckon(a: AircraftView, ageSeconds: number): AircraftView {
-  if (
-    a.onGround ||
-    a.groundSpeedKts == null ||
-    a.trackDeg == null ||
-    ageSeconds <= 1 ||
-    ageSeconds >= 300
-  )
-    return a
-  const R = 6371
-  const d = (a.groundSpeedKts * 1.852 * ageSeconds) / 3600 / R
-  const brg = (a.trackDeg * Math.PI) / 180
-  const lat1 = (a.lat * Math.PI) / 180
-  const lon1 = (a.lon * Math.PI) / 180
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brg)
-  )
-  const lon2 =
-    lon1 +
-    Math.atan2(
-      Math.sin(brg) * Math.sin(d) * Math.cos(lat1),
-      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
-    )
-  return { ...a, lat: (lat2 * 180) / Math.PI, lon: (((lon2 * 180) / Math.PI + 540) % 360) - 180 }
-}
+export { deadReckon } from '@/api/traffic'
 
 /**
  * Airborne aircraft in a viewport, positioned for now. The server sends whole cached cells (which overlap and spill
  * past the viewport) with report times, so this dedupes, dead-reckons and crops.
  */
 export async function fetchTraffic(bounds: Bounds): Promise<TrafficResponse> {
-  const res: { aircraft: AircraftView[]; complete: boolean; serverTime: number } = (
-    await axios.get('/api/live/aircraft', { params: bounds })
-  ).data
-  const reported = (a: AircraftView) => a.positionTime ?? res.serverTime
-  const newest = new Map<string, AircraftView>()
-  for (const a of res.aircraft) {
-    const seen = newest.get(a.hex)
-    if (!seen || reported(a) > reported(seen)) newest.set(a.hex, a)
-  }
-  const aircraft = [...newest.values()]
-    .map((a) => deadReckon(a, (res.serverTime - reported(a)) / 1000))
-    .filter(
-      (a) =>
-        a.lat >= bounds.south &&
-        a.lat <= bounds.north &&
-        a.lon >= bounds.west &&
-        a.lon <= bounds.east
-    )
-  return { aircraft, complete: res.complete }
+  const url = new URL(`${apiBase()}/api/live/aircraft`, window.location.href)
+  for (const [k, v] of Object.entries(bounds)) url.searchParams.set(k, String(v))
+  if (typeof Worker === 'undefined') return cropTraffic((await axios.get(url.href)).data, bounds)
+  // A whole-view reply is ~2 MB of JSON: parsed on the page it stalled the map for a frame or two (15-35 ms on a phone)
+  // whenever it landed mid-pan, so a worker parses and crops it and hands it back in small batches.
+  trafficWorker ??= new TrafficWorker()
+  const worker = trafficWorker
+  const id = ++trafficRequestId
+  return new Promise((resolve, reject) => {
+    const aircraft: AircraftView[] = []
+    const onMessage = (e: MessageEvent<TrafficWorkerReply>) => {
+      const m = e.data
+      if (m.id !== id) return
+      if (m.error !== undefined) {
+        worker.removeEventListener('message', onMessage)
+        reject(new Error(m.error))
+        return
+      }
+      for (const a of m.aircraft) aircraft.push(a)
+      if (m.done) {
+        worker.removeEventListener('message', onMessage)
+        resolve({ aircraft, complete: m.complete })
+      }
+    }
+    worker.addEventListener('message', onMessage)
+    worker.postMessage({ id, url: url.href, bounds } satisfies TrafficWorkerRequest)
+  })
 }
+
+let trafficWorker: Worker | undefined
+let trafficRequestId = 0
 
 /** One aircraft by ICAO hex, or undefined when it isn't being tracked right now. */
 export async function fetchAircraft(hex: string): Promise<AircraftView | undefined> {
