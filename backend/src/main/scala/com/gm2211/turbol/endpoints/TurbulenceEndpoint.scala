@@ -13,7 +13,8 @@ import io.circe.generic.auto.*
 import org.http4s.circe.*
 import org.http4s.headers.{`Cache-Control`, `Content-Encoding`, `Content-Type`}
 import org.http4s.server.middleware.GZip
-import org.http4s.{CacheDirective, ContentCoding, HttpRoutes, MediaType}
+import org.http4s.{CacheDirective, ContentCoding, Header, HttpRoutes, MediaType}
+import org.typelevel.ci.CIString
 
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -80,6 +81,13 @@ object TurbulenceEndpoint {
   /** Tile URLs may name this instead of a frame id, so the map can request tiles before it has fetched the status. */
   val latestNowcast = "latest"
 
+  /**
+   * The 3D volume URL may name this for the frame the live map opens on ([[TurbulenceData.opening]]), so the page can
+   * start downloading it before it has fetched the status. The response names the frame in [[frameIdHeader]].
+   */
+  val openingFrame = "opening"
+  val frameIdHeader = "X-Frame-Id"
+
   def frameInfo(frame: EdrFrame, data: TurbulenceData): FrameInfo =
     FrameInfo(frameId(frame, data), frame.kind.toString.toLowerCase, frame.validTime, frame.issued, frame.levelsFt)
 
@@ -121,6 +129,7 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
   private def frame(id: String): Option[EdrFrame] = {
     val data = store.current
     if (id == latestNowcast) data.nowcast
+    else if (id == openingFrame) data.opening()
     else (data.nowcast.toSeq ++ data.forecast).find(f => f.id == id.takeWhile(_ != '_'))
   }
 
@@ -195,12 +204,15 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
             case Some(f) =>
               val s = step.getOrElse(VolumeSampler.defaultStep).max(VolumeSampler.minStep).min(24)
               val global = store.current.globalNear(f.validTime)
+              // A frame id names immutable data; "opening" moves with every new frame.
+              val maxAge = if (id == openingFrame) 1.minute else 1.hour
               IO.blocking(volumes.volumeGzip(f, global, s)).flatMap { gz =>
                 Ok(gz).map(
                   _.withContentType(`Content-Type`(MediaType.application.`octet-stream`))
                     .putHeaders(
                       `Content-Encoding`(ContentCoding.gzip),
-                      `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour))
+                      `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)),
+                      Header.Raw(CIString(frameIdHeader), frameId(f, store.current))
                     )
                 )
               }

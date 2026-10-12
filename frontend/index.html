@@ -12,6 +12,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Turbol">
     <title>Turbol</title>
+    <script>
+      // Opening the map in 3D: start downloading the turbulence volume now, before the app's code has loaded
+      // (prefetchVolume in src/api/turbulence.ts picks it up).
+      if (/^\/(map|3d)/.test(location.pathname) && /(^|[?&])view=3d/.test(location.search) || location.pathname.startsWith('/3d'))
+        window.__openingVolume = fetch('/api/turbulence/volume/opening/bin?step=6')
+          .then((r) => (r.ok ? r.arrayBuffer().then((volume) => ({ id: r.headers.get('X-Frame-Id'), volume })) : undefined))
+          .catch(() => undefined)
+    </script>
 </head>
 <body>
 <div id="app"></div>

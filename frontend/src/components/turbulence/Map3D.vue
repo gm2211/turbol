@@ -112,6 +112,8 @@ import {
 } from '@/components/turbulence/volumeTypes'
 import { planeFill, planePath, ringColor } from '@/components/turbulence/planeIcon'
 import { useMobile } from '@/util/useMobile'
+// Inlined into this chunk: a separate worker file was one more round trip before anything could draw.
+import VolumeWorker from '@/components/turbulence/volumeWorker?worker&inline'
 
 /** A map view in Leaflet terms: zoom counts 256 px tiles. */
 export interface MapView {
@@ -404,7 +406,7 @@ async function loadVolume() {
   }
   // Another frame was picked, or 3D closed, while this one downloaded.
   if (loadedFrame !== frame.id || !deck) return
-  const current = new Worker(new URL('./volumeWorker.ts', import.meta.url), { type: 'module' })
+  const current = new VolumeWorker()
   worker = current
   let total = 0
   let received = 0

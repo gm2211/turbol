@@ -171,6 +171,21 @@ export function volumeUrl(frameId: string): string {
 
 const volumes = new Map<string, Promise<ArrayBuffer>>()
 
+declare global {
+  interface Window {
+    /** The opening frame's volume, started by index.html when the page opens in 3D. */
+    __openingVolume?: Promise<{ id: string | null; volume: ArrayBuffer } | undefined>
+  }
+}
+
+async function downloadVolume(frameId: string): Promise<ArrayBuffer> {
+  const opening = await window.__openingVolume
+  if (opening?.id === frameId) return opening.volume
+  const res = await fetch(volumeUrl(frameId))
+  if (!res.ok) throw new Error(`volume request failed: ${res.status}`)
+  return res.arrayBuffer()
+}
+
 /**
  * A frame's 3D volume, downloaded once and kept for the last two frames asked for. The live map starts it while 2D is
  * idle, so opening 3D draws without waiting on the network.
@@ -178,10 +193,7 @@ const volumes = new Map<string, Promise<ArrayBuffer>>()
 export function prefetchVolume(frameId: string): Promise<ArrayBuffer> {
   let volume = volumes.get(frameId)
   if (!volume) {
-    volume = fetch(volumeUrl(frameId)).then((res) => {
-      if (!res.ok) throw new Error(`volume request failed: ${res.status}`)
-      return res.arrayBuffer()
-    })
+    volume = downloadVolume(frameId)
     volume.catch(() => volumes.delete(frameId))
     volumes.set(frameId, volume)
     if (volumes.size > 2) volumes.delete(volumes.keys().next().value!)
