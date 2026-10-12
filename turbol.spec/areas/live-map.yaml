@@ -50,7 +50,12 @@ behaviors:
   - id: edr-on-hover
     description: >-
       Hovering the map (or tapping it on touch devices) shows the EDR value, turbulence category and
-      selected flight level for the grid cell under the pointer, for the selected frame.
+      selected flight level for the grid cell under the pointer, for the selected frame. While a
+      cell's value is loading it shows "EDR … · … · <level>", never a reading from another cell.
+  - id: inspect-cursor
+    description: >-
+      Over the map the pointer is a thin precision crosshair (not a gun-sight); it becomes a
+      grabbing hand while dragging and a pointer over aircraft and controls, in 2D and 3D.
   - id: shift-drag-into-3d
     description: >-
       Shift+dragging the live map tilts and rotates it into 3D, where aircraft sit at their altitude
