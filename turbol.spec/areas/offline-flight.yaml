@@ -1,0 +1,44 @@
+id: offline-flight
+name: Flying with a bad connection
+prose: >-
+  Keep a passenger's own flight useful when the network isn't: offline from boarding until the plane
+  is in the air, and slow, filtered or spotty Wi-Fi once it is. Proposal, not decided: the design
+  doc "Turbol Offline Flight Mode" (https://claude.ai/artifact/2BbUK1y6ZyxyBei4rdNmHS) suggests a
+  Flight Pack of raw EDR for the flight's corridor downloaded before boarding, the backend's sampler
+  and route analyzer ported to the phone, a position engine (GPS, dead reckoning along the route, an
+  ADS-B fix whenever a window opens), and one small request per Wi-Fi window. It also proposes
+  splitting the app into two flows, Plan (ahead of time, including finding the best flight for a
+  route) and Fly (the day of and during the flight). Giulio floated both ideas ("Maybe we need two
+  clear separate flows", "what would be cool there is specfically trying to find best flight for a
+  given route") without deciding them, so they are not behaviors yet. Background prefetching would
+  follow the same good-connection and supersession rule as live-map/smooth-forecast-scrub. The
+  proposal replaces Follow's event stream with short requests while in the air and keeps the
+  10-second refresh on the phone, so adopting it would mean revisiting
+  follow-flight/follow-updates-every-ten-seconds.
+behaviors:
+  - id: usable-from-gate-until-airborne
+    description: >-
+      A flight looked up at the airport can still be opened and followed after boarding with no
+      connection at all, until the plane is in the air.
+    source:
+      text: >-
+        You are at the airport, open the site, look up your flight, but then board the plane and you
+        don't have connection till when you're up in the air
+      reference: Giulio, turbol project chat, 2026-10-11 22:39Z (Offline and low-bandwidth UX design)
+  - id: updates-in-short-windows
+    description: >-
+      In the air on slow, filtered or spotty Wi-Fi, the app takes each chance it gets to download
+      updates for the flight and stays usable between them.
+    source:
+      text: >-
+        You're in the air and have wifi connection but it's slow-af, might be occasionally filter out
+        by the plane router, and it may be quite spotty, so you only get a chance every now and then to
+        download updates
+      reference: Giulio, turbol project chat, 2026-10-11 22:39Z (Offline and low-bandwidth UX design)
+  - id: position-keeps-updating-offline
+    description: >-
+      Between downloads, the flight's position keeps updating from the phone itself, for example from
+      GPS or dead reckoning.
+    source:
+      text: should still be able to use gps / dead reconing / inertia /... to keep updating your flight
+      reference: Giulio, turbol project chat, 2026-10-11 22:39Z (Offline and low-bandwidth UX design)
