@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.modules
 
-import com.gm2211.turbol.live.LiveTrafficService
+import com.gm2211.turbol.live.{LiveTrafficService, RouteScheduleService}
 import com.gm2211.turbol.services.{AirportsService, AirportsServiceImpl, SystemTimeService, TimeService}
 import com.gm2211.turbol.turbulence.{TileRenderer, TurbulenceDataUpdater, TurbulenceStore, VolumeSampler}
 import com.softwaremill.macwire.{wire, Module}
@@ -22,4 +22,5 @@ class ServicesModule(@unused storageModule: StorageModule) {
   lazy val tileRenderer: TileRenderer = wire[TileRenderer]
   lazy val volumeSampler: VolumeSampler = VolumeSampler()
   lazy val liveTrafficService: LiveTrafficService = wire[LiveTrafficService]
+  lazy val routeScheduleService: RouteScheduleService = RouteScheduleService(liveTrafficService)
 }

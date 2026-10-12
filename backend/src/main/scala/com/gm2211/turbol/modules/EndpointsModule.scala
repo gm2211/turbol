@@ -26,7 +26,11 @@ class EndpointsModule(servicesModule: ServicesModule, @unused configModule: Conf
   lazy val turbulenceEndpoint: TurbulenceEndpoint =
     TurbulenceEndpoint(servicesModule.turbulenceStore, servicesModule.tileRenderer, servicesModule.volumeSampler)
   lazy val flightsEndpoint: FlightsEndpoint =
-    FlightsEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
+    FlightsEndpoint(
+      servicesModule.turbulenceStore,
+      servicesModule.liveTrafficService,
+      servicesModule.routeScheduleService
+    )
   lazy val liveEndpoint: LiveEndpoint = LiveEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
   lazy val packEndpoint: PackEndpoint = PackEndpoint(servicesModule.turbulenceStore)
   lazy val pingEndpoint: PingEndpoint = PingEndpoint()

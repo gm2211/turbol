@@ -7,7 +7,17 @@
 package com.gm2211.turbol.endpoints
 
 import cats.effect.IO
-import com.gm2211.turbol.live.{FlightRoute, LiveAircraft, LiveTrafficClient, LiveTrafficService, Place, Stop}
+import com.gm2211.turbol.live.{
+  FlightRoute,
+  LiveAircraft,
+  LiveTrafficClient,
+  LiveTrafficService,
+  Place,
+  RouteSchedule,
+  RouteScheduleService,
+  ScheduledFlight,
+  Stop
+}
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
 import io.circe.Encoder
@@ -17,7 +27,8 @@ import org.http4s.HttpRoutes
 import org.http4s.circe.*
 import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 
-import java.time.{Duration, Instant}
+import java.time.format.DateTimeFormatter
+import java.time.{Duration, Instant, ZoneOffset}
 import java.util.concurrent.ConcurrentHashMap
 import scala.util.Try
 
@@ -30,13 +41,24 @@ final case class FlightLookup(
   otherLeg: Option[AircraftView] = None
 )
 
+/**
+ * @param flown a leg this flight number flew recently (from /flights/scheduled): the analysis follows its track,
+ *              altitudes and timing, and uses its aircraft type, instead of a great circle
+ */
 final case class AnalyzeRequest(
   origin: Place,
   destination: Place,
   departure: Option[Instant] = None,
   cruiseAltitudeFt: Option[Int] = None,
-  callsign: Option[String] = None
+  callsign: Option[String] = None,
+  flown: Option[FlownRef] = None
 )
+
+/** Names a flown leg: the airframe and the time it took off. */
+final case class FlownRef(hex: String, takeoff: Instant)
+
+/** Flights from origin to destination taking off between `from` and `until` (the person's local day). */
+final case class ScheduleRequest(origin: Place, destination: Place, from: Instant, until: Instant)
 
 final case class RouteSearchRequest(origin: Place, destination: Place)
 
@@ -45,12 +67,17 @@ final case class RouteFlight(callsign: String, minutesToGo: Option[Int], aircraf
 final case class RouteSearch(flights: List[RouteFlight], checked: Int)
 
 /** Look up a flight by number or callsign, and forecast the turbulence along a flight gate to gate. */
-final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
-    extends Endpoint
+final class FlightsEndpoint(
+  store: TurbulenceStore,
+  traffic: LiveTrafficService,
+  schedules: RouteScheduleService
+) extends Endpoint
     with BackendSerialization {
   private object Query extends QueryParamDecoderMatcher[String]("q")
   private given Encoder[RouteFlight] = deriveEncoder
   private given Encoder[RouteSearch] = deriveEncoder
+  private given Encoder[ScheduledFlight] = deriveEncoder
+  private given Encoder[RouteSchedule] = deriveEncoder
 
   override val basePath: String = "/flights"
   override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
@@ -61,6 +88,13 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
       for {
         request <- req.as[RouteSearchRequest]
         result <- IO.blocking(searchRoute(request.origin, request.destination))
+        resp <- Ok(result.toJson.deepDropNullValues)
+      } yield resp
+
+    case req @ POST -> Root / "scheduled" =>
+      for {
+        request <- req.as[ScheduleRequest]
+        result <- IO.blocking(schedules.schedule(request.origin, request.destination, request.from, request.until))
         resp <- Ok(result.toJson.deepDropNullValues)
       } yield resp
 
@@ -92,7 +126,32 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
    * How strongly the aircraft feels turbulence comes from the flight's ADS-B type, not the user: its wing loading when
    * the type is in AircraftResponse's table, else its size class; a medium aircraft when the type isn't known.
    */
-  private def analyze(request: AnalyzeRequest): RouteAnalysis = {
+  private def analyze(request: AnalyzeRequest): RouteAnalysis =
+    (for {
+      flown <- request.flown
+      callsign <- request.callsign
+      leg <-
+        Try(schedules.leg(callsign, flown.hex, flown.takeoff, request.origin, request.destination)).toOption.flatten
+    } yield {
+      val start = leg.takeoff
+      val path = leg.points.map(p =>
+        PathPoint(Duration.between(start, p.time).toMillis / 60000.0, p.lat, p.lon, p.altitudeFt)
+      )
+      val aircraft = AircraftResponse.fromAdsb(None, leg.typeCode)
+      val analysis = RouteAnalyzer.analyzePath(store, path, request.departure.getOrElse(Instant.now()), aircraft)
+      val day = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneOffset.UTC).format(start)
+      val typeNote = leg.typeCode.filter(_ => aircraft.basis == "class").map(t =>
+        s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
+      )
+      analysis.copy(
+        aircraftType = leg.typeCode,
+        summary = analysis.summary.copy(notes = analysis.summary.notes ++ typeNote),
+        path =
+          Some(PathInfo("flown", s"${leg.callsign}'s flown track on $day (UTC), moved to this departure", Some(start)))
+      )
+    }).getOrElse(analyzeGreatCircle(request))
+
+  private def analyzeGreatCircle(request: AnalyzeRequest): RouteAnalysis = {
     val live = request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
     val aircraft = live.fold(AircraftResponse.medium)(a => AircraftResponse.fromAdsb(a.category, a.typeCode))
     val analysis = RouteAnalyzer.analyzeFlight(
@@ -113,9 +172,12 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
     val typeNote = aircraft.typeCode.filter(_ => aircraft.basis == "class").map(t =>
       s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
     )
+    val pathNote =
+      request.flown.map(_ => "This flight's earlier track couldn't be loaded, so the route is a great circle.")
     analysis.copy(
       aircraftType = live.flatMap(_.typeCode),
-      summary = analysis.summary.copy(notes = analysis.summary.notes ++ note ++ typeNote)
+      summary = analysis.summary.copy(notes = analysis.summary.notes ++ pathNote ++ note ++ typeNote),
+      path = Some(PathInfo("greatCircle", "Great-circle route: filed routes aren't public"))
     )
   }
 

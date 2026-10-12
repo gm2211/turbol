@@ -7,6 +7,7 @@
 package com.gm2211.turbol.turbulence
 
 import java.time.{Duration, Instant}
+import scala.annotation.unused
 import scala.math.*
 
 /** One sampled point along a flight. */
@@ -51,15 +52,27 @@ final case class RouteAnalysis(
   dataSources: DataSources,
   aircraftType: Option[String] = None,
   /** How strongly this aircraft feels turbulence (its wing loading, or its size class when the type is unknown). */
-  aircraft: AircraftResponse = AircraftResponse.medium
+  aircraft: AircraftResponse = AircraftResponse.medium,
+  path: Option[PathInfo] = None
 )
+
+/**
+ * Where the route's line came from: "greatCircle" (origin to destination), or "flown" (the track this flight number
+ * flew on an earlier day, `flownOn`, shifted to the new departure).
+ */
+final case class PathInfo(kind: String, description: String, flownOn: Option[Instant] = None)
+
+/** One point of a path to analyse: minutes after the start, position and altitude. */
+final case class PathPoint(minutes: Double, lat: Double, lon: Double, altitudeFt: Double)
 
 /** @param globalIssued the GFS cycle behind the coarse global layer used outside GTG, when loaded */
 final case class DataSources(
   nowcastValid: Option[Instant],
   forecastIssued: Option[Instant],
   forecastUntil: Option[Instant],
-  globalIssued: Option[Instant] = None
+  globalIssued: Option[Instant] = None,
+  /** Sources still filling in after a server restart ("forecast", "global"): missing data may be on its way. */
+  loading: Seq[String] = Seq.empty
 )
 
 /**
@@ -141,7 +154,36 @@ object RouteAnalyzer {
     val total = greatCircleKm(fromLat, fromLon, toLat, toLon)
     val cruise = cruiseFt.getOrElse(defaultCruiseFt(total))
     val profile = Profile(total, startAltitudeFt = 0, cruise, groundSpeedKmh = cruiseSpeedKmh, includeClimb = true)
-    analyze(store, total, f => intermediate(fromLat, fromLon, toLat, toLon, f), profile, departure, aircraft)
+    val at = alongProfile(f => intermediate(fromLat, fromLon, toLat, toLon, f), profile)
+    analyze(store, total, at, profile.cruiseFt, departure, aircraft)
+  }
+
+  /**
+   * Analyse a flight along a given path (a track flown on an earlier day), keeping its altitudes and timing and
+   * starting at `departure`. Gaps in the path (no ADS-B coverage over oceans) are crossed on the great circle.
+   */
+  def analyzePath(
+    store: TurbulenceStore,
+    path: IndexedSeq[PathPoint],
+    departure: Instant,
+    aircraft: AircraftResponse
+  ): RouteAnalysis = {
+    require(path.size >= 2, "a path needs at least two points")
+    val cumulative = path.indices.scanLeft(0.0) { (km, k) =>
+      if (k == 0) km else km + greatCircleKm(path(k - 1).lat, path(k - 1).lon, path(k).lat, path(k).lon)
+    }.tail
+    val total = cumulative.last
+    val cruise = (rint(path.map(_.altitudeFt).max / 1000) * 1000).toInt
+    def at(@unused f: Double, km: Double): (Double, Double, Double, Double) = {
+      val idx = cumulative.indexWhere(_ >= km)
+      val hi = if (idx < 0) path.size - 1 else math.max(1, idx)
+      val (a, b) = (path(hi - 1), path(hi))
+      val span = cumulative(hi) - cumulative(hi - 1)
+      val g = if (span <= 0) 0.0 else math.min(1.0, math.max(0.0, (km - cumulative(hi - 1)) / span))
+      val (lat, lon) = intermediate(a.lat, a.lon, b.lat, b.lon, g)
+      (lat, lon, a.altitudeFt + g * (b.altitudeFt - a.altitudeFt), a.minutes + g * (b.minutes - a.minutes))
+    }
+    analyze(store, total, at, cruise, departure, aircraft)
   }
 
   /**
@@ -165,12 +207,20 @@ object RouteAnalyzer {
       case Some((toLat, toLon)) =>
         val total = greatCircleKm(lat, lon, toLat, toLon)
         val profile = Profile(total, altitudeFt, altitudeFt, speedKmh, includeClimb = false)
-        analyze(store, total, f => intermediate(lat, lon, toLat, toLon, f), profile, now, aircraft)
+        analyze(
+          store,
+          total,
+          alongProfile(f => intermediate(lat, lon, toLat, toLon, f), profile),
+          altitudeFt,
+          now,
+          aircraft
+        )
       case None =>
         val total = speedKmh * lookaheadMinutes / 60
         val bearing = trackDeg.getOrElse(0.0)
         val profile = Profile(total, altitudeFt, altitudeFt, speedKmh, includeClimb = false, descend = false)
-        analyze(store, total, f => this.destination(lat, lon, bearing, total * f), profile, now, aircraft)
+        val at = alongProfile(f => this.destination(lat, lon, bearing, total * f), profile)
+        analyze(store, total, at, altitudeFt, now, aircraft)
     }
   }
 
@@ -206,11 +256,22 @@ object RouteAnalyzer {
     }
   }
 
+  /** Position, altitude and minutes from start at each distance along a route with a climb / cruise / descent profile. */
+  private def alongProfile(
+    pointAt: Double => (Double, Double),
+    profile: Profile
+  ): (Double, Double) => (Double, Double, Double, Double) =
+    (f, km) => {
+      val (lat, lon) = pointAt(f)
+      (lat, lon, profile.altitudeAt(km), profile.minutesAt(km))
+    }
+
+  /** `at(f, km)` gives latitude, longitude, altitude (ft) and minutes from the start at fraction f / km along the route. */
   private def analyze(
     store: TurbulenceStore,
     totalKm: Double,
-    pointAt: Double => (Double, Double),
-    profile: Profile,
+    at: (Double, Double) => (Double, Double, Double, Double),
+    cruiseFt: Int,
     start: Instant,
     aircraft: AircraftResponse
   ): RouteAnalysis = {
@@ -219,9 +280,7 @@ object RouteAnalyzer {
     val points = (0 until n).map { k =>
       val f = if (n == 1) 0.0 else k.toDouble / (n - 1)
       val km = totalKm * f
-      val (lat, lon) = pointAt(f)
-      val alt = profile.altitudeAt(km)
-      val minutes = profile.minutesAt(km)
+      val (lat, lon, alt, minutes) = at(f, km)
       val time = start.plusSeconds((minutes * 60).toLong)
       val sample = store.sampleIn(data, lat, lon, alt, time)
       val edr = Option(sample.edr).filterNot(_.isNaN)
@@ -243,12 +302,18 @@ object RouteAnalyzer {
       totalDistanceKm = totalKm,
       durationMinutes = points.lastOption.fold(0.0)(_.minutesFromStart),
       start = start,
-      cruiseAltitudeFt = profile.cruiseFt,
+      cruiseAltitudeFt = cruiseFt,
       aircraftClass = aircraft.aircraftClass,
       points = points,
       segments = segments(points),
       summary = summarize(points, data, start, forecastUntil),
-      dataSources = DataSources(data.nowcast.map(_.validTime), data.forecastIssued, forecastUntil, data.globalIssued),
+      dataSources = DataSources(
+        data.nowcast.map(_.validTime),
+        data.forecastIssued,
+        forecastUntil,
+        data.globalIssued,
+        loading = Seq("forecast", "global").filter(data.loading)
+      ),
       aircraft = aircraft
     )
   }
@@ -291,11 +356,16 @@ object RouteAnalyzer {
         "the coarser global forecast (WAFS and NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
     if (coverage < 99.5) {
       val outside = enRoute.count(p => p.edr.isEmpty && LambertGrid.nearestIndex(p.lat, p.lon) < 0)
-      if (outside > 0) notes +=
+      val stillLoading = Seq("forecast", "global").filter(data.loading)
+      if (stillLoading.nonEmpty)
+        notes +=
+          s"The ${stillLoading.map(l => if (l == "global") "global forecast" else "GTG forecast").mkString(" and ")}" +
+            " is still loading after a server update; parts of the route without data will fill in within a few minutes."
+      else if (outside > 0) notes +=
         f"${100.0 * outside / enRoute.size}%.0f%% of the route is outside GTG coverage (contiguous US and nearby)" +
           " and the global forecast has no data for it yet."
       forecastUntil.foreach { until =>
-        if (points.exists(p => p.time.isAfter(until) && p.edr.isEmpty))
+        if (stillLoading.isEmpty && points.exists(p => p.time.isAfter(until) && p.edr.isEmpty))
           notes +=
             s"The forecast only reaches $until (18 h after the latest GTG cycle); later parts of the flight have no data yet."
       }
