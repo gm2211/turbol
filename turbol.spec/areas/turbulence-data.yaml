@@ -16,7 +16,12 @@ behaviors:
   - id: forecast-fetches-only-needed-levels
     description: >-
       GTG forecasts are fetched with byte-range requests for only the EDR messages and altitude levels
-      the app uses, never the whole multi-hundred-MB files.
+      the app uses, never the whole multi-hundred-MB files. Both GTGN and GTG carry 51 levels (100 ft,
+      then every 1,000 ft to 50,000 ft); the nowcast keeps all of them, the forecast keeps every
+      1,000 ft from FL300 to FL450 plus 3,000, 6,000, 10,000, 15,000, 20,000 and 25,000 ft (the
+      level choice is an implementation default, not a user decision).
+    source:
+      text: can we get more granualr with flight levels with GTG and GTGN?
   - id: forecast-usable-while-loading
     description: >-
       On a first run the forecast is published hour by hour, so route analysis works before the whole
