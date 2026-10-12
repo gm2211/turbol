@@ -21,55 +21,61 @@
       aria-label="3D settings"
       @click="showPanel = true"
     />
-    <div
-      v-if="!mobile || showPanel"
-      class="panel glass-panel controls3d"
-      :class="{ sheet: mobile }"
-    >
-      <div class="d-flex align-center justify-space-between">
-        <span class="panel-title">3D</span>
-        <span class="muted fps" v-if="fps">{{ fps }} fps</span>
-        <v-btn
-          v-if="mobile"
-          icon="mdi-close"
-          size="small"
-          variant="text"
+    <!--
+      On desktop the panel joins the live map's bottom-left column, above the legend, so they never overlap; on
+      phones the sheet sits on the page itself, above the legend and the 2D/3D switch.
+    -->
+    <Teleport :to="mobile ? '#map-page' : '#map3d-panel-slot'" defer>
+      <div
+        v-if="!mobile || showPanel"
+        class="panel glass-panel controls3d"
+        :class="{ sheet: mobile }"
+      >
+        <div class="d-flex align-center justify-space-between">
+          <span class="panel-title">3D</span>
+          <span class="muted fps" v-if="fps">{{ fps }} fps</span>
+          <v-btn
+            v-if="mobile"
+            icon="mdi-close"
+            size="small"
+            variant="text"
+            theme="dark"
+            aria-label="Close"
+            @click="showPanel = false"
+          />
+        </div>
+        <div class="muted" v-if="loadState">{{ loadState }}</div>
+        <div class="muted" v-else-if="storeVersion">
+          {{ visible.count.toLocaleString() }} turbulence columns shown
+        </div>
+        <div class="muted">Pick the levels on the flight-level rail</div>
+        <v-switch
+          v-model="showLight"
+          label="Show light turbulence"
+          density="compact"
+          hide-details
           theme="dark"
-          aria-label="Close"
-          @click="showPanel = false"
+          color="var(--my-accent)"
         />
+        <div class="text-caption">Vertical exaggeration: ×{{ exaggeration }}</div>
+        <v-slider
+          v-model="exaggeration"
+          :min="5"
+          :max="80"
+          :step="5"
+          hide-details
+          density="compact"
+          theme="dark"
+          color="var(--my-accent)"
+        />
+        <div class="hint" v-if="mobile">
+          Two fingers: slide up or down to tilt, twist to rotate · tap a plane for details
+        </div>
+        <div class="hint" v-else>
+          Shift+drag or right-drag to tilt and rotate · click a plane for details
+        </div>
       </div>
-      <div class="muted" v-if="loadState">{{ loadState }}</div>
-      <div class="muted" v-else-if="storeVersion">
-        {{ visible.count.toLocaleString() }} turbulence columns shown
-      </div>
-      <div class="muted">Pick the levels on the flight-level rail</div>
-      <v-switch
-        v-model="showLight"
-        label="Show light turbulence"
-        density="compact"
-        hide-details
-        theme="dark"
-        color="var(--my-accent)"
-      />
-      <div class="text-caption">Vertical exaggeration: ×{{ exaggeration }}</div>
-      <v-slider
-        v-model="exaggeration"
-        :min="5"
-        :max="80"
-        :step="5"
-        hide-details
-        density="compact"
-        theme="dark"
-        color="var(--my-accent)"
-      />
-      <div class="hint" v-if="mobile">
-        Two fingers: slide up or down to tilt, twist to rotate · tap a plane for details
-      </div>
-      <div class="hint" v-else>
-        Shift+drag or right-drag to tilt and rotate · click a plane for details
-      </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -546,11 +552,18 @@ onBeforeUnmount(() => {
   width: auto;
   z-index: 1100;
 }
-.controls3d {
-  /* Above the legend: the right edge holds the flight-level rail. */
-  left: 12px;
-  bottom: 160px;
+/* Desktop: a block in the live map's bottom-left column, above the legend; it scrolls when the window is short. */
+.controls3d:not(.sheet) {
+  position: relative;
+  z-index: auto;
   width: 250px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Room between the switch and its label: the switch's thumb pokes past its own box. */
+.controls3d :deep(.v-switch .v-label) {
+  padding-left: 16px;
 }
 .loading {
   position: absolute;

@@ -115,6 +115,10 @@ function showAll() {
   flex: 1;
   min-height: 0;
 }
+/* Vuetify gives a vertical slider 300px at least; the rail shrinks with short windows instead of overflowing. */
+.rail-slider:deep(> .v-input__control) {
+  min-height: 80px;
+}
 .rail-slider :deep(.v-slider-track__tick-label) {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.7);
