@@ -15,7 +15,17 @@ behaviors:
     source:
       text: I should be able to see all flight levels
   - id: loads-on-demand
-    description: The 3D library loads only when 3D is first opened, keeping other pages light.
+    description: >-
+      The 3D library loads only when 3D is first opened, or ahead of time while the live map is idle
+      on a good connection, keeping other pages light.
+  - id: loads-without-freezing
+    description: >-
+      Opening 3D never freezes the page: the volume downloads and is prepared off the main thread,
+      progress is shown, and columns nearest the camera appear first.
+    source:
+      text: >-
+        also first load takes forever (it's good we're caching and it's amazingly fast afterwards,
+        but incremental and smooth loading would be great instead of freezing the page)
   - id: no-separate-page
     description: >-
       There is no 3D tab. Old /3d links, and the 3D buttons in aircraft popups and Analyze, open the

@@ -2,6 +2,17 @@
   <div class="map3d">
     <div ref="canvasEl" class="canvas" @contextmenu.prevent />
 
+    <div v-if="loadState" class="loading glass-panel">
+      <div>{{ loadState }}</div>
+      <v-progress-linear
+        :model-value="loadProgress"
+        :indeterminate="loadProgress === undefined"
+        color="var(--my-accent)"
+        height="3"
+        class="mt-1"
+      />
+    </div>
+
     <v-btn
       v-if="mobile && !showPanel"
       icon="mdi-cube-outline"
@@ -28,9 +39,9 @@
           @click="showPanel = false"
         />
       </div>
-      <div class="muted" v-if="loadingVolume">Loading the turbulence volume…</div>
-      <div class="muted" v-else-if="volume">
-        {{ visibleVoxels.length.toLocaleString() }} turbulence columns shown
+      <div class="muted" v-if="loadState">{{ loadState }}</div>
+      <div class="muted" v-else-if="storeVersion">
+        {{ visible.count.toLocaleString() }} turbulence columns shown
       </div>
       <div class="muted">Pick the levels on the flight-level rail</div>
       <v-switch
@@ -63,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import {
   Deck,
   type Layer,
@@ -78,24 +89,19 @@ import {
   type AircraftView,
   type FrameInfo,
   type TurbulenceStatus,
-  type TurbulenceVolume,
   categoryColors,
   categoryLabels,
-  fetchVolume,
+  apiBase,
   flightLevel,
   overlayRgba
 } from '@/api/turbulence'
+import { basemapLayer, blue, ftToM, hexRgb, tooltipStyle } from '@/components/turbulence/scene3d'
 import {
-  type Voxel,
-  basemapLayer,
-  blue,
-  clipColumns,
-  mergeColumns,
-  ftToM,
-  hexRgb,
-  toVoxels,
-  tooltipStyle
-} from '@/components/turbulence/scene3d'
+  type ColumnBatch,
+  type VolumeMessage,
+  type VolumeRequest,
+  columnCategories
+} from '@/components/turbulence/volumeTypes'
 import { useMobile } from '@/util/useMobile'
 
 /** A map view in Leaflet terms: zoom counts 256 px tiles. */
@@ -124,10 +130,16 @@ const emit = defineEmits<{
 }>()
 
 const canvasEl = ref<HTMLDivElement>()
-const volume = shallowRef<TurbulenceVolume>()
-/** Vertically merged columns for every level of the loaded frame. */
-const columns = shallowRef<Voxel[]>([])
-const loadingVolume = ref(false)
+/**
+ * Every level's columns for the loaded frame, as index-aligned typed arrays filled batch by batch by the
+ * volume worker (nearest to the camera first). storeVersion bumps on each batch so the scene redraws.
+ */
+let store: ColumnBatch = emptyBatch(0)
+let storeLength = 0
+let cellKm = 0
+const storeVersion = ref(0)
+const loadState = ref('')
+const loadProgress = ref<number>()
 const mobile = useMobile()
 const showPanel = ref(false)
 const showLight = ref(true)
@@ -137,12 +149,53 @@ const fps = ref(0)
 const z = (ft: number) => ft * ftToM * exaggeration.value
 const maxPitch = 85
 
-const visibleVoxels = computed(() => {
+function emptyBatch(n: number): ColumnBatch {
+  return {
+    lat: new Float32Array(n),
+    lon: new Float32Array(n),
+    bottomFt: new Float32Array(n),
+    topFt: new Float32Array(n),
+    levelFt: new Float32Array(n),
+    topLevelFt: new Float32Array(n),
+    edr: new Float32Array(n),
+    category: new Uint8Array(n)
+  }
+}
+
+function append(batch: ColumnBatch) {
+  const n = batch.lat.length
+  if (storeLength + n > store.lat.length) {
+    const grown = emptyBatch(Math.max(store.lat.length * 2, storeLength + n))
+    for (const k of Object.keys(store) as (keyof ColumnBatch)[])
+      grown[k].set(store[k].subarray(0, storeLength) as never)
+    store = grown
+  }
+  for (const k of Object.keys(store) as (keyof ColumnBatch)[])
+    store[k].set(batch[k] as never, storeLength)
+  storeLength += n
+  storeVersion.value++
+}
+
+const lightIndex = columnCategories.indexOf('Light')
+
+/** The columns inside the rail's band (cut to it), as indexes into the store plus their cut extents. */
+const visible = computed(() => {
+  void storeVersion.value
   const [lo, hi] = props.band
-  const shown = showLight.value
-    ? columns.value
-    : columns.value.filter((c) => c.category !== 'Light')
-  return clipColumns(shown, lo, hi)
+  const halfGap = 500
+  const index = new Uint32Array(storeLength)
+  const bottom = new Float32Array(storeLength)
+  const top = new Float32Array(storeLength)
+  let count = 0
+  for (let i = 0; i < storeLength; i++) {
+    if (store.topLevelFt[i]! < lo || store.levelFt[i]! > hi) continue
+    if (!showLight.value && store.category[i] === lightIndex) continue
+    index[count] = i
+    bottom[count] = Math.max(store.bottomFt[i]!, lo - halfGap)
+    top[count] = Math.min(store.topFt[i]!, hi + halfGap)
+    count++
+  }
+  return { count, index, bottom, top }
 })
 
 const planeSvg =
@@ -201,19 +254,32 @@ function buildLayers(): Layer[] {
       })
     )
   }
-  if (volume.value) {
-    const halfM = (volume.value.cellKm * 1000) / 2
+  if (storeLength) {
+    const halfM = (cellKm * 1000) / 2
+    const { count, index, bottom, top } = visible.value
+    const colors = columnCategories.map((c) => overlayRgba[c])
+    const triggers = [exaggeration.value, visible.value]
     layers.push(
-      new SimpleMeshLayer<Voxel>({
+      // Index-based accessors over the typed arrays: no object per column.
+      new SimpleMeshLayer({
         id: 'voxels',
-        data: visibleVoxels.value,
+        data: { length: count },
         mesh: cube,
-        getPosition: (v) => [v.lon, v.lat, z((v.bottomFt + v.topFt) / 2)],
-        getScale: (v) => [halfM * 0.92, halfM * 0.92, (z(v.topFt) - z(v.bottomFt)) / 2],
-        getColor: (v) => overlayRgba[v.category],
+        getPosition: (_: unknown, { index: j }: { index: number }) => [
+          store.lon[index[j]!]!,
+          store.lat[index[j]!]!,
+          z((bottom[j]! + top[j]!) / 2)
+        ],
+        getScale: (_: unknown, { index: j }: { index: number }) => [
+          halfM * 0.92,
+          halfM * 0.92,
+          (z(top[j]!) - z(bottom[j]!)) / 2
+        ],
+        getColor: (_: unknown, { index: j }: { index: number }) =>
+          colors[store.category[index[j]!]!]!,
         material: { ambient: 0.6, diffuse: 0.5, shininess: 8, specularColor: [40, 40, 40] },
         pickable: true,
-        updateTriggers: { getPosition: exaggeration.value, getScale: exaggeration.value }
+        updateTriggers: { getPosition: triggers, getScale: triggers, getColor: visible.value }
       })
     )
   }
@@ -254,11 +320,6 @@ function render() {
   deck?.setProps({ layers: buildLayers() })
 }
 
-const levelsLabel = (v: Voxel) =>
-  v.topLevelFt && v.topLevelFt !== v.levelFt
-    ? `${flightLevel(v.levelFt)}–${flightLevel(v.topLevelFt)}`
-    : flightLevel(v.levelFt)
-
 function tooltip(info: PickingInfo) {
   if (info.layer?.id === 'aircraft') {
     const a = info.object as AircraftView
@@ -271,33 +332,67 @@ function tooltip(info: PickingInfo) {
       style: tooltipStyle
     }
   }
-  const v = info.object as Voxel | undefined
-  if (!v) return null
+  if (info.layer?.id !== 'voxels' || info.index < 0) return null
+  const { index } = visible.value
+  const i = index[info.index]
+  if (i === undefined) return null
+  const [lo, hi] = props.band
+  const bottomLevel = Math.max(store.levelFt[i]!, lo)
+  const topLevel = Math.min(store.topLevelFt[i]!, hi)
+  const stacked = topLevel !== bottomLevel
+  const levels = stacked
+    ? `${flightLevel(bottomLevel)}–${flightLevel(topLevel)}`
+    : flightLevel(bottomLevel)
   return {
     html:
-      `<b>${levelsLabel(v)}</b> · ${categoryLabels[v.category]} ` +
-      `(${v.topLevelFt && v.topLevelFt !== v.levelFt ? 'worst ' : ''}EDR ${v.edr.toFixed(2)})`,
+      `<b>${levels}</b> · ${categoryLabels[columnCategories[store.category[i]!]!]} ` +
+      `(${stacked ? 'worst ' : ''}EDR ${store.edr[i]!.toFixed(2)})`,
     style: tooltipStyle
   }
 }
 
 let loadedFrame: string | undefined
-async function loadVolume() {
+let worker: Worker | undefined
+function loadVolume() {
   const frame = props.frame
   const thresholds = props.status?.thresholds.Medium
-  if (!frame || !thresholds || (volume.value && loadedFrame === frame.id)) return
-  loadingVolume.value = true
-  try {
-    const v = await fetchVolume(frame.id)
-    if (props.frame?.id !== frame.id) return
-    loadedFrame = frame.id
-    volume.value = v
-    columns.value = mergeColumns(toVoxels(v, thresholds))
-  } catch (e) {
-    console.warn('volume fetch failed', e)
-  } finally {
-    loadingVolume.value = false
+  if (!frame || !thresholds || loadedFrame === frame.id) return
+  loadedFrame = frame.id
+  worker?.terminate()
+  worker = new Worker(new URL('./volumeWorker.ts', import.meta.url), { type: 'module' })
+  let total = 0
+  let received = 0
+  loadState.value = 'Loading turbulence…'
+  loadProgress.value = undefined
+  worker.onmessage = (e: MessageEvent<VolumeMessage>) => {
+    const m = e.data
+    if (m.type === 'progress') {
+      loadState.value = `Loading turbulence… ${(m.bytes / 1e6).toFixed(1)} MB`
+    } else if (m.type === 'meta') {
+      // A newer frame: drop the old columns only now, so the scene doesn't go blank while downloading.
+      store = emptyBatch(m.total)
+      storeLength = 0
+      cellKm = m.cellKm
+      total = m.total
+    } else if (m.type === 'batch') {
+      append(m.batch)
+      received += m.batch.lat.length
+      loadState.value = `Drawing turbulence… ${Math.round((received / total) * 100)}%`
+      loadProgress.value = (received / total) * 100
+    } else {
+      if (m.type === 'error') console.warn('volume load failed', m.message)
+      loadState.value = ''
+      worker?.terminate()
+      worker = undefined
+    }
   }
+  const request: VolumeRequest = {
+    url: `${apiBase()}/api/turbulence/volume/${frame.id}?step=6`,
+    // Plain copies: the reactive props are proxies, which can't cross into the worker.
+    thresholds: { ...toRaw(thresholds) },
+    center: [Number(viewState.longitude), Number(viewState.latitude)]
+  }
+  worker.postMessage(request)
 }
 
 /** Sets tilt and rotation directly (used while the shift+drag that opened 3D is still going). */
@@ -348,7 +443,7 @@ watch(
   () => loadVolume()
 )
 watch(
-  [visibleVoxels, () => props.aircraft, () => props.status, () => props.levelFt, exaggeration],
+  [visible, () => props.aircraft, () => props.status, () => props.levelFt, exaggeration],
   render
 )
 
@@ -378,6 +473,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  worker?.terminate()
   window.clearInterval(fpsTimer)
   window.clearTimeout(moveTimer)
   deck?.finalize()
@@ -433,5 +529,15 @@ onBeforeUnmount(() => {
   left: 12px;
   bottom: 160px;
   width: 250px;
+}
+.loading {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  font-size: 12px;
+  min-width: 200px;
 }
 </style>

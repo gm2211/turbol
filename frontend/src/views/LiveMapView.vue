@@ -572,6 +572,10 @@ const aircraft3d = computed<AircraftView[]>(() => {
   return [...added, ...traffic.value.filter((a) => !addedHexes.has(a.hex))]
 })
 
+async function loadMap3D() {
+  Map3D.value ??= (await import('@/components/turbulence/Map3D.vue')).default
+}
+
 async function enter3d(pitch = 0, bearing = 0) {
   if (!map || mode.value === '3d') return
   const c = map.getCenter()
@@ -579,7 +583,7 @@ async function enter3d(pitch = 0, bearing = 0) {
   if (!Map3D.value) {
     loading3d.value = true
     try {
-      Map3D.value = (await import('@/components/turbulence/Map3D.vue')).default
+      await loadMap3D()
     } finally {
       loading3d.value = false
     }
@@ -722,6 +726,14 @@ onMounted(() => {
     }
   )
   trackedTimer = window.setInterval(refreshTracked, 15000)
+  // Fetch the 3D code once the 2D map is up and the browser is idle, so opening 3D doesn't wait on it.
+  const warm3d = () => {
+    if (goodConnection()) loadMap3D().catch(() => undefined)
+  }
+  // Safari has no requestIdleCallback.
+  if (typeof window.requestIdleCallback === 'function')
+    window.requestIdleCallback(warm3d, { timeout: 5000 })
+  else setTimeout(warm3d, 3000)
 })
 
 onBeforeUnmount(() => {
