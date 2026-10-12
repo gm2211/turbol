@@ -1143,10 +1143,12 @@ const mapResizeObserver = new ResizeObserver(() => map?.invalidateSize())
 onMounted(() => {
   if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
   // boxZoom off: shift+drag opens 3D instead.
-  map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true, boxZoom: false }).setView(
+  map = L.map(mapEl.value!, { zoomControl: false, worldCopyJump: true, boxZoom: false }).setView(
     [39.5, -97],
     5
   )
+  // Zoom buttons sit bottom-right beside the 2D/3D switch, so the left panels can share one left edge.
+  L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
   // Leaflet sizes itself once; if the page laid out after that (or the window changed), it would load no tiles.
   mapResizeObserver.observe(mapEl.value!)
@@ -1247,7 +1249,7 @@ onBeforeUnmount(() => {
 }
 .top-left {
   top: 12px;
-  left: 56px;
+  left: 12px;
   width: 260px;
 }
 .top-right {
@@ -1260,9 +1262,11 @@ onBeforeUnmount(() => {
   z-index: 1000;
   bottom: 24px;
   left: 12px;
+  /* As wide as the top-left panel, so the left column lines up. */
+  width: 260px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 8px;
   /* Below the top-left panel, so a tall stack on a short window never runs into it. */
   max-height: calc(100% - var(--top-left-h, 0px) - 48px);
@@ -1327,10 +1331,17 @@ onBeforeUnmount(() => {
 .mobile .bottom-left {
   bottom: 22px;
   left: 8px;
+  width: auto;
+  align-items: flex-start;
 }
 .mobile .mode-toggle {
   right: 8px;
   bottom: 56px;
+}
+/* Left of the 2D/3D switch, bottoms level with it. */
+.map-page :deep(.leaflet-bottom.leaflet-right .leaflet-control-zoom) {
+  margin-right: var(--zoom-right, 124px);
+  margin-bottom: 7px;
 }
 .mobile :deep(.leaflet-control-zoom) {
   display: none;
