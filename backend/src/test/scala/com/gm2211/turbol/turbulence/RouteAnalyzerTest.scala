@@ -25,7 +25,7 @@ class RouteAnalyzerTest extends BaseTest {
         .toVector
     )
     val analysis =
-      RouteAnalyzer.analyzeFlight(store, 40.6413, -73.7781, 33.9416, -118.4085, now, None, AircraftClass.Medium)
+      RouteAnalyzer.analyzeFlight(store, 40.6413, -73.7781, 33.9416, -118.4085, now, None, AircraftResponse.medium)
     analysis.totalDistanceKm shouldBe 3983.0 +- 10
     analysis.cruiseAltitudeFt shouldBe 35000
     analysis.durationMinutes shouldBe 308.0 +- 5 // 3983 km at 830 km/h + 20 min climb/descent penalty
@@ -46,7 +46,7 @@ class RouteAnalyzerTest extends BaseTest {
       Some(270),
       None,
       Instant.now(),
-      AircraftClass.Heavy
+      AircraftResponse.forClass(AircraftClass.Heavy)
     )
     a.points.head.altitudeFt shouldBe 37000
     a.points.last.altitudeFt shouldBe 37000

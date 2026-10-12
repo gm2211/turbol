@@ -150,6 +150,7 @@
           <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
           <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
           <div><span>Aircraft</span>{{ aircraftLabel }}</div>
+          <div class="wide"><span>Ride</span>{{ responseLabel(response) }}</div>
           <div class="wide">
             <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
             <template v-if="analysis.summary.worstMinute !== undefined">
@@ -239,9 +240,12 @@ import {
   type TurbulenceCategory,
   categoryColors,
   categoryLabels,
+  classResponse,
   fetchStatus,
   flightLevel,
-  formatUtc
+  formatUtc,
+  responseLabel,
+  scaleThresholds
 } from '@/api/turbulence'
 import { downloads, packStatus } from '@/fly/downloads'
 import { newFlight } from '@/fly/flights'
@@ -270,12 +274,16 @@ const flightId = computed(() =>
 /** What the result on screen was analyzed for, as the query has it: `q:UA1517` or `route:JFK-LAX`. */
 let shown: string | undefined
 
-const thresholds = computed(
-  () =>
-    allThresholds.value?.[analysis.value?.aircraftClass ?? 'Medium'] ?? {
-      light: 0.12,
-      moderate: 0.14
-    }
+/** How strongly this aircraft feels turbulence: its wing loading, or its size class. */
+const response = computed(
+  () => analysis.value?.aircraft ?? classResponse(analysis.value?.aircraftClass ?? 'Medium')
+)
+/** The profile's Light and Moderate lines, in the EDR this aircraft would feel as each. */
+const thresholds = computed(() =>
+  scaleThresholds(
+    allThresholds.value?.Medium ?? { light: 0.12, moderate: 0.14, severe: 0.44, extreme: 0.79 },
+    response.value.factor
+  )
 )
 const aircraftLabel = computed(() => {
   const a = analysis.value
@@ -315,6 +323,7 @@ const toDownload = computed(() => {
     departure: new Date(a.start).getTime(),
     aircraftClass: a.aircraftClass,
     aircraftType: a.aircraftType,
+    aircraft: a.aircraft,
     cruiseFt: a.cruiseAltitudeFt
   })
 })

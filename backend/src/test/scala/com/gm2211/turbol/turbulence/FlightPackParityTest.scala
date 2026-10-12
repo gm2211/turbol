@@ -248,11 +248,11 @@ class FlightPackParityTest extends BaseTest with BackendSerialization {
       to: (Double, Double),
       departure: Instant,
       cruiseFt: Option[Int],
-      aircraftClass: AircraftClass,
+      aircraft: AircraftResponse,
       hasGlobal: Boolean
     ): Json =
       Json.obj(
-        "input" -> flightInput(from, to, departure, cruiseFt, aircraftClass).deepMerge(
+        "input" -> flightInput(from, to, departure, cruiseFt, aircraft).deepMerge(
           Json.obj("global" -> Json.fromBoolean(hasGlobal))
         ),
         "expected" -> analysisJson(
@@ -264,7 +264,7 @@ class FlightPackParityTest extends BaseTest with BackendSerialization {
             to._2,
             departure,
             cruiseFt,
-            aircraftClass
+            aircraft
           )
         )
       )
@@ -284,10 +284,10 @@ class FlightPackParityTest extends BaseTest with BackendSerialization {
           Some(track),
           Some(to),
           now,
-          AircraftClass.Medium
+          AircraftResponse.medium
         )
       val edrNow = Option(store.sample(lat, lon, 35000, now).edr).filterNot(_.isNaN)
-      val upcoming = LiveFlightTracker.upcoming(ahead, edrNow, AircraftClass.Medium)
+      val upcoming = LiveFlightTracker.upcoming(ahead, edrNow, AircraftResponse.medium)
       Json.obj(
         "input" -> Json.obj(
           "origin" -> Json.arr(num(from._1), num(from._2)),
@@ -335,11 +335,34 @@ class FlightPackParityTest extends BaseTest with BackendSerialization {
         )
       }),
       "flights" -> Json.arr(
-        flight(ord, den, issued.plus(80, ChronoUnit.MINUTES), None, AircraftClass.Medium, hasGlobal = false),
-        flight(ord, den, issued.plus(50, ChronoUnit.MINUTES), Some(37000), AircraftClass.Heavy, hasGlobal = false),
+        flight(ord, den, issued.plus(80, ChronoUnit.MINUTES), None, AircraftResponse.medium, hasGlobal = false),
+        flight(
+          ord,
+          den,
+          issued.plus(50, ChronoUnit.MINUTES),
+          Some(37000),
+          AircraftResponse.forClass(AircraftClass.Heavy),
+          hasGlobal = false
+        ),
+        // A known type: classified by its wing loading rather than its size class.
+        flight(
+          ord,
+          den,
+          issued.plus(50, ChronoUnit.MINUTES),
+          Some(37000),
+          AircraftResponse.fromAdsb(Some("A3"), Some("CL35")),
+          hasGlobal = false
+        ),
         // Miami to San Juan leaves GTG's grid south-east of the Bahamas and lands after GTG's last hour.
-        flight(mia, sju, issued.plus(80, ChronoUnit.MINUTES), None, AircraftClass.Medium, hasGlobal = true),
-        flight(mia, sju, issued.plus(80, ChronoUnit.MINUTES), None, AircraftClass.Light, hasGlobal = false)
+        flight(mia, sju, issued.plus(80, ChronoUnit.MINUTES), None, AircraftResponse.medium, hasGlobal = true),
+        flight(
+          mia,
+          sju,
+          issued.plus(80, ChronoUnit.MINUTES),
+          None,
+          AircraftResponse.forClass(AircraftClass.Light),
+          hasGlobal = false
+        )
       ),
       "remaining" -> Json.arr(
         remaining(ord, den, 0.4, issued.plus(125, ChronoUnit.MINUTES), hasGlobal = false),
@@ -375,14 +398,15 @@ object FlightPackParityTest {
     to: (Double, Double),
     departure: Instant,
     cruiseFt: Option[Int],
-    aircraftClass: AircraftClass
+    aircraft: AircraftResponse
   ): Json =
     Json.obj(
       "origin" -> Json.arr(num(from._1), num(from._2)),
       "destination" -> Json.arr(num(to._1), num(to._2)),
       "departure" -> Json.fromLong(departure.toEpochMilli),
       "cruiseFt" -> cruiseFt.fold(Json.Null)(Json.fromInt),
-      "aircraftClass" -> Json.fromString(aircraftClass.toString)
+      "aircraftClass" -> Json.fromString(aircraft.aircraftClass.toString),
+      "responseFactor" -> num(aircraft.factor)
     )
 
   private def analysisJson(a: RouteAnalysis): Json =

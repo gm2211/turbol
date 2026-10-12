@@ -212,7 +212,14 @@ describe('route analyzer', () => {
         input.departure,
         input.cruiseFt ?? undefined,
         input.aircraftClass as AircraftClass,
-        { now: input.departure }
+        {
+          now: input.departure,
+          aircraft: {
+            aircraftClass: input.aircraftClass as AircraftClass,
+            factor: input.responseFactor,
+            basis: 'type'
+          }
+        }
       )
       expectSame(analysis, expected as Expected)
     }

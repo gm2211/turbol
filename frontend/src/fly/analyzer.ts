@@ -7,9 +7,12 @@
 import type { RouteAnalysis, RoutePoint, RouteSummary, Segment } from '@/api/flights'
 import {
   type AircraftClass,
+  type AircraftResponse,
   type Thresholds,
   type TurbulenceCategory,
-  classify
+  classResponse,
+  classify,
+  scaleThresholds
 } from '@/api/turbulence'
 import { destination, greatCircleKm, intermediate, rint } from './geo'
 import { nearestIndex } from './lambert'
@@ -26,11 +29,25 @@ export interface TurbulenceSource {
   globalIssued?: number
 }
 
-/** The backend's Thresholds.byClass; a pack's manifest carries the server's current values. */
+/**
+ * The backend's Thresholds.byClass; a pack's manifest carries the server's current values. Only Medium (the
+ * reference) classifies: other aircraft scale the EDR by their response factor, so Light and Heavy are what the
+ * reference thresholds look like to a typical aircraft of that size.
+ */
+const referenceThresholds: Thresholds = { light: 0.12, moderate: 0.14, severe: 0.44, extreme: 0.79 }
 export const defaultThresholds: Record<AircraftClass, Thresholds> = {
-  Light: { light: 0.13 * 0.8, moderate: 0.16 * 0.7, severe: 0.36, extreme: 0.64 },
-  Medium: { light: 0.12, moderate: 0.14, severe: 0.44, extreme: 0.79 },
-  Heavy: { light: 0.17 * 0.8, moderate: 0.24 * 0.7, severe: 0.54, extreme: 0.96 }
+  Light: scaleThresholds(referenceThresholds, classResponse('Light').factor),
+  Medium: referenceThresholds,
+  Heavy: scaleThresholds(referenceThresholds, classResponse('Heavy').factor)
+}
+
+/** Category of `edr` as felt by `aircraft`: the EDR times its response factor, against the reference thresholds. */
+export function classifyFelt(
+  edr: number,
+  aircraft: AircraftResponse,
+  thresholds: Record<AircraftClass, Thresholds> = defaultThresholds
+): TurbulenceCategory {
+  return classifyEdr(edr * aircraft.factor, thresholds.Medium)
 }
 
 export const categoryRank: Record<TurbulenceCategory, number> = {
@@ -126,6 +143,8 @@ export function plannedMinutesAt(totalKm: number, cruiseFt?: number): (km: numbe
 
 export interface AnalyzeOptions {
   thresholds?: Record<AircraftClass, Thresholds>
+  /** The aircraft's response, from the server; its size class's when not given. */
+  aircraft?: AircraftResponse
   /** The clock, for the "beyond the forecast horizon" note. */
   now?: number
 }
@@ -194,7 +213,8 @@ function analyze(
   aircraftClass: AircraftClass,
   options: AnalyzeOptions
 ): RouteAnalysis {
-  const thresholds = (options.thresholds ?? defaultThresholds)[aircraftClass]
+  const thresholds = options.thresholds ?? defaultThresholds
+  const aircraft = options.aircraft ?? classResponse(aircraftClass)
   const n = Math.max(40, Math.min(500, Math.trunc(totalKm / 15) + 2))
   const points: RoutePoint[] = []
   const times: number[] = []
@@ -215,7 +235,7 @@ function analyze(
       minutesFromStart: minutes,
       time: iso(time),
       edr: Number.isNaN(sample.edr) ? undefined : sample.edr,
-      category: classifyEdr(sample.edr, thresholds),
+      category: classifyFelt(sample.edr, aircraft, thresholds),
       source: sample.source,
       nearGround: alt < nearGroundFt
     })
@@ -226,6 +246,7 @@ function analyze(
     start: iso(start),
     cruiseAltitudeFt: profile.cruiseFt,
     aircraftClass,
+    aircraft,
     points,
     segments: segments(points),
     summary: summarize(points, times, source, start, options.now ?? Date.now()),
@@ -373,7 +394,11 @@ export function upcoming(
   aircraftClass: AircraftClass,
   thresholds: Record<AircraftClass, Thresholds> = defaultThresholds
 ): Upcoming {
-  const nowCategory = classifyEdr(edrNow ?? NaN, thresholds[aircraftClass])
+  const nowCategory = classifyFelt(
+    edrNow ?? NaN,
+    ahead.aircraft ?? classResponse(aircraftClass),
+    thresholds
+  )
   const window = ahead.points.filter((p) => p.minutesFromStart <= horizonMinutes && !p.nearGround)
   const highest = (cs: TurbulenceCategory[]) =>
     cs.reduce<TurbulenceCategory | undefined>(

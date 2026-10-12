@@ -31,7 +31,9 @@ final case class LiveFlightUpdate(
   route: Option[FlightRoute],
   usingRoute: Boolean,
   upcoming: Option[Upcoming],
-  ahead: Option[RouteAnalysis]
+  ahead: Option[RouteAnalysis],
+  /** How strongly this aircraft feels turbulence: its type's wing loading, or its size class. */
+  aircraftResponse: AircraftResponse = AircraftResponse.medium
 )
 
 /** Builds [[LiveFlightUpdate]]s: current position from adsb.lol, turbulence now and along the rest of the flight. */
@@ -43,7 +45,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
       case None =>
         LiveFlightUpdate(now, "lost", None, AircraftClass.Medium, None, None, usingRoute = false, None, None)
       case Some(a) =>
-        val aircraftClass = AircraftClass.fromAdsb(a.category, a.typeCode)
+        val aircraft = AircraftResponse.fromAdsb(a.category, a.typeCode)
         val route = a.callsign.flatMap(traffic.route)
         val alt = a.altitudeFt.filterNot(_ => a.onGround)
         // Only trust the scheduled route if the aircraft is actually flying it (not another leg of the same number).
@@ -61,7 +63,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
             a.trackDeg,
             destination,
             now,
-            aircraftClass
+            aircraft
           )
         }
         val edrNow = alt.map(altFt => store.sample(a.lat, a.lon, altFt.toDouble, now).edr).filterNot(_.isNaN)
@@ -69,12 +71,13 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
           now,
           if (a.onGround) "on-ground" else "tracking",
           Some(a),
-          aircraftClass,
+          aircraft.aircraftClass,
           edrNow,
           route,
           destination.isDefined,
-          ahead.map(upcoming(_, edrNow, aircraftClass)),
-          ahead
+          ahead.map(upcoming(_, edrNow, aircraft)),
+          ahead,
+          aircraft
         )
     }
 }
@@ -83,8 +86,8 @@ object LiveFlightTracker {
   private val horizonMinutes = 60.0
 
   /** The headline for the next hour: what it's like now, and when the next bumps start and how long they last. */
-  def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraftClass: AircraftClass): Upcoming = {
-    val nowCategory = Thresholds.classify(edrNow.getOrElse(Double.NaN), aircraftClass)
+  def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraft: AircraftResponse): Upcoming = {
+    val nowCategory = Thresholds.classify(edrNow.getOrElse(Double.NaN), aircraft)
     val window = ahead.points.filter(p => p.minutesFromStart <= horizonMinutes && !p.nearGround)
     val worst = window.map(_.category).maxByOption(_.rank).getOrElse(TurbulenceCategory.NoData)
     val bumpy = (p: RoutePoint) => p.category.rank >= TurbulenceCategory.Light.rank

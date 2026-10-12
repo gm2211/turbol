@@ -42,6 +42,9 @@
           {{ flight.aircraftType ? `${flight.aircraftType} · ` : ''
           }}{{ flight.aircraftClass }} aircraft
         </div>
+        <div class="muted">
+          {{ responseLabel(response) }}
+        </div>
         <div class="chips mt-2">
           <v-chip size="small" :color="status.color" variant="flat" :prepend-icon="status.icon">
             {{ status.text }}
@@ -231,8 +234,11 @@ import {
   type TurbulenceCategory,
   categoryColors,
   categoryLabels,
+  classResponse,
   flightLevel,
-  formatUtc
+  formatUtc,
+  responseLabel,
+  scaleThresholds
 } from '@/api/turbulence'
 import { type Upcoming, analyzeFlight, defaultThresholds, upcoming } from '@/fly/analyzer'
 import { idbStore } from '@/fly/db'
@@ -259,7 +265,13 @@ const routeLabel = computed(() =>
   flight.value ? `${flight.value.origin.code} → ${flight.value.destination.code}` : ''
 )
 const allThresholds = computed(() => flight.value?.manifest?.thresholds ?? defaultThresholds)
-const thresholds = computed(() => allThresholds.value[flight.value?.aircraftClass ?? 'Medium'])
+/** How strongly this aircraft feels turbulence: its wing loading, or its size class. */
+const response = computed(
+  () => flight.value?.aircraft ?? classResponse(flight.value?.aircraftClass ?? 'Medium')
+)
+const thresholds = computed(() =>
+  scaleThresholds(allThresholds.value.Medium, response.value.factor)
+)
 
 /** When the plan's clock started, to the minute, so the analysis holds still between GPS fixes. */
 const anchor = computed(() =>
@@ -284,7 +296,7 @@ const analysis = computed<RouteAnalysis | undefined>(() => {
     anchor.value!,
     f.cruiseFt,
     f.aircraftClass,
-    { thresholds: allThresholds.value, now: now.value }
+    { thresholds: allThresholds.value, aircraft: response.value, now: now.value }
   )
 })
 

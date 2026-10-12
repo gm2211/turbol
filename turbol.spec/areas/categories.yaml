@@ -1,8 +1,9 @@
 id: categories
 name: Turbulence categories
 prose: >-
-  EDR maps to Smooth, Light, Moderate, Severe or Extreme, with thresholds that scale with aircraft
-  weight class because heavier aircraft feel the same EDR less.
+  EDR maps to Smooth, Light, Moderate, Severe or Extreme. How strongly an aircraft feels a given EDR
+  depends on its wing loading (or, when the type is unknown, its weight class), applied as a factor
+  on the EDR.
 behaviors:
   - id: medium-thresholds-calibrated
     description: >-
@@ -13,8 +14,29 @@ behaviors:
       (data-pipeline/calibrate.py). Severe and Extreme come from the GTGN User Guide, Figure 2.
   - id: class-specific-thresholds
     description: >-
-      Light and heavy aircraft use their own thresholds: the guide's values scaled by the same
-      calibration ratios as medium (0.8 for Light, 0.7 for Moderate).
+      An aircraft whose type has no wing-loading data feels EDR scaled by its weight class: 1.25 for
+      Light, 1.0 for Medium, 0.8 for Heavy.
+    details: >-
+      These are the ratios the earlier per-class thresholds (the GTGN guide's light and heavy values
+      under the same calibration) had against medium, so unknown types classify as before. The
+      per-class thresholds /status reports are the medium thresholds divided by these factors.
+  - id: wing-loading-response
+    description: >-
+      Each aircraft classifies turbulence as EDR times a response factor against the medium thresholds:
+      for types in the wing-loading table, the factor is the type's gust load per unit gust relative to
+      an A320, so lighter-loaded wings feel the same air more.
+    details: >-
+      Pratt's gust load formula (NACA Report 1206): dn = rho V a Kg U / (2 W/S), Kg = 0.88 mu /
+      (5.3 + mu), mu = 2 (W/S) / (rho c a g), c = S / b, with a from the DATCOM swept-wing lift-curve
+      slope at the cruise Mach number, W at 85% of MTOW, evaluated at FL350 (rho 0.38 kg/m3) with the
+      type's typical cruise TAS. Factors are rounded to 0.01 and clamped to 0.5-2.5. Examples: B744
+      0.74, B77W 0.81, A320 and B738 1.00, E190 1.10, CL35 1.69, C172 1.81. The table covers common
+      airliners, regional aircraft and some business and general aviation types; others fall back to
+      class-specific-thresholds. The EDR thresholds themselves stay as calibrated
+      (medium-thresholds-calibrated).
+    source:
+      text: are we adjusting perceived turbulence for aircraft based on its wingloading?
+      reference: Giulio, turbol project thread, 2026-10-12
   - id: aircraft-class-from-adsb
     description: >-
       A live aircraft's weight class comes from its ADS-B wake category and type code: wide-bodies and

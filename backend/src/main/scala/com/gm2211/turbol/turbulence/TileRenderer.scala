@@ -30,7 +30,7 @@ final class TileRenderer {
     .maximumWeight(12L * 1024 * 1024)
     .weigher((key: String, png: Array[Byte]) => png.length + 2 * key.length + 64)
     .build()
-  private val thresholds = Thresholds.byClass(AircraftClass.Medium)
+  private val thresholds = Thresholds.reference
 
   private def argb(a: Double, r: Int, g: Int, b: Int): Int = (rint(a * 255).toInt << 24) | (r << 16) | (g << 8) | b
 

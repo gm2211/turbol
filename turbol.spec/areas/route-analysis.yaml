@@ -44,11 +44,14 @@ behaviors:
     description: >-
       When analyzing a looked-up flight, the server derives the aircraft class from that flight's live
       ADS-B type and category (aircraft-class-from-adsb), and the result shows the detected type and
-      class read-only.
+      class read-only, with the type's wing loading and how much more or less than an A320 it feels
+      turbulence (wing-loading-response).
     details: >-
       When the type is unknown (the flight isn't airborne, or only airports were given) the class is
       Medium, the result marks it as assumed, and a note says so. The live sighting from the lookup is
-      cached for 10 minutes so the analysis doesn't query adsb.lol again.
+      cached for 10 minutes so the analysis doesn't query adsb.lol again. A known type with no
+      wing-loading data uses its class's factor and a note says so. Downloaded flights keep the
+      response so offline analysis classifies the same way.
   - id: plain-language-verdict
     description: >-
       The result leads with a one-sentence verdict based on the worst en-route category, such as

@@ -3,6 +3,49 @@ import axios from 'axios'
 export type TurbulenceCategory = 'NoData' | 'Smooth' | 'Light' | 'Moderate' | 'Severe' | 'Extreme'
 export type AircraftClass = 'Light' | 'Medium' | 'Heavy'
 
+/**
+ * How strongly an aircraft feels turbulence (backend AircraftResponse): EDR is classified as `edr * factor` against
+ * the reference (medium) thresholds. The factor comes from the type's wing loading, or its size class when the type
+ * isn't in the backend's table.
+ */
+export interface AircraftResponse {
+  typeCode?: string
+  aircraftClass: AircraftClass
+  /** Mid-cruise weight over wing area, kg/m², when the type is known. */
+  wingLoadingKgM2?: number
+  factor: number
+  basis: 'type' | 'class'
+}
+
+/** Backend AircraftResponse.classFactor: for aircraft whose type isn't known. */
+export const classFactor: Record<AircraftClass, number> = { Light: 1.25, Medium: 1.0, Heavy: 0.8 }
+
+export function classResponse(aircraftClass: AircraftClass): AircraftResponse {
+  return { aircraftClass, factor: classFactor[aircraftClass], basis: 'class' }
+}
+
+/** How a response reads to a passenger: "Wing loading 684 kg/m² · feels it 19% less than an A320". */
+export function responseLabel(r: AircraftResponse): string {
+  const pct = Math.round(Math.abs(r.factor - 1) * 100)
+  const feel =
+    pct === 0
+      ? 'feels it like an A320'
+      : `feels it ${pct}% ${r.factor < 1 ? 'less' : 'more'} than an A320`
+  return r.basis === 'type' && r.wingLoadingKgM2 !== undefined
+    ? `Wing loading ${Math.round(r.wingLoadingKgM2)} kg/m² · ${feel}`
+    : `Typical ${r.aircraftClass.toLowerCase()} aircraft · ${feel}`
+}
+
+/** The reference thresholds as EDR seen by an aircraft with response `factor`. */
+export function scaleThresholds(t: Thresholds, factor: number): Thresholds {
+  return {
+    light: t.light / factor,
+    moderate: t.moderate / factor,
+    severe: t.severe / factor,
+    extreme: t.extreme / factor
+  }
+}
+
 export interface FrameInfo {
   id: string
   kind: 'nowcast' | 'forecast'
@@ -255,7 +298,7 @@ export async function fetchColumn(
   return (await axios.get(`/api/turbulence/column/${frameId}`, { params: { lat, lon } })).data
 }
 
-/** Category for an EDR value with one aircraft class's thresholds. */
+/** Category for an EDR value against a set of thresholds. */
 export function classify(edr: number, t: Thresholds): TurbulenceCategory {
   if (edr < t.light) return 'Smooth'
   if (edr < t.moderate) return 'Light'

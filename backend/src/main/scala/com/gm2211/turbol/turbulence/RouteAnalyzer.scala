@@ -49,7 +49,9 @@ final case class RouteAnalysis(
   segments: Seq[Segment],
   summary: RouteSummary,
   dataSources: DataSources,
-  aircraftType: Option[String] = None
+  aircraftType: Option[String] = None,
+  /** How strongly this aircraft feels turbulence (its wing loading, or its size class when the type is unknown). */
+  aircraft: AircraftResponse = AircraftResponse.medium
 )
 
 /** @param globalIssued the GFS cycle behind the coarse global layer used outside GTG, when loaded */
@@ -134,12 +136,12 @@ object RouteAnalyzer {
     toLon: Double,
     departure: Instant,
     cruiseFt: Option[Int],
-    aircraftClass: AircraftClass
+    aircraft: AircraftResponse
   ): RouteAnalysis = {
     val total = greatCircleKm(fromLat, fromLon, toLat, toLon)
     val cruise = cruiseFt.getOrElse(defaultCruiseFt(total))
     val profile = Profile(total, startAltitudeFt = 0, cruise, groundSpeedKmh = cruiseSpeedKmh, includeClimb = true)
-    analyze(store, total, f => intermediate(fromLat, fromLon, toLat, toLon, f), profile, departure, aircraftClass)
+    analyze(store, total, f => intermediate(fromLat, fromLon, toLat, toLon, f), profile, departure, aircraft)
   }
 
   /**
@@ -155,7 +157,7 @@ object RouteAnalyzer {
     trackDeg: Option[Double],
     destination: Option[(Double, Double)],
     now: Instant,
-    aircraftClass: AircraftClass,
+    aircraft: AircraftResponse,
     lookaheadMinutes: Double = 90
   ): RouteAnalysis = {
     val speedKmh = groundSpeedKts.filter(_ > 80).map(_ * 1.852).getOrElse(cruiseSpeedKmh)
@@ -163,12 +165,12 @@ object RouteAnalyzer {
       case Some((toLat, toLon)) =>
         val total = greatCircleKm(lat, lon, toLat, toLon)
         val profile = Profile(total, altitudeFt, altitudeFt, speedKmh, includeClimb = false)
-        analyze(store, total, f => intermediate(lat, lon, toLat, toLon, f), profile, now, aircraftClass)
+        analyze(store, total, f => intermediate(lat, lon, toLat, toLon, f), profile, now, aircraft)
       case None =>
         val total = speedKmh * lookaheadMinutes / 60
         val bearing = trackDeg.getOrElse(0.0)
         val profile = Profile(total, altitudeFt, altitudeFt, speedKmh, includeClimb = false, descend = false)
-        analyze(store, total, f => this.destination(lat, lon, bearing, total * f), profile, now, aircraftClass)
+        analyze(store, total, f => this.destination(lat, lon, bearing, total * f), profile, now, aircraft)
     }
   }
 
@@ -210,7 +212,7 @@ object RouteAnalyzer {
     pointAt: Double => (Double, Double),
     profile: Profile,
     start: Instant,
-    aircraftClass: AircraftClass
+    aircraft: AircraftResponse
   ): RouteAnalysis = {
     val data = store.current
     val n = max(40, min(500, (totalKm / 15).toInt + 2))
@@ -231,7 +233,7 @@ object RouteAnalyzer {
         minutes,
         time,
         edr,
-        Thresholds.classify(sample.edr, aircraftClass),
+        Thresholds.classify(sample.edr, aircraft),
         sample.source,
         alt < nearGroundFt
       )
@@ -242,11 +244,12 @@ object RouteAnalyzer {
       durationMinutes = points.lastOption.fold(0.0)(_.minutesFromStart),
       start = start,
       cruiseAltitudeFt = profile.cruiseFt,
-      aircraftClass = aircraftClass,
+      aircraftClass = aircraft.aircraftClass,
       points = points,
       segments = segments(points),
       summary = summarize(points, data, start, forecastUntil),
-      dataSources = DataSources(data.nowcast.map(_.validTime), data.forecastIssued, forecastUntil, data.globalIssued)
+      dataSources = DataSources(data.nowcast.map(_.validTime), data.forecastIssued, forecastUntil, data.globalIssued),
+      aircraft = aircraft
     )
   }
 

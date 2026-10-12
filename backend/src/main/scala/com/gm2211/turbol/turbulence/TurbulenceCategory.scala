@@ -22,7 +22,7 @@ object TurbulenceCategory {
   val ordered: Seq[TurbulenceCategory] = Seq(Smooth, Light, Moderate, Severe, Extreme, NoData)
 }
 
-/** Aircraft weight class: heavier aircraft feel the same EDR less, so thresholds scale with it. */
+/** Aircraft weight class: the fallback for AircraftResponse when the type's wing loading isn't known. */
 enum AircraftClass {
   case Light, Medium, Heavy
 }
@@ -127,22 +127,32 @@ object AircraftClass {
 final case class Thresholds(light: Double, moderate: Double, severe: Double, extreme: Double)
 
 object Thresholds {
-  // Medium: Light/Moderate recalibrated against PIREPs for the 3 km grid (data-pipeline/calibrate.py, PR #18);
-  // Severe/Extreme from the GTGN User Guide (Fig. 2). Light/Heavy aircraft use the guide's values scaled by the
-  // same calibration ratios (0.8 for Light, 0.7 for Moderate) until enough PIREPs exist to fit them directly.
-  val byClass: Map[AircraftClass, Thresholds] = Map(
-    AircraftClass.Light -> Thresholds(0.13 * 0.8, 0.16 * 0.7, 0.36, 0.64),
-    AircraftClass.Medium -> Thresholds(0.12, 0.14, 0.44, 0.79),
-    AircraftClass.Heavy -> Thresholds(0.17 * 0.8, 0.24 * 0.7, 0.54, 0.96)
-  )
+  // Light/Moderate recalibrated against PIREPs for the 3 km grid (data-pipeline/calibrate.py, PR #18);
+  // Severe/Extreme from the GTGN User Guide (Fig. 2). These are for the reference (medium) aircraft: other aircraft
+  // scale the EDR by their AircraftResponse factor instead of having thresholds of their own.
+  val reference: Thresholds = Thresholds(0.12, 0.14, 0.44, 0.79)
 
-  def classify(edr: Double, aircraftClass: AircraftClass = AircraftClass.Medium): TurbulenceCategory = {
-    val t = byClass(aircraftClass)
+  /** The reference thresholds as EDR seen by an aircraft with response `factor` (what /status reports per class). */
+  def scaled(factor: Double): Thresholds =
+    Thresholds(
+      reference.light / factor,
+      reference.moderate / factor,
+      reference.severe / factor,
+      reference.extreme / factor
+    )
+
+  val byClass: Map[AircraftClass, Thresholds] =
+    AircraftClass.values.map(c => c -> scaled(AircraftResponse.classFactor(c))).toMap
+
+  /** Category of `edr` as felt by `aircraft`: the EDR times its response factor, against the reference thresholds. */
+  def classify(edr: Double, aircraft: AircraftResponse = AircraftResponse.medium): TurbulenceCategory = {
+    val t = reference
+    val felt = edr * aircraft.factor
     if (edr.isNaN) TurbulenceCategory.NoData
-    else if (edr < t.light) TurbulenceCategory.Smooth
-    else if (edr < t.moderate) TurbulenceCategory.Light
-    else if (edr < t.severe) TurbulenceCategory.Moderate
-    else if (edr < t.extreme) TurbulenceCategory.Severe
+    else if (felt < t.light) TurbulenceCategory.Smooth
+    else if (felt < t.moderate) TurbulenceCategory.Light
+    else if (felt < t.severe) TurbulenceCategory.Moderate
+    else if (felt < t.extreme) TurbulenceCategory.Severe
     else TurbulenceCategory.Extreme
   }
 }
