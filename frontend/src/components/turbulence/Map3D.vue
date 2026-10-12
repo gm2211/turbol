@@ -87,7 +87,8 @@ import {
   type Layer,
   LinearInterpolator,
   type MapViewState,
-  type PickingInfo
+  type PickingInfo,
+  WebMercatorViewport
 } from '@deck.gl/core'
 import { IconLayer, LineLayer, PathLayer, ScatterplotLayer } from '@deck.gl/layers'
 import { SimpleMeshLayer } from '@deck.gl/mesh-layers'
@@ -428,6 +429,24 @@ function setRotation(pitch: number, bearing: number) {
   deck?.setProps({ initialViewState: viewState })
 }
 
+/** Moves the camera by screen pixels (the W/A/S/D keys), as if the ground were dragged the other way. */
+function panBy(dx: number, dy: number) {
+  const el = canvasEl.value
+  if (!deck || !el) return
+  const { clientWidth: width, clientHeight: height } = el
+  const viewport = new WebMercatorViewport({ ...viewState, width, height })
+  const [longitude, latitude] = viewport.unproject([width / 2 + dx, height / 2 + dy])
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
+  viewState = {
+    ...viewState,
+    longitude: longitude!,
+    latitude: Math.max(Math.min(latitude!, 85), -85)
+  }
+  deck.setProps({ initialViewState: viewState })
+  window.clearTimeout(moveTimer)
+  moveTimer = window.setTimeout(() => emit('move', fromDeck(viewState)), 400)
+}
+
 function animateTo(pitch: number, bearing: number, duration = 600): Promise<MapView> {
   return new Promise((resolve) => {
     if (!deck) return resolve(fromDeck(viewState))
@@ -448,7 +467,7 @@ const tiltUp = () => animateTo(50, viewState.bearing === 0 ? -15 : (viewState.be
 /** Animates back to flat and north-up, then gives the view to hand back to the 2D map. */
 const flatten = () => animateTo(0, 0, 450)
 
-defineExpose({ setRotation, tiltUp, flatten })
+defineExpose({ setRotation, tiltUp, flatten, panBy })
 
 // Clicks are picked by hand (deck's onClick doesn't fire in Chromium with deck.gl 9.4).
 let downAt: [number, number] = [0, 0]

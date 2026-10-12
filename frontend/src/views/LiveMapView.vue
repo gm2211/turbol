@@ -265,6 +265,7 @@ import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
+import { listenKeyPan } from '@/util/keyPan'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
 
 interface TrackedFlight {
@@ -829,6 +830,7 @@ const stopConnectionWatch = onConnectionChange(() => {
 // 3D mode: deck.gl drawn over the Leaflet map, loaded only the first time it's opened so 2D stays light.
 interface Map3DHandle {
   setRotation(pitch: number, bearing: number): void
+  panBy(dx: number, dy: number): void
   tiltUp(): Promise<MapView>
   flatten(): Promise<MapView>
 }
@@ -961,6 +963,21 @@ function onTouchMove(e: TouchEvent) {
   } else if (pinch > 40) twoFinger = undefined
 }
 
+// W/A/S/D pan the map, in 2D and 3D, while held.
+let keyPanning = false
+const stopKeyPan = listenKeyPan(
+  (dx, dy) => {
+    keyPanning = true
+    if (mode.value === '3d') map3d.value?.panBy(dx, dy)
+    else map?.panBy([dx, dy], { animate: false })
+  },
+  () => {
+    if (!keyPanning) return
+    keyPanning = false
+    if (mode.value === '2d') map?.fire('moveend')
+  }
+)
+
 onMounted(() => {
   if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
   // boxZoom off: shift+drag opens 3D instead.
@@ -979,6 +996,8 @@ onMounted(() => {
   trackedPlanes.addTo(map)
   followLayer.addTo(map)
   map.on('moveend', () => {
+    // Held W/A/S/D move the map every frame: fetch once they're let go.
+    if (keyPanning) return
     if (trafficMode.value === 'all') refreshTraffic()
     else if (trafficMode.value === 'sample') areaMoved.value = true
   })
@@ -1011,6 +1030,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopKeyPan()
   topLeftObserver.disconnect()
   window.clearTimeout(trafficTimer)
   window.clearInterval(trackedTimer)
