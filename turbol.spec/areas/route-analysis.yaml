@@ -98,6 +98,19 @@ behaviors:
     description: >-
       The result shows a timeline of category segments, minutes and percentage per category, the
       worst point's time and location, and a map and altitude profile coloured by category.
+  - id: timeline-readout
+    description: >-
+      Hovering over or dragging along the turbulence timeline (category bar or EDR and altitude chart)
+      reads out the point under the cursor: time into the flight, local clock time, time left, category,
+      EDR and flight level, with a matching marker on the route map.
+    details: >-
+      A mouse leaving the chart clears the reading; a finger lifting off leaves it in place. Vertical
+      swipes still scroll the page on phones. The downloaded-flight card's timeline reads the same way.
+    source:
+      text: >-
+        there should be a way to drag or hover to read edc and time elapsed so I can get a sense of how
+        intense during what part of the flight
+      reference: Giulio, turbol project thread, 2026-10-12, on the Analyze page's turbulence timeline
   - id: coverage-notes
     description: >-
       The result says how much of the route uses the coarser global layer outside GTG coverage, and

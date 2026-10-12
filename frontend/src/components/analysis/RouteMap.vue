@@ -6,7 +6,7 @@
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { Place, RoutePoint } from '@/api/flights'
+import { type Place, type RoutePoint, formatDuration } from '@/api/flights'
 import type { AircraftView } from '@/api/turbulence'
 import { categoryColors, categoryLabels, flightLevel, tileUrl } from '@/api/turbulence'
 import { planeIcon } from '@/components/turbulence/planeIcon'
@@ -26,11 +26,14 @@ const props = defineProps<{
   /** What the line is, for the key; a great circle by default. */
   pathLabel?: string
   overlay?: { frameId: string; levelFt: number }
+  /** The point being read on the timeline, marked on the route. */
+  cursor?: RoutePoint
 }>()
 
 const mapEl = ref<HTMLDivElement>()
 let map: L.Map | undefined
 const layers = L.layerGroup()
+let cursorMarker: L.CircleMarker | undefined
 let fitted = false
 let overlayLayer: L.TileLayer | undefined
 let overlayKey = ''
@@ -130,6 +133,27 @@ function draw() {
   }
 }
 
+/** Moves the timeline's reading point along the route without redrawing the rest. */
+function drawCursor() {
+  if (!map) return
+  const c = props.cursor
+  if (!c) {
+    cursorMarker?.remove()
+    cursorMarker = undefined
+    return
+  }
+  const style = { color: '#0f172a', fillColor: categoryColors[c.category], fillOpacity: 1, weight: 3 }
+  const label = `${formatDuration(c.minutesFromStart)} · ${categoryLabels[c.category]}`
+  if (!cursorMarker) {
+    cursorMarker = L.circleMarker([c.lat, c.lon], { radius: 7, ...style })
+      .bindTooltip(label, { permanent: true, direction: 'top', offset: [0, -8] })
+      .addTo(map)
+  } else {
+    cursorMarker.setLatLng([c.lat, c.lon]).setStyle(style).setTooltipContent(label)
+  }
+}
+watch(() => props.cursor, drawCursor)
+
 watch(
   () => [props.points, props.aircraft, props.trail, props.overlay, props.worst, props.worstLabel, props.pathLabel],
   () => {
@@ -143,6 +167,7 @@ onMounted(() => {
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
   layers.addTo(map)
   draw()
+  drawCursor()
 })
 onBeforeUnmount(() => map?.remove())
 </script>

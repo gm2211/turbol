@@ -233,6 +233,7 @@
           :worst-label="worstLabel"
           :aircraft="lookup?.live"
           :path-label="analysis.path?.description"
+          :cursor="hoverPoint"
           legend
         />
       </v-card>
@@ -242,6 +243,8 @@
           :segments="analysis.segments"
           :start-label="`Departure ${localTime(analysis.start)}`"
           :end-label="`Arrival ${localTime(arrival)}`"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
         <TurbulenceProfile
           class="mt-1"
@@ -249,6 +252,8 @@
           :light="thresholds.light"
           :moderate="thresholds.moderate"
           :height="100"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
       </v-card>
     </template>
@@ -274,7 +279,8 @@ import {
   analyzeFlight,
   fetchSchedule,
   formatDuration,
-  lookupFlight
+  lookupFlight,
+  pointAt
 } from '@/api/flights'
 import {
   type AircraftClass,
@@ -349,6 +355,14 @@ const shownCategories = computed(() =>
     (c) => c === 'Smooth' || (analysis.value?.summary.minutesByCategory[c] ?? 0) > 0
   )
 )
+/** The minute being read on the timeline (hover or drag), mirrored on the map. */
+const hoverMinute = ref<number>()
+const hoverPoint = computed(() =>
+  hoverMinute.value === undefined || !analysis.value
+    ? undefined
+    : pointAt(analysis.value.points, hoverMinute.value)
+)
+watch(analysis, () => (hoverMinute.value = undefined))
 const worstPoint = computed<[number, number] | undefined>(() => {
   const s = analysis.value?.summary
   return s?.worstLat !== undefined && s.worstLon !== undefined && s.worstCategory !== 'Smooth'
