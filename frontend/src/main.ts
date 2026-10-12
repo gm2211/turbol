@@ -52,19 +52,41 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 }
 
 // After a deploy, an open page can ask for a file of the old build that is gone: reload into the new build, which
-// the service worker already has. Only once a minute, so a file that can't load offline doesn't loop.
+// the service worker already has. Only when the server really has a new build (a stylesheet that is slow or blocked
+// in one browser also lands here, and reloading for it left a blank map mid-load), and once a minute at most, so a
+// file that can't load offline doesn't loop.
+const currentBuild = document.querySelector<HTMLScriptElement>(
+  'script[type="module"][src*="/assets/index-"]'
+)?.src
 window.addEventListener('vite:preloadError', (event) => {
-  const key = 'turbol.reloadedForNewBuild'
-  try {
-    const last = Number(sessionStorage.getItem(key) ?? 0)
-    if (Date.now() - last < 60_000) return
-    sessionStorage.setItem(key, String(Date.now()))
-  } catch {
-    return
-  }
+  // Carry on with the import either way; a module that really is missing still fails where it's used.
   event.preventDefault()
-  window.location.reload()
+  console.warn('Preload failed', event.payload)
+  const key = 'turbol.reloadedForNewBuild'
+  newBuildDeployed().then((deployed) => {
+    if (!deployed) return
+    try {
+      const last = Number(sessionStorage.getItem(key) ?? 0)
+      if (Date.now() - last < 60_000) return
+      sessionStorage.setItem(key, String(Date.now()))
+    } catch {
+      return
+    }
+    window.location.reload()
+  })
 })
+
+/** Whether the server's index.html names a different build from this page's. Offline counts as yes, as before. */
+async function newBuildDeployed(): Promise<boolean> {
+  if (!currentBuild) return true
+  try {
+    const html = await (await fetch('/map', { cache: 'no-store' })).text()
+    const name = new URL(currentBuild).pathname
+    return !html.includes(name)
+  } catch {
+    return true
+  }
+}
 
 if (import.meta.env.DEV) {
   axios.defaults.baseURL = 'http://localhost:8081'
