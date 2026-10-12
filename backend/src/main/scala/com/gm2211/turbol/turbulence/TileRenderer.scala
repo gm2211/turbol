@@ -35,7 +35,7 @@ final class TileRenderer {
   private def argb(a: Double, r: Int, g: Int, b: Int): Int = (rint(a * 255).toInt << 24) | (r << 16) | (g << 8) | b
 
   private val transparent = 0
-  private val light = argb(0.55, 250, 204, 21)
+  private val light = argb(0.55, 132, 204, 22)
   private val moderate = argb(0.7, 249, 115, 22)
   private val severe = argb(0.8, 220, 38, 38)
   private val extreme = argb(0.85, 147, 51, 234)

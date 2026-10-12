@@ -25,3 +25,8 @@ behaviors:
     description: >-
       Each category has one colour, used identically by map tiles, route lines, profiles, legends and
       the 3D view.
+    details: >-
+      Smooth is green, Light is lime green (#84cc16), Moderate orange, Severe red, Extreme purple.
+      Light was yellow until Giulio asked for it to be green; lime keeps it distinct from Smooth.
+    source:
+      text: why is light shown as yellow instead of green
