@@ -161,7 +161,8 @@ class GlobalLayerTest extends BaseTest {
       levelsFt = Vector(30000, 33000, 35000),
       step = 6,
       cellKm = 18,
-      voxels = Array(4012, -9750, 0, 41, 1500, 17950, 0, 30, 4012, -9750, 2, 254, 1500, -17950, 1, 88, 4012, -9750, 1, 24),
+      voxels =
+        Array(4012, -9750, 0, 41, 1500, 17950, 0, 30, 4012, -9750, 2, 254, 1500, -17950, 1, 88, 4012, -9750, 1, 24),
       globalLevelsFt = Vector(35000),
       globalCellKm = 168,
       globalVoxels = Array(-7950, 17950, 0, 158)
