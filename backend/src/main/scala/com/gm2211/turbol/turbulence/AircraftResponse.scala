@@ -24,7 +24,8 @@ final case class AircraftSpec(mtowKg: Double, wingAreaM2: Double, spanM: Double,
  *
  * @param typeCode the ICAO type designator, when ADS-B reports one
  * @param wingLoadingKgM2 the type's mid-cruise wing loading, when the type is in the table
- * @param basis "type" when the factor comes from the type's wing loading, "class" when only its size class is known
+ * @param basis "type" when the factor comes from the type's wing loading, "class" when only its size class is known,
+ *              "assumed" when the aircraft is unknown and its class was guessed from the route length
  */
 final case class AircraftResponse(
   typeCode: Option[String],
@@ -163,4 +164,11 @@ object AircraftResponse {
   }
 
   val medium: AircraftResponse = forClass(AircraftClass.Medium)
+
+  /** Routes at least this long are flown by widebodies (heavy aircraft); shorter ones mostly by narrowbodies. */
+  val longHaulKm = 4500.0
+
+  /** When the aircraft is unknown: the class typical for a route this long, marked as assumed. */
+  def assumedFor(distanceKm: Double): AircraftResponse =
+    forClass(if (distanceKm >= longHaulKm) AircraftClass.Heavy else AircraftClass.Medium).copy(basis = "assumed")
 }

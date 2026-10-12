@@ -186,7 +186,9 @@
           <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
           <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
           <div><span>Aircraft</span>{{ aircraftLabel }}</div>
-          <div class="wide"><span>Ride</span>{{ responseLabel(response) }}</div>
+          <div v-if="response.basis === 'type'" class="wide">
+            <span>Ride</span>{{ responseLabel(response) }}
+          </div>
           <div class="wide">
             <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
             <template v-if="analysis.summary.worstMinute !== undefined">
@@ -336,7 +338,10 @@ const thresholds = computed(() =>
 const aircraftLabel = computed(() => {
   const a = analysis.value
   if (!a) return ''
-  return a.aircraftType ? `${a.aircraftType} · ${a.aircraftClass}` : `${a.aircraftClass} (assumed)`
+  if (a.aircraftType) return `${a.aircraftType} · ${a.aircraftClass}`
+  if (a.aircraft?.basis === 'assumed')
+    return a.aircraftClass === 'Heavy' ? 'Widebody (assumed)' : 'Narrowbody (assumed)'
+  return `${a.aircraftClass} (assumed)`
 })
 /** Categories this flight actually has (Smooth always), so the breakdown stays short enough for one screen. */
 const shownCategories = computed(() =>
