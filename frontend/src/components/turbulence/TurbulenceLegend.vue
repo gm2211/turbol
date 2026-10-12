@@ -56,12 +56,15 @@ const shortLabels: Partial<Record<TurbulenceCategory, string>> = {
 }
 .legend.compact {
   display: flex;
-  gap: 8px;
+  /* Wraps onto a second line rather than growing under the 2D/3D switch on narrow phones. */
+  flex-wrap: wrap;
+  gap: 2px 8px;
   padding: 4px 8px;
   font-size: 11px;
 }
 .compact .legend-row {
   gap: 3px;
+  white-space: nowrap;
 }
 .aircraft-key {
   margin-top: 2px;

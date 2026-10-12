@@ -1421,6 +1421,9 @@ onBeforeUnmount(() => {
   bottom: 22px;
   left: 8px;
   width: auto;
+  /* Clear of the 2D/3D switch (128px wide, 8px from the edge): with the aircraft key the legend covered the switch
+     and swallowed taps on 3D. */
+  max-width: calc(100% - 152px);
   align-items: flex-start;
 }
 .mobile .mode-toggle {
