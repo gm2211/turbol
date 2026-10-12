@@ -8,8 +8,9 @@
     return-object
     no-filter
     hide-no-data
-    density="compact"
+    density="comfortable"
     variant="outlined"
+    hide-details
     clearable
     @update:search="onSearch"
   />
