@@ -1,6 +1,8 @@
 <template>
   <div v-if="tip" class="edr-tip" :style="{ left: `${tip.x}px`, top: `${tip.y}px` }">
-    <template v-if="tip.loading">…</template>
+    <template v-if="tip.loading">
+      <b>EDR <span class="pending">…</span></b> · <span class="pending">…</span> · {{ levelLabel }}
+    </template>
     <template v-else-if="tip.edr != null">
       <b>EDR {{ tip.edr.toFixed(2) }}</b> ·
       <span :style="{ color: categoryColors[tip.category] }">{{
@@ -140,5 +142,8 @@ onBeforeUnmount(() => {
   color: #fff;
   background: rgba(15, 23, 42, 0.85);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.pending {
+  opacity: 0.6;
 }
 </style>
