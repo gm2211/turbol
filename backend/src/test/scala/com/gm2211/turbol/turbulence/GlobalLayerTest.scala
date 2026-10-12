@@ -174,4 +174,22 @@ class GlobalLayerTest extends BaseTest {
       }
     }
   }
+
+  test("the throttle keeps busy time to its duty share of wall-clock time") {
+    def run(throttle: Throttle): (Long, Long) = {
+      val start = System.nanoTime()
+      var busy = 0L
+      while (busy < 300000000L) { // 300 ms of work, in ~1 ms pieces
+        val t = System.nanoTime()
+        while (System.nanoTime() - t < 1000000L) {}
+        busy += System.nanoTime() - t
+        throttle.tick()
+      }
+      (busy, System.nanoTime() - start)
+    }
+    val (busy, wall) = run(new Throttle(0.5, sliceMillis = 20))
+    (busy.toDouble / wall) should be < 0.6
+    val (offBusy, offWall) = run(Throttle.off)
+    (offBusy.toDouble / offWall) should be > 0.9
+  }
 }

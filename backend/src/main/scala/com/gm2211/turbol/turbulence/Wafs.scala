@@ -70,9 +70,13 @@ object Wafs {
    * WAFS EDR at every level for `valid`, on the GFS 0.25 degree grid ([[EdrLayer.encode]]d, missing where the images
    * don't reach), from the newest cycle up to `latestCycle` that has every level; None when no cycle has them all.
    */
-  def fetch(valid: Instant, latestCycle: Instant): Option[(Instant, Vector[Array[Byte]])] =
+  def fetch(
+    valid: Instant,
+    latestCycle: Instant,
+    throttle: Throttle = Throttle.off
+  ): Option[(Instant, Vector[Array[Byte]])] =
     cyclesFor(valid, latestCycle).iterator.flatMap { case (cycle, lead) =>
-      scala.util.Try(table.levelsHpa.map(hPa => decodePng(Http.getBytes(url(cycle, lead, hPa), attempts = 2)))).toOption
+      scala.util.Try(table.levelsHpa.map(hPa => decodePng(Http.getBytes(url(cycle, lead, hPa), attempts = 2), throttle))).toOption
         .map(cycle -> _)
     }.nextOption()
 
@@ -92,7 +96,7 @@ object Wafs {
   }
 
   /** One WAFS image as encoded EDR on the GFS grid (rows from 90N, columns from 0E), nearest pixel. */
-  def decodePng(bytes: Array[Byte]): Array[Byte] = {
+  def decodePng(bytes: Array[Byte], throttle: Throttle = Throttle.off): Array[Byte] = {
     val image = ImageIO.read(new ByteArrayInputStream(bytes))
     if (image == null) throw RuntimeException("not an image")
     val w = image.getWidth
@@ -113,6 +117,7 @@ object Wafs {
     val out = new Array[Byte](GlobalGrid.nx * GlobalGrid.ny)
     var j = 0
     while (j < GlobalGrid.ny) {
+      throttle.tick()
       val y = ys(j)
       var i = 0
       while (i < GlobalGrid.nx) {
