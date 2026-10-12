@@ -76,12 +76,18 @@
         </v-btn-toggle>
       </div>
       <div class="muted" v-if="trafficMode !== 'off'">
-        <template v-if="trafficMode === 'sample'">
+        <template v-if="!trafficComplete && aircraftCount === 0">Loading flights…</template>
+        <template v-else-if="trafficMode === 'sample'">
           {{ shownCount.toLocaleString() }} of {{ aircraftCount.toLocaleString() }} aircraft in this
           area
         </template>
         <template v-else>{{ shownCount.toLocaleString() }} aircraft in view</template>
-        <span v-if="!trafficComplete || shownCount < Math.min(targetCount, aircraftCount)">
+        <span
+          v-if="
+            aircraftCount > 0 &&
+            (!trafficComplete || shownCount < Math.min(targetCount, aircraftCount))
+          "
+        >
           (loading more)</span
         >
       </div>
@@ -262,7 +268,7 @@ const statusLoaded = ref(false)
 const levelFt = ref(35000)
 const frameIndex = ref(0)
 const aircraftCount = ref(0)
-const trafficComplete = ref(true)
+const trafficComplete = ref(false)
 type TrafficMode = 'off' | 'sample' | 'all'
 const trafficMode = ref<TrafficMode>(readTrafficMode())
 const sampleSize = 100
@@ -573,6 +579,7 @@ function clearTraffic() {
   traffic.value = []
   shownCount.value = 0
   aircraftCount.value = 0
+  trafficComplete.value = false
 }
 
 function searchThisArea() {
