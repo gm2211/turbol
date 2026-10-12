@@ -37,19 +37,26 @@ behaviors:
         Analyze page ("propose 5 alternative designs that retain the vibe")
   - id: route-flights-for-day
     description: >-
-      On the Route tab, the result lists the route's flights on the chosen day (flight number, airline,
-      takeoff and landing in local time, aircraft type) next to an "Any flight" option that follows
-      the route's typical path (flown-track-path).
-      Picking one analyzes that flight with its real aircraft type at its time on that day; the flight
-      that takes off next from the chosen time is picked by default.
+      On the Route tab, the result lists every flight the route's published timetable has on the
+      chosen day (flight number, airline, scheduled departure and arrival in each airport's local
+      time with a +1 for next-day arrivals, aircraft type when recently seen), next to an "Any flight"
+      option. Picking one analyzes that flight with its real aircraft type from shortly after its gate
+      time; the flight departing next from the chosen time is picked by default.
     details: >-
-      Flights come from what actually flew in the last day: callsigns the route directory (Virtual
-      Radar Server standing data, mirrored by adsb.lol) lists with origin then destination as
-      consecutive stops, found in adsb.lol's half-hour heatmap history (callsign to airframe), then
-      confirmed by the airframe's trace taking off near the origin and landing near the destination.
-      The observed takeoff's time of day is moved to the chosen day, since most timetables are daily.
-      Flights that didn't fly in the last day (weekly services) and hops shorter than about two hours
-      between scanned slots can be missed. `?pick=<callsign>` on the URL picks a flight.
+      The timetable comes from FlightStats' public route pages (website data, not a documented API),
+      which reach about three days either side of today; further out the same weekday a week earlier
+      is used and the strip says so. Codeshare numbers show on hover. Each flight's recent leg (for
+      its path and aircraft type) comes from the last two days of adsb.lol history: callsigns the
+      route directory (Virtual Radar Server standing data) lists for the pair, found in hourly
+      heatmap slots (callsign to airframe), then the airframe's trace, trying older sightings when
+      the newest is an onward leg under the same callsign or a flight still in the air, and stitching
+      legs split across trace files. A leg matches a flight by flight number, or for callsigns that
+      aren't the number (Emirates' EK206 flies as UAE5RQ) by the same airline taking off within
+      three hours of the gate time. When the timetable can't be read the list falls back to flights
+      seen flying the route, at their observed takeoff times, and says so. `?pick=` on the URL picks
+      a flight by callsign or flight number. Prompted by Giulio asking "why does turbli find more
+      flights than turbol" (2026-10-12, project chat), when Turbli listed DL286, AA198, DL184 and
+      EK206 at their scheduled times and we listed only AA198 and DL184 at observed takeoff times.
     source:
       text: >-
         should show relevant flights for this route and date and the ability to select each and
@@ -58,25 +65,33 @@ behaviors:
       reference: Giulio, turbol project thread, 2026-10-12, on the Analyze page's JFK to MXP result
   - id: flown-track-path
     description: >-
-      A route is analyzed along the best path available, in this order: the filed flight plan; the
-      average of the route's tracks flown in the last day, when there are at least two and none
-      strays more than 200 km from their average; the picked flight's own flown track from the last
-      day, shifted to its departure on the chosen day; the great circle. The result names the path it
-      used.
+      A path picker beside the flight list shows every path the analysis can follow: Filed plan,
+      Average of past flights, the picked flight's last track, and Geodesic. Unavailable ones are
+      greyed out with the reason. The best available one is followed by default (in that order), any
+      available one can be picked, and the one followed is highlighted in the picker and named on the
+      verdict, the timeline and the map legend.
     details: >-
-      Filed flight plans aren't public, so the first rung is never available today. Positions are
-      averaged on the sphere and altitudes and minutes after takeoff as plain means, point by point
-      along each track's length. Routes that move with the jet stream day to day (the North Atlantic
-      tracks) often differ by more than 200 km, and then the picked flight's own track is used. Gaps
-      in ADS-B coverage over oceans are crossed on the great circle. The average uses the tracks the
-      flight list already loaded and never starts a history scan itself. When a picked flight's track
-      can't be loaded and no average exists, the analysis falls back to the great circle and says so.
+      Filed flight plans aren't public, so Filed plan is always greyed out ("not public"). The
+      average needs at least two of the route's tracks from the last two days, none straying more
+      than 200 km from their mean (positions averaged on the sphere, altitudes and minutes after
+      takeoff as plain means, point by point along each track's length); otherwise it says how far
+      apart they are. North Atlantic tracks move with the jet stream and often fail this. The last
+      track is the flight's own most recent leg on the route, shifted to the chosen departure. Gaps in
+      ADS-B coverage over oceans are crossed on the great circle. The average uses tracks the flight
+      list already loaded and never starts a history scan itself. The average was first asked for as
+      "average route based on past flight plans when past flight plans are similar enough to one
+      another" (Giulio, 2026-10-12).
     source:
-      text: >-
-        still not seeing flight list nor a way to play around in 3d with turbulence along planned
-        route (or average route based on past flight plans when past flight plans are similar enough
-        to one another) or geodesic if neither available
-      reference: Giulio, turbol project thread, 2026-10-12, on prod's Analyze page for JFK to MXP
+      text: |-
+        unclear path is being used: 
+
+        * filed plan
+        * average of past flight plans
+        * geodesic
+
+
+        Also I should be able to choose even when all 3 available
+      reference: Giulio, turbol project chat, 2026-10-12, on the Analyze page's JFK to MXP result
   - id: route-3d-exploration
     description: >-
       An analysis result has an "Explore in 3D" button that opens the live map's 3D view with the

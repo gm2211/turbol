@@ -92,11 +92,61 @@ class FlightHistoryTest extends BaseTest {
     RouteScheduleService.onDay(Instant.parse("2026-10-11T22:00:00Z"), from, from.plusSeconds(3600)) shouldBe None
   }
 
-  test("scans the last day's hourly slots, skipping the ones still being written") {
+  test("scans the last two days' hourly slots, skipping the ones still being written") {
     val slots = FlightHistory.slotsToScan(Instant.parse("2026-10-12T14:40:00Z"))
-    slots.size shouldBe 24
+    slots.size shouldBe 48
     slots.head shouldBe Instant.parse("2026-10-12T13:00:00Z")
-    slots.last shouldBe Instant.parse("2026-10-11T14:00:00Z")
+    slots.last shouldBe Instant.parse("2026-10-10T14:00:00Z")
+  }
+
+  test("stitches a flight cut apart by file boundaries back together") {
+    val legs = FlightHistory.parseLegs(trace)
+    val first = legs.head
+    val (a, b) = first.points.splitAt(2)
+    val stitched = FlightHistory.stitch(Seq(first.copy(points = b), first.copy(points = a ++ b.take(1)), legs(1)))
+    stitched.map(_.callsign) shouldBe Seq("DAL184", "DAL185")
+    stitched.head.points shouldBe first.points
+  }
+
+  // Shaped like the route page's embedded data: EK206 the evening before, AA198 with a codeshare.
+  private val routePage =
+    """<html><script>__NEXT_DATA__ = {"props":{"initialState":{"flightTracker":{"route":{"header":{
+      |"departureAirport":{"fs":"JFK","timeZoneRegionName":"America/New_York"},
+      |"arrivalAirport":{"fs":"MXP","timeZoneRegionName":"Europe/Rome"}},"flights":[
+      |{"sortTime":"2026-10-12T02:20:00.000Z","departureTime":{"time24":"22:20"},"arrivalTime":{"time24":"12:15"},
+      | "carrier":{"fs":"EK","name":"Emirates","flightNumber":"206"},"operatedBy":null},
+      |{"sortTime":"2026-10-12T23:00:00.000Z","departureTime":{"time24":"19:00"},"arrivalTime":{"time24":"09:05"},
+      | "carrier":{"fs":"AA","name":"American Airlines","flightNumber":"198"},"operatedBy":null},
+      |{"sortTime":"2026-10-12T23:00:00.000Z","departureTime":{"time24":"19:00"},"arrivalTime":{"time24":"09:05"},
+      | "carrier":{"fs":"BA","name":"British Airways","flightNumber":"1582"},
+      | "operatedBy":"Operated by American Airlines 198","isCodeshare":true}
+      |]}}}}};__NEXT_LOADED_PAGES__=[]</script></html>""".stripMargin
+
+  test("reads a route's timetable with local times, arrival day and codeshares") {
+    val flights = Timetable.parsePage(routePage)
+    flights.map { case (day, f) => (day.toString, f.flightNumber) } shouldBe
+      Seq("2026-10-11" -> "EK206", "2026-10-12" -> "AA198")
+    val aa = flights(1)._2
+    aa.departureLocal shouldBe "19:00"
+    aa.arrival shouldBe Instant.parse("2026-10-13T07:05:00Z")
+    aa.arrivalDayOffset shouldBe 1
+    aa.codeshares shouldBe Seq("BA1582")
+  }
+
+  test("matches timetabled flights to their flown legs, by number or by the airline's time") {
+    val flights = Timetable.parsePage(routePage).map(_._2)
+    val entries = Seq(
+      RouteEntry("AAL198", "AAL", "198", Seq("KJFK", "LIMC")),
+      RouteEntry("UAE206", "UAE", "206", Seq("KJFK", "LIMC", "OMDB")),
+      RouteEntry("UAE5RQ", "UAE", "5RQ", Seq("KJFK", "LIMC", "OMDB"))
+    )
+    def leg(cs: String, takeoff: String) =
+      FlownLeg(cs, "abc123", None, None, Vector(TrackPoint(Instant.parse(takeoff), 40.6, -73.8, 0)))
+    val aaLeg = leg("AAL198", "2026-10-12T00:40:00Z") // a day earlier, 1h40 late
+    val ekLeg = leg("UAE5RQ", "2026-10-11T02:45:00Z")
+    val stray = leg("UAE5RQ", "2026-10-11T08:00:00Z") // the onward leg's time of day
+    val matched = RouteScheduleService.matchLegs(flights, Seq(aaLeg, ekLeg, stray), entries)
+    matched shouldBe Map("AA198" -> aaLeg, "EK206" -> ekLeg)
   }
 
   private def legThrough(lat: Double, minutes: Double): FlownLeg = {
