@@ -41,7 +41,59 @@ export function planeIcon(
   })
 }
 
-let planeShape: Path2D | undefined
+/**
+ * Each plane and ring is drawn once into a small offscreen canvas per size and colour, then stamped (rotated) onto the
+ * map's canvas: copying a bitmap is several times cheaper than filling and stroking the silhouette's path, which made
+ * redrawing ~2,000 planes at the end of every pan take ~50 ms on a phone.
+ */
+const sprites = new Map<string, HTMLCanvasElement>()
+/** Sprites are drawn at this many pixels per CSS pixel, so they stay crisp on retina screens and when rotated. */
+const spriteScale = 3
+
+function sprite(key: string, size: number, draw: (ctx: CanvasRenderingContext2D) => void) {
+  let canvas = sprites.get(key)
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    canvas.width = canvas.height = Math.ceil(size * spriteScale)
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(spriteScale, spriteScale)
+    draw(ctx)
+    sprites.set(key, canvas)
+  }
+  return canvas
+}
+
+/** The silhouette, nose up, in a box `size` + 2 px wide (room for the outline). */
+function planeSprite(size: number) {
+  const box = size + 2
+  return sprite(`plane:${size}`, box, (ctx) => {
+    ctx.translate(1, 1)
+    ctx.scale(size / 24, size / 24)
+    const shape = new Path2D(planePath)
+    ctx.fillStyle = planeFill
+    ctx.fill(shape)
+    ctx.lineWidth = 1.2
+    ctx.strokeStyle = 'rgba(255,255,255,.95)'
+    ctx.stroke(shape)
+  })
+}
+
+/** The turbulence ring, radius 0.55 · size, in a box with room for its 2 px stroke. */
+function ringSprite(size: number, color: string) {
+  const r = size * 0.55
+  const box = 2 * r + 4
+  return sprite(`ring:${size}:${color}`, box, (ctx) => {
+    ctx.beginPath()
+    ctx.arc(box / 2, box / 2, r, 0, 2 * Math.PI)
+    ctx.globalAlpha = 0.22
+    ctx.fillStyle = color
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 2
+    ctx.strokeStyle = color
+    ctx.stroke()
+  })
+}
 
 /**
  * The same silhouette drawn on a Leaflet canvas renderer: thousands of these stay smooth where thousands of DOM
@@ -51,36 +103,26 @@ const CanvasPlaneClass = (
   L.CircleMarker as unknown as { extend(props: object): new (...args: unknown[]) => L.CircleMarker }
 ).extend({
   _updatePath(this: {
-    _renderer: { _ctx?: CanvasRenderingContext2D }
+    _renderer: { _ctx?: CanvasRenderingContext2D; _drawing?: boolean }
     _point: L.Point
     _empty(): boolean
     options: { ring?: string; trackDeg: number; size: number }
   }) {
     const ctx = this._renderer._ctx
-    if (!ctx || this._empty()) return
-    planeShape ??= new Path2D(planePath)
+    // Only inside the renderer's redraw, like Leaflet's own circles: Leaflet also calls this whenever a plane moves
+    // and when the map stops, which drew every plane twice per redraw and planes outside the cleared area.
+    if (!ctx || !this._renderer._drawing || this._empty()) return
     const { ring, trackDeg, size } = this.options
-    ctx.save()
-    ctx.translate(this._point.x, this._point.y)
+    const { x, y } = this._point
     if (ring) {
-      ctx.beginPath()
-      ctx.arc(0, 0, size * 0.55, 0, 2 * Math.PI)
-      ctx.globalAlpha = 0.22
-      ctx.fillStyle = ring
-      ctx.fill()
-      ctx.globalAlpha = 1
-      ctx.lineWidth = 2
-      ctx.strokeStyle = ring
-      ctx.stroke()
+      const box = 2 * size * 0.55 + 4
+      ctx.drawImage(ringSprite(size, ring), x - box / 2, y - box / 2, box, box)
     }
+    const box = size + 2
+    ctx.save()
+    ctx.translate(x, y)
     ctx.rotate((trackDeg * Math.PI) / 180)
-    ctx.scale(size / 24, size / 24)
-    ctx.translate(-12, -12)
-    ctx.fillStyle = planeFill
-    ctx.fill(planeShape)
-    ctx.lineWidth = 1.2
-    ctx.strokeStyle = 'rgba(255,255,255,.95)'
-    ctx.stroke(planeShape)
+    ctx.drawImage(planeSprite(size), -box / 2, -box / 2, box, box)
     ctx.restore()
   }
 })
