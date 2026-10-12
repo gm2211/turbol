@@ -17,8 +17,12 @@
       >
         <template v-slot:prepend>
           <v-avatar size="40" variant="text">
-            <v-avatar size="32" color="#2f9be4">
-              <v-icon :icon="route.mdiIcon" color="white" size="20" />
+            <v-avatar
+              size="32"
+              class="nav-badge"
+              :class="{ active: $route.path.startsWith(route.path) }"
+            >
+              <v-icon :icon="route.mdiIcon" size="20" />
             </v-avatar>
             <span v-if="route.live" class="live-dot" />
           </v-avatar>
@@ -37,32 +41,48 @@ const rail = ref(true)
 </script>
 
 <style scoped>
+/* Dark glass badges like the header and map panels; the current page lights up in the accent blue. */
+.nav-badge {
+  background: var(--my-blue);
+  color: rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.nav-badge.active {
+  background: var(--my-accent);
+  color: white;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+/* A muted teal pulse, so "live" reads without a bright green. */
 .live-dot {
+  --live-dot: rgb(127, 199, 184);
   position: absolute;
   top: 5px;
   right: 5px;
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #3ddc84;
-  box-shadow: 0 0 0 1.5px white;
+  background: var(--live-dot);
+  box-shadow: 0 0 0 1.5px var(--my-blue-solid);
   animation: live-pulse 2s ease-out infinite;
 }
 @keyframes live-pulse {
   0% {
     box-shadow:
-      0 0 0 1.5px white,
-      0 0 0 1.5px rgba(61, 220, 132, 0.6);
+      0 0 0 1.5px var(--my-blue-solid),
+      0 0 0 1.5px rgba(127, 199, 184, 0.6);
   }
   70% {
     box-shadow:
-      0 0 0 1.5px white,
-      0 0 0 7px rgba(61, 220, 132, 0);
+      0 0 0 1.5px var(--my-blue-solid),
+      0 0 0 7px rgba(127, 199, 184, 0);
   }
   100% {
     box-shadow:
-      0 0 0 1.5px white,
-      0 0 0 7px rgba(61, 220, 132, 0);
+      0 0 0 1.5px var(--my-blue-solid),
+      0 0 0 7px rgba(127, 199, 184, 0);
   }
 }
 </style>
