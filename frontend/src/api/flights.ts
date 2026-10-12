@@ -11,6 +11,8 @@ export interface Place {
   name: string
   lat: number
   lon: number
+  /** The ICAO code, when known: the route directory that lists a route's flights uses it. */
+  icao?: string
 }
 
 export interface FlightRoute {
@@ -81,7 +83,11 @@ export interface RouteAnalysis {
     forecastUntil?: string
     /** GFS cycle behind the coarse global layer used outside GTG. */
     globalIssued?: string
+    /** Sources still filling in after a server restart: missing data may be on its way. */
+    loading?: string[]
   }
+  /** Where the line came from: a great circle, or the track this flight flew on an earlier day. */
+  path?: { kind: 'greatCircle' | 'flown'; description: string; flownOn?: string }
 }
 
 export interface AnalyzeRequest {
@@ -90,6 +96,45 @@ export interface AnalyzeRequest {
   departure?: string
   cruiseAltitudeFt?: number
   callsign?: string
+  /** Follow the leg this airframe flew from that takeoff (a ScheduledFlight's hex and flownTakeoff). */
+  flown?: { hex: string; takeoff: string }
+}
+
+/** A flight on the route, its times moved to the requested day from the leg it flew in the last day. */
+export interface ScheduledFlight {
+  callsign: string
+  flightNumber?: string
+  airline?: string
+  takeoff: string
+  landing: string
+  typeCode?: string
+  aircraftClass: AircraftClass
+  registration?: string
+  hex: string
+  flownTakeoff: string
+}
+
+export interface RouteSchedule {
+  flights: ScheduledFlight[]
+  candidates: number
+  slotsScanned: number
+  note?: string
+}
+
+/** Flights from origin to destination taking off between `from` and `until`, from what flew in the last day. */
+export async function fetchSchedule(
+  origin: Place,
+  destination: Place,
+  from: Date,
+  until: Date
+): Promise<RouteSchedule> {
+  return (
+    await axios.post(
+      '/api/flights/scheduled',
+      { origin, destination, from: from.toISOString(), until: until.toISOString() },
+      { timeout: 180000 }
+    )
+  ).data
 }
 
 export interface AirportResult {
@@ -132,7 +177,15 @@ export async function airportByCode(code: string): Promise<Place | undefined> {
   const a =
     airports.find((x) => x.iata === code.toUpperCase() || x.icao === code.toUpperCase()) ??
     airports[0]
-  return a && { code: a.iata || a.icao, name: a.name, lat: a.location.lat, lon: a.location.lon }
+  return (
+    a && {
+      code: a.iata || a.icao,
+      name: a.name,
+      lat: a.location.lat,
+      lon: a.location.lon,
+      icao: a.icao || undefined
+    }
+  )
 }
 
 export async function analyzeFlight(request: AnalyzeRequest): Promise<RouteAnalysis> {

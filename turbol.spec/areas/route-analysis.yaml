@@ -35,11 +35,41 @@ behaviors:
       reference: >-
         Giulio, turbol project thread, 2026-10-12, picking design 2 of five alternatives for the
         Analyze page ("propose 5 alternative designs that retain the vibe")
+  - id: route-flights-for-day
+    description: >-
+      On the Route tab, the result lists the route's flights on the chosen day (flight number, airline,
+      takeoff and landing in local time, aircraft type) next to an "Any flight" great-circle option.
+      Picking one analyzes that flight with its real aircraft type at its time on that day; the flight
+      that takes off next from the chosen time is picked by default.
+    details: >-
+      Flights come from what actually flew in the last day: callsigns the route directory (Virtual
+      Radar Server standing data, mirrored by adsb.lol) lists with origin then destination as
+      consecutive stops, found in adsb.lol's half-hour heatmap history (callsign to airframe), then
+      confirmed by the airframe's trace taking off near the origin and landing near the destination.
+      The observed takeoff's time of day is moved to the chosen day, since most timetables are daily.
+      Flights that didn't fly in the last day (weekly services) and hops shorter than about two hours
+      between scanned slots can be missed. `?pick=<callsign>` on the URL picks a flight.
+    source:
+      text: >-
+        should show relevant flights for this route and date and the ability to select each and
+        observe turbulence along their planned flight path if available or otherwise look at
+        historical flightpaths and extrapolate
+      reference: Giulio, turbol project thread, 2026-10-12, on the Analyze page's JFK to MXP result
+  - id: flown-track-path
+    description: >-
+      A picked flight is analyzed along the track it flew in the last day (positions, altitudes and
+      timing from takeoff to landing), shifted to its departure on the chosen day; gaps in ADS-B
+      coverage over oceans are crossed on the great circle. When the track can't be loaded the
+      analysis falls back to the great circle and says so.
+    details: >-
+      Filed flight plans aren't public, so a flown track is the closest available stand-in for the
+      planned path. The result names which path it used.
   - id: route-map-legend
     description: >-
-      The analysis map has a legend explaining the ribbon colours (forecast category), that the line is
-      a great-circle route, the red ring (worst forecast bump with its category and time) and the live
-      aircraft when it is flying this route. Airport labels sit on the side away from the route.
+      The analysis map has a legend explaining the ribbon colours (forecast category), what the line is
+      (a great-circle route, or the flight's flown track and its date), the red ring (worst forecast
+      bump with its category and time) and the live aircraft when it is flying this route. Airport
+      labels sit on the side away from the route.
   - id: aircraft-class-from-flight
     description: >-
       When analyzing a looked-up flight, the server derives the aircraft class from that flight's live
@@ -71,3 +101,7 @@ behaviors:
       when data is missing it says why: part of the route has no data in either layer, the flight
       runs past the forecast's horizon, data is still loading, or the departure is more than 18 hours
       away. The data sources line names the global layer's GFS cycle.
+    details: >-
+      After a server update the GTG forecast and the global layer fill in hour by hour for a few
+      minutes. Until each is in, gaps are blamed on loading rather than on missing coverage, and the
+      page analyzes again a minute later.

@@ -84,6 +84,15 @@ object Http {
       bytes
     }
 
+  /** GET and read the body as a stream, without holding it all in memory. */
+  def withStream[T](url: String, attempts: Int = 2)(read: java.io.InputStream => T): T =
+    withRetries(attempts) {
+      val body =
+        check(url, client.send(request(url, Duration.ofSeconds(120)), HttpResponse.BodyHandlers.ofInputStream()))
+      try read(body)
+      finally body.close()
+    }
+
   def download(url: String, destination: Path, attempts: Int = 4): Path =
     withRetries(attempts) {
       check(url, client.send(request(url, Duration.ofMinutes(5)), HttpResponse.BodyHandlers.ofFile(destination)))

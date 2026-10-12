@@ -23,6 +23,8 @@ const props = defineProps<{
   follow?: boolean
   /** Show a key explaining the ribbon, the worst-bump ring and the aircraft. */
   legend?: boolean
+  /** What the line is, for the key; a great circle by default. */
+  pathLabel?: string
   overlay?: { frameId: string; levelFt: number }
 }>()
 
@@ -57,7 +59,7 @@ function drawLegend() {
   const ribbon = [...new Set(props.points.map((p) => p.category))]
     .map((c) => `<span class="ribbon" style="background:${categoryColors[c]}"></span>${categoryLabels[c]}`)
     .join(' ')
-  const rows = [`<div>Forecast ${ribbon}</div>`, `<div class="muted">Great-circle route: filed routes aren't public</div>`]
+  const rows = [`<div>Forecast ${ribbon}</div>`, `<div class="muted">${props.pathLabel ?? "Great-circle route: filed routes aren't public"}</div>`]
   if (props.worst) {
     rows.push(`<div><span class="ring" style="border-color:${worstColor}"></span>${props.worstLabel ?? 'Worst bump'}</div>`)
   }
@@ -129,7 +131,7 @@ function draw() {
 }
 
 watch(
-  () => [props.points, props.aircraft, props.trail, props.overlay, props.worst, props.worstLabel],
+  () => [props.points, props.aircraft, props.trail, props.overlay, props.worst, props.worstLabel, props.pathLabel],
   () => {
     if (!props.follow) fitted = false
     draw()

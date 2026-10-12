@@ -109,6 +109,42 @@
     </div>
 
     <template v-if="analysis && !flightId">
+      <v-card v-if="scheduleShown" class="panel flights-card px-3 py-2">
+        <div class="flights-head">
+          <span class="eyebrow">Flights {{ scheduleDay }}</span>
+          <span v-if="scheduleLoading" class="muted small">
+            <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
+            Finding this route's flights in the last day of ADS-B history…
+          </span>
+          <span v-else-if="schedule?.note" class="muted small">{{ schedule.note }}</span>
+          <span v-else-if="schedule" class="muted small">
+            Times and paths from each flight's last day of ADS-B tracks
+          </span>
+        </div>
+        <div class="flight-chips">
+          <button
+            type="button"
+            class="fchip"
+            :class="{ active: !selectedFlight }"
+            @click="pickFlight(undefined)"
+          >
+            <b>Any flight</b>
+            <span class="muted">Great circle at {{ localTime(departureIso) }}</span>
+          </button>
+          <button
+            v-for="f in schedule?.flights ?? []"
+            :key="f.callsign + f.flownTakeoff"
+            type="button"
+            class="fchip"
+            :class="{ active: selectedFlight?.callsign === f.callsign }"
+            @click="pickFlight(f)"
+          >
+            <b>{{ f.flightNumber ?? f.callsign }}</b>
+            <span class="times">{{ localTime(f.takeoff) }} → {{ localTime(f.landing) }}</span>
+            <span class="muted">{{ [f.airline, f.typeCode].filter(Boolean).join(' · ') }}</span>
+          </button>
+        </div>
+      </v-card>
       <v-card class="panel verdict-card pa-4">
         <div class="eyebrow">Forecast verdict</div>
         <v-chip
@@ -194,6 +230,7 @@
           :worst="worstPoint"
           :worst-label="worstLabel"
           :aircraft="lookup?.live"
+          :path-label="analysis.path?.description"
           legend
         />
       </v-card>
@@ -217,7 +254,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AirportPicker from '@/components/analysis/AirportPicker.vue'
 import DownloadedFlight from '@/components/fly/DownloadedFlight.vue'
@@ -230,7 +267,10 @@ import {
   type Place,
   type RouteAnalysis,
   airportByCode,
+  type RouteSchedule,
+  type ScheduledFlight,
   analyzeFlight,
+  fetchSchedule,
   formatDuration,
   lookupFlight
 } from '@/api/flights'
@@ -266,6 +306,14 @@ const analyzedOrigin = ref<Place>()
 const analyzedDestination = ref<Place>()
 const downloading = ref(false)
 const allThresholds = ref<Record<AircraftClass, Thresholds>>()
+/** The route's flights on the chosen day (Route tab), and the one being analyzed (none: a great circle). */
+const schedule = ref<RouteSchedule>()
+const scheduleLoading = ref(false)
+const selectedFlight = ref<ScheduledFlight>()
+/** Callsign to pick once the schedule arrives (`?pick=DAL184`), else the first flight from the chosen time on. */
+let pickWanted: string | undefined
+let scheduleKey = ''
+let retryTimer: number | undefined
 const downloadedFlights = downloads.flights
 /** A flight downloaded for offline use, to show instead of the form: `?flight=<id>`. */
 const flightId = computed(() =>
@@ -315,9 +363,14 @@ const toDownload = computed(() => {
   const to = analyzedDestination.value
   if (!a || !from || !to) return undefined
   const found = lookup.value?.route
+  const picked = selectedFlight.value
   return newFlight({
-    label: found ? (found.iataCallsign ?? found.callsign) : `${from.code} → ${to.code}`,
-    callsign: lookup.value?.callsign,
+    label: found
+      ? (found.iataCallsign ?? found.callsign)
+      : picked
+        ? (picked.flightNumber ?? picked.callsign)
+        : `${from.code} → ${to.code}`,
+    callsign: lookup.value?.callsign ?? picked?.callsign,
     origin: from,
     destination: to,
     departure: new Date(a.start).getTime(),
@@ -350,6 +403,19 @@ const arrival = computed(() =>
         new Date(analysis.value.start).getTime() + analysis.value.durationMinutes * 60000
       ).toISOString()
     : ''
+)
+
+const departureIso = computed(() => new Date(departureLocal.value).toISOString())
+const scheduleShown = computed(
+  () => mode.value === 'route' && (scheduleLoading.value || !!schedule.value)
+)
+/** The chosen day, as the strip's title says it. */
+const scheduleDay = computed(() =>
+  new Date(departureLocal.value).toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
 )
 
 function toLocalInput(d: Date): string {
@@ -388,8 +454,10 @@ async function analyze() {
         error.value = 'Pick both airports.'
         return
       }
-      shown = `route:${from.code}-${to.code}`
-      router.replace({ query: { from: from.code, to: to.code } })
+      const day = departureLocal.value.slice(0, 10)
+      shown = `route:${from.code}-${to.code}:${day}`
+      router.replace({ query: { from: from.code, to: to.code, day } })
+      selectedFlight.value = undefined
     }
     analysis.value = await analyzeFlight({
       origin: from!,
@@ -399,11 +467,99 @@ async function analyze() {
     })
     analyzedOrigin.value = from
     analyzedDestination.value = to
+    scheduleRetry()
+    if (mode.value === 'route') void loadSchedule(from!, to!)
+    else schedule.value = undefined
   } catch (e) {
     error.value = `Analysis failed: ${e}`
   } finally {
     loading.value = false
   }
+}
+
+/** The local day of the departure field, as an instant range. */
+function chosenDay(): [Date, Date] {
+  const start = new Date(departureLocal.value.slice(0, 10) + 'T00:00')
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return [start, end]
+}
+
+/** Lists the route's flights on the chosen day, then analyzes the wanted one (or the next from the chosen time). */
+async function loadSchedule(from: Place, to: Place) {
+  const [start, end] = chosenDay()
+  const key = `${from.code}-${to.code}-${start.toISOString()}`
+  if (key === scheduleKey && schedule.value) return pickDefault()
+  scheduleKey = key
+  schedule.value = undefined
+  scheduleLoading.value = true
+  try {
+    const result = await fetchSchedule(from, to, start, end)
+    if (key !== scheduleKey) return
+    schedule.value = result
+    await pickDefault()
+  } catch {
+    if (key === scheduleKey)
+      schedule.value = {
+        flights: [],
+        candidates: 0,
+        slotsScanned: 0,
+        note: "Couldn't load this route's flights right now."
+      }
+  } finally {
+    if (key === scheduleKey) scheduleLoading.value = false
+  }
+}
+
+async function pickDefault() {
+  const flights = schedule.value?.flights ?? []
+  const wanted = pickWanted
+  pickWanted = undefined
+  const chosen = new Date(departureLocal.value).getTime()
+  const f = wanted
+    ? flights.find((x) => x.callsign === wanted || x.flightNumber === wanted)
+    : (flights.find((x) => new Date(x.takeoff).getTime() >= chosen - 30 * 60000) ?? flights[0])
+  if (f) await pickFlight(f)
+}
+
+/** Analyzes one of the route's flights along the track it flew, at its time on the chosen day; none: a great circle. */
+async function pickFlight(f: ScheduledFlight | undefined) {
+  const from = analyzedOrigin.value
+  const to = analyzedDestination.value
+  if (!from || !to) return
+  selectedFlight.value = f
+  router.replace({ query: { ...route.query, pick: f?.callsign } })
+  loading.value = true
+  error.value = undefined
+  try {
+    const result = await analyzeFlight(
+      f
+        ? {
+            origin: from,
+            destination: to,
+            departure: f.takeoff,
+            callsign: f.callsign,
+            flown: { hex: f.hex, takeoff: f.flownTakeoff }
+          }
+        : { origin: from, destination: to, departure: departureIso.value }
+    )
+    if (selectedFlight.value === f) analysis.value = result
+    scheduleRetry()
+  } catch (e) {
+    error.value = `Analysis failed: ${e}`
+  } finally {
+    loading.value = false
+  }
+}
+
+/** Right after a server update the forecast fills in for a few minutes: analyze again once it has. */
+function scheduleRetry() {
+  window.clearTimeout(retryTimer)
+  if (!analysis.value?.dataSources.loading?.length) return
+  retryTimer = window.setTimeout(() => {
+    if (mode.value === 'route' && analyzedOrigin.value) void pickFlight(selectedFlight.value)
+    else void analyze()
+  }, 60000)
 }
 
 /** Downloads this flight for offline use, then opens it: the same page works with no connection. */
@@ -424,7 +580,7 @@ async function downloadForOffline() {
 /** Shows what the query asks for: a link, Back or Forward, or the Analyze tab (no query: the start page). */
 async function fromQuery() {
   if (route.path !== '/analyze' || flightId.value) return
-  const { q, from, to, day } = route.query
+  const { q, from, to, day, pick } = route.query
   const key =
     typeof q === 'string' && q
       ? `q:${q}`
@@ -433,6 +589,7 @@ async function fromQuery() {
         : undefined
   if (key === shown) return
   shown = key
+  pickWanted = typeof pick === 'string' && pick ? pick : undefined
   // ?day=YYYY-MM-DD (the live map's route search for another day): that day, at the current time of day.
   if (typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day))
     departureLocal.value = day + toLocalInput(new Date()).slice(10)
@@ -452,6 +609,7 @@ async function fromQuery() {
 }
 
 watch(() => route.fullPath, fromQuery)
+onBeforeUnmount(() => window.clearTimeout(retryTimer))
 
 onMounted(async () => {
   fetchStatus()
@@ -474,9 +632,10 @@ onMounted(async () => {
     height: calc(100vh - 72px);
     display: grid;
     grid-template-columns: minmax(320px, 26%) 1fr;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     grid-template-areas:
       'form form'
+      'flights flights'
       'verdict map'
       'timeline timeline';
   }
@@ -498,6 +657,10 @@ onMounted(async () => {
   }
   .timeline-card {
     grid-area: timeline;
+  }
+  .flights-card {
+    grid-area: flights;
+    min-width: 0;
   }
 }
 /* Near-opaque light panels: dark text stays readable over the cloud photo. */
@@ -857,5 +1020,54 @@ onMounted(async () => {
 }
 .note {
   font-size: 14px;
+}
+/* The route's flights: one row of ticket stubs, scrolling sideways when there are many. */
+.flights-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+.small {
+  font-size: 13px;
+}
+.flight-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.fchip {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 150px;
+  padding: 6px 12px;
+  border: 1.5px solid rgba(16, 50, 79, 0.25);
+  border-radius: 10px;
+  background: white;
+  color: #0f172a;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.fchip b {
+  font-size: 15px;
+  color: #10324f;
+}
+.fchip .times {
+  font-variant-numeric: tabular-nums;
+}
+.fchip.active {
+  background: #10324f;
+  border-color: #10324f;
+  color: white;
+}
+.fchip.active b,
+.fchip.active .muted {
+  color: white;
 }
 </style>

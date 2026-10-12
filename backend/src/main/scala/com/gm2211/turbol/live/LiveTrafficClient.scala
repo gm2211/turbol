@@ -39,8 +39,10 @@ final case class Stop(iata: Option[String], icao: Option[String], lat: Double, l
       com.gm2211.turbol.turbulence.RouteAnalyzer.greatCircleKm(lat, lon, place.lat, place.lon) < 5
 }
 
+/** An airport: `code` is the IATA code when it has one, else the ICAO code. */
+final case class Place(code: String, name: String, lat: Double, lon: Double, icao: Option[String] = None)
+
 /** A scheduled route for a callsign. */
-final case class Place(code: String, name: String, lat: Double, lon: Double)
 final case class FlightRoute(
   callsign: String,
   iataCallsign: Option[String],
@@ -211,7 +213,7 @@ object LiveTrafficClient {
         lon <- p.get[Double]("longitude").toOption
         code = p.get[String]("iata_code").toOption.orElse(p.get[String]("icao_code").toOption).getOrElse("?")
         name = p.get[String]("name").toOption.getOrElse(code)
-      } yield Place(code, name, lat, lon)
+      } yield Place(code, name, lat, lon, p.get[String]("icao_code").toOption)
     }
     for {
       callsign <- c.get[String]("callsign_icao").toOption.orElse(c.get[String]("callsign").toOption)

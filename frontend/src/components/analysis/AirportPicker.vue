@@ -51,7 +51,13 @@ function onSearch(query: string) {
         const code = a.iata || a.icao
         return {
           title: `${code} · ${a.city} · ${a.name}`,
-          place: { code, name: a.name, lat: a.location.lat, lon: a.location.lon }
+          place: {
+            code,
+            name: a.name,
+            lat: a.location.lat,
+            lon: a.location.lon,
+            icao: a.icao || undefined
+          }
         }
       })
     } finally {
