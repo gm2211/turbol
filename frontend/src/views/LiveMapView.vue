@@ -11,6 +11,7 @@
       :frame="selectedFrame"
       :status="status"
       :level-ft="levelFt"
+      :band="band"
       @move="on3dMove"
       @select="on3dSelect"
     />
@@ -94,7 +95,7 @@
       icon="mdi-tune-variant"
       theme="dark"
       class="glass-panel controls-fab"
-      aria-label="Map altitude and time"
+      aria-label="Forecast time"
       @click="showControls = true"
     />
     <div
@@ -103,7 +104,7 @@
       :class="{ sheet: mobile }"
     >
       <div v-if="mobile" class="d-flex align-center justify-space-between mb-2">
-        <span class="panel-title">Map settings</span>
+        <span class="panel-title">Forecast time</span>
         <v-btn
           icon="mdi-close"
           size="small"
@@ -113,16 +114,6 @@
           @click="showControls = false"
         />
       </div>
-      <v-select
-        v-model="levelFt"
-        :items="levelItems"
-        label="Map altitude"
-        density="compact"
-        hide-details
-        variant="outlined"
-        theme="dark"
-        class="mb-3"
-      />
       <div class="text-caption mb-1">
         {{ selectedFrameLabel }}
       </div>
@@ -149,6 +140,17 @@
         />
       </div>
     </div>
+
+    <AltitudeRail
+      v-show="!(mobile && showControls)"
+      class="altitude-rail"
+      :range="mode === '3d'"
+      :level="levelFt"
+      :band="band"
+      :compact="mobile"
+      @update:level="levelFt = $event"
+      @update:band="band = $event"
+    />
 
     <EdrHover
       :map="leafletMap"
@@ -186,6 +188,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
+import AltitudeRail from '@/components/turbulence/AltitudeRail.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
 import { inspectCursor } from '@/components/turbulence/mapCursor'
 import FollowStrip from '@/components/turbulence/FollowStrip.vue'
@@ -243,13 +246,9 @@ function readShowAll(): boolean {
   }
 }
 
-const levelItems = [10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000].map(
-  (ft) => ({
-    title: ft >= 18000 ? `FL${ft / 100}` : `${ft.toLocaleString()} ft`,
-    value: ft
-  })
-)
-const levelLabel = computed(() => levelItems.find((i) => i.value === levelFt.value)?.title ?? '')
+const levelLabel = computed(() => flightLevel(levelFt.value))
+/** Levels the 3D view shows: around the map altitude until the rail's band is moved; the full range is every level. */
+const band = ref<[number, number]>([levelFt.value - 4000, levelFt.value + 4000])
 
 /** Nowcast first, then forecast hours that are still in the future. */
 const frames = computed<FrameInfo[]>(() => {
@@ -385,7 +384,7 @@ function popupHtml(a: AircraftView): string {
     action(`/map?follow=${a.hex}`, 'mdi-crosshairs-gps', 'Follow', a.hex) +
     (q
       ? action(`/analyze?q=${q}`, 'mdi-airplane-search', 'Analyze') +
-        action(`/3d?q=${q}`, 'mdi-cube-outline', '3D')
+        action(`/map?view=3d&flights=${q}`, 'mdi-cube-outline', '3D')
       : '') +
     `</div></div>`
   )
@@ -634,9 +633,8 @@ function onFollowUpdate(u: LiveFlightUpdate) {
   // Show the turbulence at the flight's own altitude, once, so the ribbon and the map agree.
   if (!followLevelSet && a.altitudeFt !== undefined) {
     followLevelSet = true
-    levelFt.value = levelItems.reduce((best, i) =>
-      Math.abs(i.value - a.altitudeFt!) < Math.abs(best.value - a.altitudeFt!) ? i : best
-    ).value
+    // The rail moves in 1,000 ft steps.
+    levelFt.value = Math.min(Math.max(Math.round(a.altitudeFt / 1000) * 1000, 1000), 45000)
   }
   // Centre on the plane first, then only move the map when it nears the edge, so panning around isn't fought.
   const inner = map.getBounds().pad(-0.25)
@@ -679,6 +677,10 @@ const aircraft3d = computed<AircraftView[]>(() => {
   return [...added, ...traffic.value.filter((a) => !addedHexes.has(a.hex))]
 })
 
+async function loadMap3D() {
+  Map3D.value ??= (await import('@/components/turbulence/Map3D.vue')).default
+}
+
 async function enter3d(pitch = 0, bearing = 0) {
   if (!map || mode.value === '3d') return
   const c = map.getCenter()
@@ -686,7 +688,7 @@ async function enter3d(pitch = 0, bearing = 0) {
   if (!Map3D.value) {
     loading3d.value = true
     try {
-      Map3D.value = (await import('@/components/turbulence/Map3D.vue')).default
+      await loadMap3D()
     } finally {
       loading3d.value = false
     }
@@ -724,6 +726,25 @@ async function on3dSelect(hex: string) {
     marker.openPopup()
   }
 }
+
+/**
+ * "?view=3d" (old /3d links, the popup's and Analyze's 3D buttons) opens 3D, adding any "?flights=" not yet
+ * on the map. On this page already, the router only changes the query, so it's watched rather than read on mount.
+ */
+watch(
+  () => route.query.view,
+  async (view) => {
+    if (view !== '3d') return
+    const wanted = String(route.query.flights ?? '')
+      .split(',')
+      .map((q) => q.trim().toUpperCase())
+      .filter((q) => q && !tracked.value.some((t) => t.query === q))
+    await Promise.all(wanted.map((q) => track(q, true).catch(() => undefined)))
+    if (wanted.length) syncUrl()
+    await setMode('3d')
+    router.replace({ query: { ...route.query, view: undefined } })
+  }
+)
 
 // Shift+drag on the 2D map opens 3D and keeps tilting and rotating for the rest of that drag.
 function onShiftDrag(e: PointerEvent) {
@@ -801,10 +822,24 @@ onMounted(() => {
     .split(',')
     .map((q) => q.trim().toUpperCase())
     .filter(Boolean)
-  Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(syncUrl)
+  Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(() => {
+    syncUrl()
+    if (route.query.view === '3d') {
+      setMode('3d')
+      router.replace({ query: { ...route.query, view: undefined } })
+    }
+  })
   const followFromUrl = String(route.query.follow ?? '').trim()
   if (followFromUrl) follow(followFromUrl)
   trackedTimer = window.setInterval(refreshTracked, 15000)
+  // Fetch the 3D code once the 2D map is up and the browser is idle, so opening 3D doesn't wait on it.
+  const warm3d = () => {
+    if (goodConnection()) loadMap3D().catch(() => undefined)
+  }
+  // Safari has no requestIdleCallback.
+  if (typeof window.requestIdleCallback === 'function')
+    window.requestIdleCallback(warm3d, { timeout: 5000 })
+  else setTimeout(warm3d, 3000)
 })
 
 onBeforeUnmount(() => {
@@ -870,6 +905,19 @@ onBeforeUnmount(() => {
   bottom: 24px;
   left: 12px;
 }
+.altitude-rail {
+  position: absolute;
+  z-index: 1000;
+  right: 12px;
+  top: 150px;
+  bottom: 72px;
+  max-height: 420px;
+}
+.mobile .altitude-rail {
+  right: 8px;
+  top: 60px;
+  bottom: 104px;
+}
 .mode-toggle {
   position: absolute;
   z-index: 1000;
@@ -880,7 +928,8 @@ onBeforeUnmount(() => {
 .mobile .top-left {
   top: 8px;
   left: 8px;
-  right: 60px;
+  /* Clear of the flight-level rail. */
+  right: 92px;
   width: auto;
   padding: 6px 10px;
   font-size: 12px;
