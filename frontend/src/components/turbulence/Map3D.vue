@@ -30,17 +30,16 @@
       </div>
       <div class="muted" v-if="loadingVolume">Loading the turbulence volume…</div>
       <div class="muted" v-else-if="volume">
-        {{ visibleVoxels.length.toLocaleString() }} rough blocks shown
+        {{ visibleVoxels.length.toLocaleString() }} turbulence columns shown
       </div>
-      <v-select
-        v-model="windowFt"
-        :items="windowItems"
-        :label="`Turbulence around ${flightLevel(levelFt)}`"
+      <div class="muted">Pick the levels on the flight-level rail</div>
+      <v-switch
+        v-model="showLight"
+        label="Show light turbulence"
         density="compact"
         hide-details
-        variant="outlined"
         theme="dark"
-        class="my-2"
+        color="var(--my-accent)"
       />
       <div class="text-caption">Vertical exaggeration: ×{{ exaggeration }}</div>
       <v-slider
@@ -90,6 +89,8 @@ import {
   type Voxel,
   basemapLayer,
   blue,
+  clipColumns,
+  mergeColumns,
   ftToM,
   hexRgb,
   toVoxels,
@@ -112,6 +113,8 @@ const props = defineProps<{
   frame?: FrameInfo
   status?: TurbulenceStatus
   levelFt: number
+  /** Lowest and highest flight level shown, in feet. */
+  band: [number, number]
 }>()
 const emit = defineEmits<{
   /** The camera settled somewhere new. */
@@ -122,28 +125,24 @@ const emit = defineEmits<{
 
 const canvasEl = ref<HTMLDivElement>()
 const volume = shallowRef<TurbulenceVolume>()
-const voxels = shallowRef<Voxel[]>([])
+/** Vertically merged columns for every level of the loaded frame. */
+const columns = shallowRef<Voxel[]>([])
 const loadingVolume = ref(false)
 const mobile = useMobile()
 const showPanel = ref(false)
-// Phones draw half as many blocks by default.
-const windowFt = ref(mobile.value ? 2000 : 4000)
+const showLight = ref(true)
 const exaggeration = ref(30)
 const fps = ref(0)
-
-const windowItems = [
-  { title: '± 2,000 ft', value: 2000 },
-  { title: '± 4,000 ft', value: 4000 },
-  { title: '± 8,000 ft', value: 8000 }
-]
 
 const z = (ft: number) => ft * ftToM * exaggeration.value
 const maxPitch = 85
 
 const visibleVoxels = computed(() => {
-  const lo = props.levelFt - windowFt.value
-  const hi = props.levelFt + windowFt.value
-  return voxels.value.filter((v) => v.topFt >= lo && v.bottomFt <= hi)
+  const [lo, hi] = props.band
+  const shown = showLight.value
+    ? columns.value
+    : columns.value.filter((c) => c.category !== 'Light')
+  return clipColumns(shown, lo, hi)
 })
 
 const planeSvg =
@@ -255,6 +254,11 @@ function render() {
   deck?.setProps({ layers: buildLayers() })
 }
 
+const levelsLabel = (v: Voxel) =>
+  v.topLevelFt && v.topLevelFt !== v.levelFt
+    ? `${flightLevel(v.levelFt)}–${flightLevel(v.topLevelFt)}`
+    : flightLevel(v.levelFt)
+
 function tooltip(info: PickingInfo) {
   if (info.layer?.id === 'aircraft') {
     const a = info.object as AircraftView
@@ -270,7 +274,9 @@ function tooltip(info: PickingInfo) {
   const v = info.object as Voxel | undefined
   if (!v) return null
   return {
-    html: `<b>${flightLevel(v.levelFt)}</b> · ${categoryLabels[v.category]} (EDR ${v.edr.toFixed(2)})`,
+    html:
+      `<b>${levelsLabel(v)}</b> · ${categoryLabels[v.category]} ` +
+      `(${v.topLevelFt && v.topLevelFt !== v.levelFt ? 'worst ' : ''}EDR ${v.edr.toFixed(2)})`,
     style: tooltipStyle
   }
 }
@@ -286,7 +292,7 @@ async function loadVolume() {
     if (props.frame?.id !== frame.id) return
     loadedFrame = frame.id
     volume.value = v
-    voxels.value = toVoxels(v, thresholds)
+    columns.value = mergeColumns(toVoxels(v, thresholds))
   } catch (e) {
     console.warn('volume fetch failed', e)
   } finally {
@@ -322,7 +328,7 @@ const flatten = () => animateTo(0, 0, 450)
 
 defineExpose({ setRotation, tiltUp, flatten })
 
-// Clicks are picked by hand like the /3d view (deck's onClick doesn't fire in Chromium with deck.gl 9.4).
+// Clicks are picked by hand (deck's onClick doesn't fire in Chromium with deck.gl 9.4).
 let downAt: [number, number] = [0, 0]
 const onPointerDown = (e: PointerEvent) => (downAt = [e.offsetX, e.offsetY])
 function onCanvasClick(e: MouseEvent) {
@@ -410,9 +416,9 @@ onBeforeUnmount(() => {
 .panel-fab {
   position: absolute;
   z-index: 1000;
-  /* Below the live map's settings button. */
-  top: 60px;
-  right: 8px;
+  /* Above the legend, clear of the flight-level rail on the right. */
+  bottom: 56px;
+  left: 8px;
 }
 .controls3d.sheet {
   background: rgba(24, 39, 52, 0.92);
@@ -423,8 +429,9 @@ onBeforeUnmount(() => {
   z-index: 1100;
 }
 .controls3d {
-  right: 12px;
-  bottom: 64px;
+  /* Above the legend: the right edge holds the flight-level rail. */
+  left: 12px;
+  bottom: 160px;
   width: 250px;
 }
 </style>

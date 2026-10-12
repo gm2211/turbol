@@ -60,3 +60,7 @@ behaviors:
     description: >-
       A 2D/3D toggle on the live map flattens back to the 2D map, or tilts up into 3D. The 3D
       library loads only the first time 3D is opened, so the 2D map stays light.
+  - id: altitude-rail
+    description: >-
+      A vertical flight-level rail on the map picks the level of the turbulence overlay in 2D, and
+      the band of levels shown in 3D.

@@ -11,6 +11,7 @@
       :frame="selectedFrame"
       :status="status"
       :level-ft="levelFt"
+      :band="band"
       @move="on3dMove"
       @select="on3dSelect"
     />
@@ -93,7 +94,7 @@
       icon="mdi-tune-variant"
       theme="dark"
       class="glass-panel controls-fab"
-      aria-label="Map altitude and time"
+      aria-label="Forecast time"
       @click="showControls = true"
     />
     <div
@@ -102,7 +103,7 @@
       :class="{ sheet: mobile }"
     >
       <div v-if="mobile" class="d-flex align-center justify-space-between mb-2">
-        <span class="panel-title">Map settings</span>
+        <span class="panel-title">Forecast time</span>
         <v-btn
           icon="mdi-close"
           size="small"
@@ -112,16 +113,6 @@
           @click="showControls = false"
         />
       </div>
-      <v-select
-        v-model="levelFt"
-        :items="levelItems"
-        label="Map altitude"
-        density="compact"
-        hide-details
-        variant="outlined"
-        theme="dark"
-        class="mb-3"
-      />
       <div class="text-caption mb-1">
         {{ selectedFrameLabel }}
       </div>
@@ -148,6 +139,17 @@
         />
       </div>
     </div>
+
+    <AltitudeRail
+      v-show="!(mobile && showControls)"
+      class="altitude-rail"
+      :range="mode === '3d'"
+      :level="levelFt"
+      :band="band"
+      :compact="mobile"
+      @update:level="levelFt = $event"
+      @update:band="band = $event"
+    />
 
     <EdrHover
       :map="leafletMap"
@@ -177,6 +179,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
+import AltitudeRail from '@/components/turbulence/AltitudeRail.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
 import { canvasPlane, planeIcon } from '@/components/turbulence/planeIcon'
 import {
@@ -231,13 +234,9 @@ function readShowAll(): boolean {
   }
 }
 
-const levelItems = [10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000].map(
-  (ft) => ({
-    title: ft >= 18000 ? `FL${ft / 100}` : `${ft.toLocaleString()} ft`,
-    value: ft
-  })
-)
-const levelLabel = computed(() => levelItems.find((i) => i.value === levelFt.value)?.title ?? '')
+const levelLabel = computed(() => flightLevel(levelFt.value))
+/** Levels the 3D view shows: around the map altitude until the rail's band is moved; the full range is every level. */
+const band = ref<[number, number]>([levelFt.value - 4000, levelFt.value + 4000])
 
 /** Nowcast first, then forecast hours that are still in the future. */
 const frames = computed<FrameInfo[]>(() => {
@@ -373,7 +372,7 @@ function popupHtml(a: AircraftView): string {
     action(`/follow/${a.hex}`, 'mdi-crosshairs-gps', 'Follow') +
     (q
       ? action(`/analyze?q=${q}`, 'mdi-airplane-search', 'Analyze') +
-        action(`/3d?q=${q}`, 'mdi-cube-outline', '3D')
+        action(`/map?view=3d&flights=${q}`, 'mdi-cube-outline', '3D')
       : '') +
     `</div></div>`
   )
@@ -619,6 +618,25 @@ async function on3dSelect(hex: string) {
   }
 }
 
+/**
+ * "?view=3d" (old /3d links, the popup's and Analyze's 3D buttons) opens 3D, adding any "?flights=" not yet
+ * on the map. On this page already, the router only changes the query, so it's watched rather than read on mount.
+ */
+watch(
+  () => route.query.view,
+  async (view) => {
+    if (view !== '3d') return
+    const wanted = String(route.query.flights ?? '')
+      .split(',')
+      .map((q) => q.trim().toUpperCase())
+      .filter((q) => q && !tracked.value.some((t) => t.query === q))
+    await Promise.all(wanted.map((q) => track(q, true).catch(() => undefined)))
+    if (wanted.length) syncUrl()
+    await setMode('3d')
+    router.replace({ query: { ...route.query, view: undefined } })
+  }
+)
+
 // Shift+drag on the 2D map opens 3D and keeps tilting and rotating for the rest of that drag.
 function onShiftDrag(e: PointerEvent) {
   if (mode.value !== '2d' || !e.shiftKey || e.button !== 0 || !mapEl.value) return
@@ -694,7 +712,15 @@ onMounted(() => {
     .split(',')
     .map((q) => q.trim().toUpperCase())
     .filter(Boolean)
-  Promise.all(fromUrl.map((q) => track(q, false).catch(() => undefined))).then(syncUrl)
+  Promise.all(fromUrl.map((q) => track(q, fromUrl.length === 1).catch(() => undefined))).then(
+    () => {
+      syncUrl()
+      if (route.query.view === '3d') {
+        setMode('3d')
+        router.replace({ query: { ...route.query, view: undefined } })
+      }
+    }
+  )
   trackedTimer = window.setInterval(refreshTracked, 15000)
 })
 
@@ -751,6 +777,19 @@ onBeforeUnmount(() => {
   bottom: 24px;
   left: 12px;
 }
+.altitude-rail {
+  position: absolute;
+  z-index: 1000;
+  right: 12px;
+  top: 150px;
+  bottom: 72px;
+  max-height: 420px;
+}
+.mobile .altitude-rail {
+  right: 8px;
+  top: 60px;
+  bottom: 104px;
+}
 .mode-toggle {
   position: absolute;
   z-index: 1000;
@@ -761,7 +800,8 @@ onBeforeUnmount(() => {
 .mobile .top-left {
   top: 8px;
   left: 8px;
-  right: 60px;
+  /* Clear of the flight-level rail. */
+  right: 92px;
   width: auto;
   padding: 6px 10px;
   font-size: 12px;

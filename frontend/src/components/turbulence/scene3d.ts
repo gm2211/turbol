@@ -1,4 +1,4 @@
-// Pieces shared by the deck.gl scenes (the /3d view and the live map's 3D mode).
+// Pieces of the live map's deck.gl 3D scene.
 import { BitmapLayer } from '@deck.gl/layers'
 import { TileLayer } from '@deck.gl/geo-layers'
 import { baseMapUrl } from '@/components/turbulence/baseMap'
@@ -17,6 +17,8 @@ export interface Voxel {
   topFt: number
   edr: number
   category: TurbulenceCategory
+  /** For a merged column: the highest level in it (levelFt is the lowest). */
+  topLevelFt?: number
 }
 
 export const ftToM = 0.3048
@@ -45,6 +47,55 @@ export function toVoxels(v: TurbulenceVolume, thresholds: Thresholds): Voxel[] {
       edr,
       category: classify(edr, thresholds)
     })
+  }
+  return out
+}
+
+/**
+ * Stacks vertically adjacent blocks of the same category at one grid point into one column, keeping the worst EDR.
+ * Turbulence layers are deep, so this cuts the block count about 5x and makes showing every level affordable.
+ */
+export function mergeColumns(voxels: Voxel[]): Voxel[] {
+  const byPoint = new Map<string, Voxel[]>()
+  for (const v of voxels) {
+    const key = `${v.lat},${v.lon}`
+    const list = byPoint.get(key)
+    if (list) list.push(v)
+    else byPoint.set(key, [v])
+  }
+  const out: Voxel[] = []
+  for (const list of byPoint.values()) {
+    list.sort((a, b) => a.levelFt - b.levelFt)
+    let run: Voxel | undefined
+    for (const v of list) {
+      if (run && run.category === v.category && run.topFt === v.bottomFt) {
+        run.topFt = v.topFt
+        run.topLevelFt = v.levelFt
+        run.edr = Math.max(run.edr, v.edr)
+      } else {
+        run = { ...v, topLevelFt: v.levelFt }
+        out.push(run)
+      }
+    }
+  }
+  return out
+}
+
+/** The columns inside a band of levels, cut to it. */
+export function clipColumns(columns: Voxel[], lo: number, hi: number, halfGapFt = 500): Voxel[] {
+  const out: Voxel[] = []
+  for (const c of columns) {
+    const top = c.topLevelFt ?? c.levelFt
+    if (top < lo || c.levelFt > hi) continue
+    if (c.levelFt >= lo && top <= hi) out.push(c)
+    else
+      out.push({
+        ...c,
+        levelFt: Math.max(c.levelFt, lo),
+        topLevelFt: Math.min(top, hi),
+        bottomFt: Math.max(c.bottomFt, lo - halfGapFt),
+        topFt: Math.min(c.topFt, hi + halfGapFt)
+      })
   }
   return out
 }

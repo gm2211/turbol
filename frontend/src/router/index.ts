@@ -24,10 +24,12 @@ const router = createRouter({
       component: () => import('@/views/FollowView.vue')
     },
     {
+      // The 3D view lives in the live map now: old links open it in 3D with the flight added.
       path: '/3d',
-      name: '3d',
-      // deck.gl is large: load it only when the 3D view opens.
-      component: () => import('@/views/View3DView.vue')
+      redirect: (to) => ({
+        path: '/map',
+        query: { view: '3d', ...(to.query.q ? { flights: String(to.query.q) } : {}) }
+      })
     }
   ]
 })

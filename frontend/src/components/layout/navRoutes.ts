@@ -35,12 +35,5 @@ export const navRoutes: NavRoute[] = [
     path: '/follow',
     mdiIcon: 'mdi-crosshairs-gps',
     mobileIcon: 'mdi-crosshairs-gps'
-  },
-  {
-    name: '3D view',
-    short: '3D',
-    path: '/3d',
-    mdiIcon: 'mdi-cube-outline',
-    mobileIcon: 'mdi-cube-outline'
   }
 ]

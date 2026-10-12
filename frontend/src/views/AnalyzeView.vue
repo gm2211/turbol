@@ -62,7 +62,7 @@
           variant="flat"
           class="ml-2"
           prepend-icon="mdi-cube-outline"
-          :to="`/3d?q=${encodeURIComponent(flightQuery.trim())}`"
+          :to="`/map?view=3d&flights=${encodeURIComponent(flightQuery.trim().toUpperCase())}`"
         >
           View in 3D
         </v-btn>
