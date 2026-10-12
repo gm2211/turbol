@@ -631,7 +631,6 @@ onBeforeUnmount(() => {
 .controls3d:not(.sheet) {
   position: relative;
   z-index: auto;
-  width: 250px;
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
