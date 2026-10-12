@@ -29,6 +29,7 @@ export function flightFromLive(u: LiveFlightUpdate, now: number): SavedFlight | 
     destination: r.destination,
     aircraftClass: u.aircraftClass,
     aircraftType: a.typeCode,
+    aircraft: u.aircraftResponse,
     cruiseFt: level ? Math.round(a.altitudeFt! / 1000) * 1000 : undefined
   }
   const profile = flightProfile(newFlight({ ...fields, departure: time }))

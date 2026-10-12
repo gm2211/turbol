@@ -3,7 +3,7 @@
  * how to turn the stored slabs back into something the sampler can read.
  */
 import type { Place } from '@/api/flights'
-import type { AircraftClass } from '@/api/turbulence'
+import type { AircraftClass, AircraftResponse } from '@/api/turbulence'
 import type { FlyStore } from './db'
 import { type PackData, type PackFrame, type PackManifest, gridOf, packFrame } from './pack'
 
@@ -29,6 +29,8 @@ export interface SavedFlight {
   departure: number
   aircraftClass: AircraftClass
   aircraftType?: string
+  /** How strongly the aircraft feels turbulence, from its type's wing loading; its class's when missing. */
+  aircraft?: AircraftResponse
   cruiseFt?: number
   /** When the plane took off, once the passenger said so or GPS saw it. */
   takeoff?: { time: number; source: 'tap' | 'gps' }
@@ -53,6 +55,7 @@ export function newFlight(f: {
   departure: number
   aircraftClass: AircraftClass
   aircraftType?: string
+  aircraft?: AircraftResponse
   cruiseFt?: number
 }): SavedFlight {
   const id = `${f.origin.code}-${f.destination.code}-${f.departure}`

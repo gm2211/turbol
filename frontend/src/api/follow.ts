@@ -1,5 +1,10 @@
 import type { FlightRoute, RouteAnalysis } from '@/api/flights'
-import { type AircraftClass, type TurbulenceCategory, apiBase } from '@/api/turbulence'
+import {
+  type AircraftClass,
+  type AircraftResponse,
+  type TurbulenceCategory,
+  apiBase
+} from '@/api/turbulence'
 
 export interface LiveAircraft {
   hex: string
@@ -20,6 +25,7 @@ export interface LiveFlightUpdate {
   status: 'tracking' | 'lost' | 'on-ground' | 'error'
   aircraft?: LiveAircraft
   aircraftClass: AircraftClass
+  aircraftResponse?: AircraftResponse
   edrNow?: number
   route?: FlightRoute
   usingRoute: boolean

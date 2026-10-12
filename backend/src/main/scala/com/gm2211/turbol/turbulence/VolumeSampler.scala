@@ -200,7 +200,7 @@ final class VolumeSampler {
     .build()
   // One volume build at a time (binary or JSON): each holds tens of MB while it runs, and the heap is sized for one.
   private val building = new Object
-  private val t = Thresholds.byClass(AircraftClass.Medium)
+  private val t = Thresholds.reference
   // Light, Moderate, Severe, Extreme as encoded bytes, worst last.
   private val thresholdBytes =
     Array(t.light, t.moderate, t.severe, t.extreme).map(e => EdrLayer.encode(e.toFloat) & 0xff)

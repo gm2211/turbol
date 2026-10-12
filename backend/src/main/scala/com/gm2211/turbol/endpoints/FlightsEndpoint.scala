@@ -88,10 +88,13 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
     }
   }
 
-  /** The aircraft size comes from the flight's ADS-B type, not the user; Medium when the type isn't known. */
+  /**
+   * How strongly the aircraft feels turbulence comes from the flight's ADS-B type, not the user: its wing loading when
+   * the type is in AircraftResponse's table, else its size class; a medium aircraft when the type isn't known.
+   */
   private def analyze(request: AnalyzeRequest): RouteAnalysis = {
     val live = request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
-    val aircraftClass = live.fold(AircraftClass.Medium)(a => AircraftClass.fromAdsb(a.category, a.typeCode))
+    val aircraft = live.fold(AircraftResponse.medium)(a => AircraftResponse.fromAdsb(a.category, a.typeCode))
     val analysis = RouteAnalyzer.analyzeFlight(
       store,
       request.origin.lat,
@@ -100,16 +103,19 @@ final class FlightsEndpoint(store: TurbulenceStore, traffic: LiveTrafficService)
       request.destination.lon,
       request.departure.getOrElse(Instant.now()),
       request.cruiseAltitudeFt,
-      aircraftClass
+      aircraft
     )
     val note =
       if (live.isDefined) None
       else if (request.callsign.exists(_.nonEmpty))
         Some("Aircraft type unknown (the flight isn't broadcasting it right now): assumed a medium aircraft.")
       else Some("No flight number, so the aircraft type is unknown: assumed a medium aircraft.")
+    val typeNote = aircraft.typeCode.filter(_ => aircraft.basis == "class").map(t =>
+      s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
+    )
     analysis.copy(
       aircraftType = live.flatMap(_.typeCode),
-      summary = analysis.summary.copy(notes = analysis.summary.notes ++ note)
+      summary = analysis.summary.copy(notes = analysis.summary.notes ++ note ++ typeNote)
     )
   }
 

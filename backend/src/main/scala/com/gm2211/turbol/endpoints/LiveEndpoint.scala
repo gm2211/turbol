@@ -53,7 +53,7 @@ final case class AircraftView(
 object LiveEndpoint {
   /** `now` is when `a` was fetched: its position is `a.seenSecondsAgo` older than that. */
   def view(store: TurbulenceStore, a: LiveAircraft, now: Instant): AircraftView = {
-    val aircraftClass = AircraftClass.fromAdsb(a.category, a.typeCode)
+    val aircraft = AircraftResponse.fromAdsb(a.category, a.typeCode)
     val edr = a.altitudeFt.filterNot(_ => a.onGround) match {
       case Some(alt) => store.sample(a.lat, a.lon, alt.toDouble, now).edr
       case None => Double.NaN
@@ -70,9 +70,9 @@ object LiveEndpoint {
       a.groundSpeedKts,
       a.trackDeg,
       a.verticalRateFpm,
-      aircraftClass,
+      aircraft.aircraftClass,
       Option(edr).filterNot(_.isNaN),
-      Thresholds.classify(edr, aircraftClass),
+      Thresholds.classify(edr, aircraft),
       now.toEpochMilli - (a.seenSecondsAgo * 1000).toLong
     )
   }

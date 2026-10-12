@@ -1,5 +1,10 @@
 import axios from 'axios'
-import type { AircraftClass, AircraftView, TurbulenceCategory } from '@/api/turbulence'
+import type {
+  AircraftClass,
+  AircraftResponse,
+  AircraftView,
+  TurbulenceCategory
+} from '@/api/turbulence'
 
 export interface Place {
   code: string
@@ -65,6 +70,8 @@ export interface RouteAnalysis {
   cruiseAltitudeFt: number
   aircraftClass: AircraftClass
   aircraftType?: string
+  /** How strongly this aircraft feels turbulence; missing from analyses made before it existed. */
+  aircraft?: AircraftResponse
   points: RoutePoint[]
   segments: Segment[]
   summary: RouteSummary
