@@ -6,6 +6,7 @@
 
 package com.gm2211.turbol.turbulence
 
+import com.gm2211.turbol.util.Visitors
 import com.google.common.cache.{Cache, CacheBuilder}
 
 import java.awt.image.{BufferedImage, DataBufferByte, IndexColorModel}
@@ -110,7 +111,8 @@ final class TileRenderer {
   /**
    * Renders the tiles of the map's opening view (all of CONUS at zooms 4-5, at FL350) for a new frame, so the first
    * visitor after each 15-minute nowcast or 3-hourly forecast update doesn't wait for them, and the forecast time
-   * slider has every hour ready.
+   * slider has every hour ready. Each tile not yet rendered waits while a visitor is being served: on a tenth of a
+   * CPU the two can't run side by side without the visitor waiting seconds.
    */
   def prewarm(frame: EdrFrame, global: Option[EdrFrame], levelFt: Int = 35000): Unit =
     for {
@@ -119,7 +121,10 @@ final class TileRenderer {
       x <- 0 until n
       y <- 0 until n
       if overlapsGrid(z, x, y)
-    } render(frame, global, levelFt, z, x, y): Unit
+    } {
+      if (cached(frame, global, levelFt, z, x, y).isEmpty) Visitors.waitForQuiet()
+      render(frame, global, levelFt, z, x, y): Unit
+    }
 
   private def worldPx(z: Int): Double = tileSize.toDouble * (1L << z)
   private def latAt(z: Int, py: Double): Double = toDegrees(atan(sinh(Pi * (1 - 2 * py / worldPx(z)))))

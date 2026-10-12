@@ -13,6 +13,7 @@ import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.endpoints.{Endpoint, StaticFrontend}
 import com.gm2211.turbol.modules.AppModule
+import com.gm2211.turbol.util.Visitors
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.{CORS, ErrorHandling, RequestLogger, ResponseLogger}
 import org.http4s.server.{Router, Server}
@@ -52,8 +53,16 @@ object AppServer extends BackendLogging {
     val frontend = sys.env.get("TURBOL_STATIC_DIR").map(dir => "/" -> StaticFrontend.routes(dir)).toList
     val router: MyHttpApp = Router[IO](endpoints ++ frontend*).orNotFound
     val port = Port.fromInt(install.server.port).get
+    // Health checks, keep-awake pings and a deploy's nowcast handoff aren't visitors.
+    val notVisitors = Set("/api/config", "/api/turbulence/handoff/nowcast")
+    val noteVisitors: MyHttpApp => MyHttpApp = app =>
+      Kleisli { req =>
+        if (!notVisitors.contains(req.pathInfo.renderString)) Visitors.seen()
+        app(req)
+      }
     val decorators: List[MyHttpApp => MyHttpApp] = LazyList
       .empty[MyHttpApp => MyHttpApp]
+      .appended(noteVisitors)
       .appended(ErrorHandling.Recover.total(_: MyHttpApp))
       .appended(RequestLogger.httpApp(logHeaders = true, logBody = true)(_: MyHttpApp))
       .appended(ResponseLogger.httpApp(logHeaders = true, logBody = false)(_: MyHttpApp))
