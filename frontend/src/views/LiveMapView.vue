@@ -329,7 +329,7 @@ import {
 } from '@/api/flights'
 import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
-import { goodConnection, onConnectionChange } from '@/util/network'
+import { fineForOneOffs, goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
 import { listenKeyPan } from '@/util/keyPan'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
@@ -952,7 +952,7 @@ watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
 const stopVolumeWarm = watch(selectedFrame, (f) => {
   if (!f) return
   stopVolumeWarm()
-  if (goodConnection() || mode.value === '3d') prefetchVolume(f.id).catch(() => undefined)
+  if (fineForOneOffs() || mode.value === '3d') prefetchVolume(f.id).catch(() => undefined)
 })
 
 // GTG's edge: 3 km inside, the coarse GFS-derived layer outside.
@@ -1168,7 +1168,7 @@ onMounted(() => {
   trackedTimer = window.setInterval(refreshTracked, 15000)
   // Fetch the 3D code once the 2D map is up and the browser is idle, so opening 3D doesn't wait on it.
   const warm3d = () => {
-    if (goodConnection()) loadMap3D().catch(() => undefined)
+    if (fineForOneOffs()) loadMap3D().catch(() => undefined)
   }
   // Safari has no requestIdleCallback.
   if (typeof window.requestIdleCallback === 'function')
