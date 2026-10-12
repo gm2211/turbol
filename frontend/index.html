@@ -20,8 +20,8 @@
       if (/^\/(map\/?)?$/.test(location.pathname) && !/(^|[?&])(view|follow|flights)=/.test(location.search)) {
         (function () {
           var mobile = matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px)').matches
-          var left = mobile ? 4 : 72, top = mobile ? 52 : 68
-          var w = innerWidth - (mobile ? 8 : 88), h = innerHeight - (mobile ? 112 : 80)
+          var left = mobile ? 4 : 0, top = mobile ? 52 : 64
+          var w = innerWidth - (mobile ? 8 : 0), h = innerHeight - (mobile ? 112 : 64)
           var z = 5, scale = 256 * Math.pow(2, z)
           var cx = ((-97 + 180) / 360) * scale
           var s = Math.sin((39.5 * Math.PI) / 180)
@@ -58,7 +58,8 @@
             var preview = document.createElement('div')
             preview.id = 'map-preview'
             preview.setAttribute('aria-hidden', 'true')
-            preview.style.cssText = 'position:fixed;overflow:hidden;pointer-events:none;z-index:2000;border-radius:8px;background:#e4e4e2;' +
+            preview.style.cssText = 'position:fixed;overflow:hidden;pointer-events:none;z-index:2000;background:#e4e4e2;' +
+              'border-radius:' + (mobile ? 8 : 0) + 'px;' +
               'left:' + left + 'px;top:' + top + 'px;width:' + w + 'px;height:' + h + 'px'
             window.__openingTiles.forEach(function (img) { preview.appendChild(img) })
             document.body.appendChild(preview)

@@ -53,7 +53,12 @@
 
 /* Height a full-page map gets below the app bar (and above the phone tab bar). */
 :root {
-    --page-h: calc(100dvh - 80px);
+    /* Everything below the 64px app bar: the map runs edge to edge. */
+    --page-h: calc(100dvh - 64px);
+}
+/* Desktop: the live map fills the window under the app bar, with no margin of cloud background around it. */
+html:not(.mobile) .page-container:has(> .map-page) {
+    padding: 0 !important;
 }
 html.mobile {
     --page-h: calc(100dvh - 48px - 56px - env(safe-area-inset-bottom) - 8px);
