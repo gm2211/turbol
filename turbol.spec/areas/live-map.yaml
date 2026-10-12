@@ -57,6 +57,13 @@ behaviors:
     description: >-
       Airborne aircraft in view are shown with the turbulence category they are flying through right
       now, from the nowcast at their position and altitude. Aircraft on the ground are hidden.
+  - id: neutral-planes-with-turbulence-ring
+    description: >-
+      Planes are drawn in one neutral colour. Turbulence at a plane's own altitude shows as a ring in
+      the category colour, only for Light or worse, and the legend explains the ring. Popups keep the
+      full detail.
+    source:
+      text: green vs yellow vs red aircrafts are confusing
   - id: wide-views-fill-in
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to

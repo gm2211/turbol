@@ -5,13 +5,17 @@
       <span class="swatch" :style="{ background: categoryColors[c] }" />
       {{ compact ? shortLabels[c] : categoryLabels[c] }}
     </div>
+    <div v-if="aircraftKey" class="legend-row aircraft-key">
+      <span class="ring" />
+      {{ compact ? 'Ring: at plane' : 'Ring around a plane: turbulence at its own altitude' }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { categoryColors, categoryLabels, type TurbulenceCategory } from '@/api/turbulence'
 
-defineProps<{ title: string; compact?: boolean }>()
+defineProps<{ title: string; compact?: boolean; aircraftKey?: boolean }>()
 const categories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme']
 // One row on a phone screen.
 const shortLabels: Partial<Record<TurbulenceCategory, string>> = {
@@ -46,6 +50,21 @@ const shortLabels: Partial<Record<TurbulenceCategory, string>> = {
 }
 .compact .legend-row {
   gap: 3px;
+}
+.aircraft-key {
+  margin-top: 2px;
+}
+.compact .aircraft-key {
+  margin-top: 0;
+}
+.ring {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #f97316;
+  background: rgba(249, 115, 22, 0.22);
+  display: inline-block;
+  flex: none;
 }
 .swatch {
   width: 14px;

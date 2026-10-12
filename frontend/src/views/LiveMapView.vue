@@ -185,7 +185,11 @@
     />
 
     <div class="bottom-left">
-      <TurbulenceLegend :title="`Turbulence at ${levelLabel}`" :compact="mobile" />
+      <TurbulenceLegend
+        :title="`Turbulence at ${levelLabel}`"
+        :compact="mobile"
+        :aircraft-key="trafficMode !== 'off' || tracked.length > 0"
+      />
     </div>
   </div>
 </template>
