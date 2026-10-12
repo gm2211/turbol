@@ -1,11 +1,25 @@
 <template>
-  <div class="fly-page">
-    <v-card v-if="loaded && (adding || flights.length === 0)" class="panel pa-4">
-      <AddFlight :can-cancel="flights.length > 0" @saved="onSaved" @cancel="adding = false" />
+  <div class="flight-page">
+    <template v-if="!loaded" />
+
+    <v-card v-else-if="!flight" class="panel pa-4">
+      <div class="headline">This flight isn't downloaded on this phone.</div>
+      <v-btn class="mt-3" variant="outlined" to="/analyze">Downloaded flights</v-btn>
     </v-card>
 
-    <template v-else-if="flight && est">
+    <template v-else-if="est">
       <v-card class="panel pa-4">
+        <div class="top">
+          <div class="eyebrow">Your flight</div>
+          <v-btn
+            icon="mdi-close"
+            size="small"
+            variant="text"
+            density="comfortable"
+            aria-label="Close"
+            to="/analyze"
+          />
+        </div>
         <div v-if="flights.length > 1" class="picker mb-2">
           <v-chip
             v-for="f in flights"
@@ -13,12 +27,12 @@
             size="small"
             :variant="f.id === flight.id ? 'flat' : 'outlined'"
             color="#10324f"
-            @click="select(f.id)"
+            :to="{ path: '/analyze', query: { flight: f.id } }"
+            replace
           >
             {{ f.label }}
           </v-chip>
         </div>
-        <div class="eyebrow">Your flight</div>
         <div class="title">
           {{ flight.label }}
           <span v-if="flight.label !== routeLabel" class="muted"> · {{ routeLabel }}</span>
@@ -29,14 +43,8 @@
           }}{{ flight.aircraftClass }} aircraft
         </div>
         <div class="chips mt-2">
-          <v-chip
-            v-if="packChip"
-            size="small"
-            :color="packChip.color"
-            variant="flat"
-            :prepend-icon="packChip.icon"
-          >
-            {{ packChip.text }}
+          <v-chip size="small" :color="status.color" variant="flat" :prepend-icon="status.icon">
+            {{ status.text }}
           </v-chip>
           <v-chip
             v-if="online !== undefined"
@@ -62,12 +70,12 @@
         <template v-if="!pack">
           <div class="headline">{{ noPackText }}</div>
           <v-progress-linear
-            v-if="progress && progress.total > 0"
+            v-if="state?.progress && state.progress.total > 0"
             class="mt-3"
             color="#10324f"
             height="6"
             rounded
-            :model-value="(100 * progress.done) / progress.total"
+            :model-value="(100 * state.progress.done) / state.progress.total"
           />
         </template>
         <template v-else-if="est.phase === 'gate'">
@@ -135,7 +143,14 @@
           :now-minute="nowMinute"
           :uncertainty-minutes="bandMinutes"
         />
-        <div class="mt-2">
+        <div class="stats mt-3">
+          <div>
+            <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
+          </div>
+          <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
+          <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
+        </div>
+        <div class="mt-3">
           <div v-for="c in shownCategories" :key="c" class="cat-row">
             <span class="swatch" :style="{ background: categoryColors[c] }" />
             <span class="cat-name">{{ categoryLabels[c] }}</span>
@@ -153,7 +168,7 @@
           >{{ n }}</v-alert
         >
         <div class="muted small mt-3">
-          From the pack on this phone, downloaded
+          Worked out on this phone from the turbulence downloaded
           {{ flight.checkedAt ? ago(flight.checkedAt) : 'earlier' }}: GTG forecast issued
           {{ utc(flight.manifest?.forecastIssued) }}
           <template v-if="flight.manifest?.nowcastValid">
@@ -167,17 +182,20 @@
 
       <v-card class="panel pa-3">
         <div class="actions">
-          <v-btn variant="outlined" prepend-icon="mdi-refresh" :loading="syncing" @click="syncNow"
+          <v-btn
+            variant="outlined"
+            prepend-icon="mdi-refresh"
+            :loading="state?.syncing"
+            @click="downloads.syncNow(flight.id)"
             >Update now</v-btn
           >
-          <v-btn variant="text" prepend-icon="mdi-plus" @click="adding = true">Add a flight</v-btn>
           <v-btn
             v-if="!confirmRemove"
             variant="text"
             prepend-icon="mdi-delete-outline"
             @click="confirmRemove = true"
           >
-            Remove
+            Remove download
           </v-btn>
           <template v-else>
             <v-btn color="red-darken-2" variant="flat" @click="remove"
@@ -186,7 +204,9 @@
             <v-btn variant="text" @click="confirmRemove = false">Keep</v-btn>
           </template>
         </div>
-        <div v-if="syncError" class="muted small mt-2">Last update failed: {{ syncError }}</div>
+        <div v-if="state?.error" class="muted small mt-2">
+          Last update failed: {{ state.error }}
+        </div>
         <div v-if="showInstallTip" class="muted small mt-2">
           On iPhone, add Turbol to your Home Screen (Share, then Add to Home Screen) so it opens
           offline and iOS keeps your flight's data.
@@ -197,9 +217,13 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * A downloaded flight, from the gate to landing, with or without a connection: its turbulence worked out on the phone
+ * from the Flight Pack it downloaded, and, on the day, where the plane is from the schedule, the passenger's takeoff
+ * tap or GPS. Keeping the pack current is the app-wide downloads' job (src/fly/downloads.ts).
+ */
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import AddFlight from '@/components/fly/AddFlight.vue'
+import { useRouter } from 'vue-router'
 import TimelineBar from '@/components/analysis/TimelineBar.vue'
 import TurbulenceProfile from '@/components/analysis/TurbulenceProfile.vue'
 import { type RouteAnalysis, formatDuration } from '@/api/flights'
@@ -212,29 +236,20 @@ import {
 } from '@/api/turbulence'
 import { type Upcoming, analyzeFlight, defaultThresholds, upcoming } from '@/fly/analyzer'
 import { idbStore } from '@/fly/db'
-import { type GpsFix, type SavedFlight, loadPack } from '@/fly/flights'
-import { setFlying } from '@/fly/flying'
+import { downloads, inOrder, packStatus } from '@/fly/downloads'
+import { type GpsFix, loadPack } from '@/fly/flights'
 import { greatCircleKm } from '@/fly/geo'
 import { type PackData, packSource, sample } from '@/fly/pack'
 import { estimate, taxiOutMinutes, withFix } from '@/fly/position'
-import { type SyncProgress, ping, removeFlight, syncFlight } from '@/fly/sync'
 
-const route = useRoute()
+const props = defineProps<{ flightId: string }>()
 const router = useRouter()
 
-const flights = ref<SavedFlight[]>([])
-const loaded = ref(false)
-const selectedId = ref<string>()
-const flight = computed(() => flights.value.find((f) => f.id === selectedId.value))
+const { loaded, now, online } = downloads
+const flights = computed(() => inOrder(downloads.flights.value, now.value))
+const flight = computed(() => downloads.flights.value.find((f) => f.id === props.flightId))
+const state = computed(() => downloads.states[props.flightId])
 const pack = shallowRef<PackData>()
-const now = ref(Date.now())
-const online = ref<boolean>()
-const syncing = ref(false)
-const progress = ref<SyncProgress>()
-const syncError = ref<string>()
-/** Set while Turbol has just restarted and is still loading turbulence data: how soon to ask again (ms). */
-const loadingRetryMs = ref<number>()
-const adding = ref(false)
 const confirmRemove = ref(false)
 const gpsOn = ref(false)
 const gpsError = ref<string>()
@@ -294,35 +309,15 @@ const shownCategories = computed(() =>
   )
 )
 
-const packChip = computed(() => {
-  const f = flight.value
-  if (!f) return undefined
-  if (syncing.value && progress.value && progress.value.done < progress.value.total)
-    return {
-      text: `Downloading ${progress.value.done} of ${progress.value.total}`,
-      color: 'blue-darken-2',
-      icon: 'mdi-download'
-    }
-  if (loadingRetryMs.value !== undefined && !f.manifest?.frames.length)
-    return { text: 'Downloading soon', color: 'amber-darken-4', icon: 'mdi-timer-sand' }
-  if (f.manifest && !f.pending)
-    return { text: 'Ready offline', color: 'green-darken-2', icon: 'mdi-check-circle' }
-  if (f.manifest)
-    return {
-      text: 'Ready offline, update paused',
-      color: 'green-darken-2',
-      icon: 'mdi-check-circle'
-    }
-  return { text: 'Not downloaded yet', color: 'red-darken-2', icon: 'mdi-alert-circle' }
-})
+const status = computed(() => packStatus(flight.value!, state.value))
 
 const noPackText = computed(() => {
   const f = flight.value
-  if (loadingRetryMs.value !== undefined)
+  if (state.value?.loadingRetryMs !== undefined)
     return 'Turbol has just restarted and is still loading the latest turbulence. Keep it open: your flight downloads in a few minutes.'
   if (f?.manifest && f.manifest.frames.length === 0)
     return 'No forecast reaches this flight yet. Turbol downloads it when you open the app closer to the day.'
-  if (syncing.value) return 'Downloading the turbulence along your flight…'
+  if (state.value?.syncing) return 'Downloading the turbulence along your flight…'
   return online.value === false
     ? "This flight's turbulence isn't on the phone yet. Connect to download it."
     : "This flight's turbulence isn't on the phone yet."
@@ -332,11 +327,13 @@ const positionText = computed(() => {
   const e = est.value
   if (!e) return ''
   const pm = e.uncertaintyMinutes >= 1 ? ` ±${Math.round(e.uncertaintyMinutes)} min` : ''
+  // A fix from the live map is the plane's own ADS-B position, not the phone's GPS.
+  const by = flight.value?.airborneFix?.source === 'adsb' ? 'Tracked' : 'GPS'
   switch (e.basis) {
     case 'gps':
-      return `GPS ${Math.round(e.fixAgeMinutes ?? 0)} min ago${pm}`
+      return `${by} ${Math.round(e.fixAgeMinutes ?? 0)} min ago${pm}`
     case 'gps-takeoff':
-      return `GPS takeoff${pm}`
+      return `${by} takeoff${pm}`
     case 'tap':
       return `Your takeoff time${pm}`
     default:
@@ -373,43 +370,7 @@ function relative(ms: number): string {
   const minutes = (ms - now.value) / 60000
   return minutes >= 0 ? `in ${formatDuration(minutes)}` : `${formatDuration(-minutes)} ago`
 }
-const ago = (ms: number) => relative(ms)
-
-function replaceFlight(f: SavedFlight) {
-  const k = flights.value.findIndex((x) => x.id === f.id)
-  if (k >= 0) flights.value.splice(k, 1, f)
-  else flights.value.push(f)
-}
-
-/** Changes some fields of a flight on screen; a flight removed meanwhile stays removed. */
-function patchFlight(id: string, fields: Partial<SavedFlight>) {
-  const k = flights.value.findIndex((x) => x.id === id)
-  if (k >= 0) flights.value.splice(k, 1, { ...flights.value[k], ...fields })
-}
-
-/** Keeps what the phone knows about the takeoff and position, leaving the pack to the download. */
-async function savePosition(id: string, fields: Pick<SavedFlight, 'takeoff' | 'airborneFix'>) {
-  patchFlight(id, fields)
-  await idbStore.updateFlight(id, (f) => ({ ...f, ...fields }))
-}
-
-function select(id: string) {
-  selectedId.value = id
-  confirmRemove.value = false
-  router.replace({ query: { flight: id } })
-}
-
-/** The flight to show: the one asked for, else the one in the air or leaving soonest. */
-function pickDefault(): string | undefined {
-  const asked = route.query.flight
-  if (typeof asked === 'string' && flights.value.some((f) => f.id === asked)) return asked
-  const t = Date.now()
-  const score = (f: SavedFlight) => {
-    const e = estimate(f, t)
-    return e.phase === 'air' ? -1 : e.phase === 'gate' ? e.takeoff - t : 1e15 + t - e.takeoff
-  }
-  return [...flights.value].sort((a, b) => score(a) - score(b))[0]?.id
-}
+const ago = (ms: number) => (now.value - ms < 60000 ? 'just now' : relative(ms))
 
 // The pack in use, decoded, whenever the flight switches to another one.
 let packKey: string | undefined
@@ -426,100 +387,22 @@ watch(
   { immediate: true }
 )
 
-// Hold back app updates while any saved flight is in the air, until an hour after it lands (see src/sw.ts).
-const flyingUntil = computed(() => {
-  let until: number | undefined
-  for (const f of flights.value) {
-    const e = estimate(f, now.value)
-    if (e.phase === 'air') until = Math.max(until ?? 0, e.landing + 3600_000)
-  }
-  // To the minute, so the marker isn't rewritten on every tick.
-  return until === undefined ? undefined : Math.ceil(until / 60000) * 60000
-})
-watch(flyingUntil, (until) => setFlying(until), { immediate: true })
-
-let syncTimer: number | undefined
-let failures = 0
-let lastAttempt = 0
-
-async function syncNow() {
-  const f = flight.value
-  if (!f || syncing.value) return
-  window.clearTimeout(syncTimer)
-  syncing.value = true
-  lastAttempt = Date.now()
-  try {
-    online.value = await ping()
-    if (!online.value) {
-      failures += 1
-      loadingRetryMs.value = undefined
-      return
-    }
-    const result = await syncFlight(idbStore, f, { onProgress: (p) => (progress.value = p) })
-    const { manifest, pending, checkedAt } = result.flight
-    patchFlight(f.id, { manifest, pending, checkedAt })
-    loadingRetryMs.value = result.status === 'loading' ? result.retryAfterMs : undefined
-    if (result.status === 'offline') {
-      failures += 1
-      syncError.value = 'the connection dropped; Turbol picks up where it left off next time.'
-    } else {
-      failures = 0
-      syncError.value = undefined
-      navigator.storage?.persist?.().catch(() => undefined)
-    }
-  } catch (e) {
-    failures += 1
-    loadingRetryMs.value = undefined
-    syncError.value = String(e)
-  } finally {
-    syncing.value = false
-    progress.value = undefined
-    // Another flight picked meanwhile gets its turn now.
-    if (flight.value && flight.value.id !== f.id) void syncNow()
-    else scheduleSync()
-  }
-}
-
-/**
- * Check for a newer pack every few minutes in the air, less often on the ground, sooner after a failed try or while
- * Turbol is still loading after a restart.
- */
-function scheduleSync() {
-  window.clearTimeout(syncTimer)
-  if (!flight.value || est.value?.phase === 'landed') return
-  const every = est.value?.phase === 'air' ? 3 : 10
-  const minutes =
-    failures > 0
-      ? Math.min(every, 0.5 * 2 ** (failures - 1))
-      : Math.min(every, (loadingRetryMs.value ?? Infinity) / 60000)
-  syncTimer = window.setTimeout(syncNow, minutes * 60000)
-}
-
-function onOnline() {
-  failures = 0
-  syncNow()
-}
-function onVisible() {
-  if (document.visibilityState === 'visible') {
-    now.value = Date.now()
-    if (Date.now() - lastAttempt > 60000) syncNow()
-  }
-}
-
-async function onSaved(f: SavedFlight) {
-  adding.value = false
-  replaceFlight(f)
-  select(f.id)
-  failures = 0
-  await syncNow()
-}
+// Opening a flight checks its pack, unless that was done in the last minute.
+watch(
+  () => props.flightId,
+  (id) => {
+    confirmRemove.value = false
+    void downloads.wake([id])
+  },
+  { immediate: true }
+)
 
 async function tookOff() {
   const f = flight.value
   // Move the clock to the tap too, or the estimate (up to a tick behind) would still be at the gate.
   now.value = Date.now()
   if (f)
-    await savePosition(f.id, {
+    await downloads.savePosition(f.id, {
       takeoff: { time: now.value, source: 'tap' },
       airborneFix: undefined
     })
@@ -527,18 +410,14 @@ async function tookOff() {
 
 async function undoTakeoff() {
   const f = flight.value
-  if (f) await savePosition(f.id, { takeoff: undefined, airborneFix: undefined })
+  if (f) await downloads.savePosition(f.id, { takeoff: undefined, airborneFix: undefined })
 }
 
 async function remove() {
   const f = flight.value
   if (!f) return
-  await removeFlight(idbStore, f.id)
-  flights.value = flights.value.filter((x) => x.id !== f.id)
-  confirmRemove.value = false
-  pack.value = undefined
-  packKey = undefined
-  selectedId.value = pickDefault()
+  await downloads.remove(f.id)
+  await router.replace({ path: '/analyze' })
 }
 
 let watchId: number | undefined
@@ -605,22 +484,13 @@ async function onPosition(p: GeolocationPosition) {
   now.value = received
   const updated = withFix(f, fix)
   if (updated)
-    await savePosition(f.id, { takeoff: updated.takeoff, airborneFix: updated.airborneFix })
+    await downloads.savePosition(f.id, {
+      takeoff: updated.takeoff,
+      airborneFix: updated.airborneFix
+    })
 }
 
-let ticker: number | undefined
-
-onMounted(async () => {
-  try {
-    flights.value = await idbStore.flights()
-  } catch (e) {
-    syncError.value = `this browser can't keep flights offline (${e}).`
-  }
-  selectedId.value = pickDefault()
-  loaded.value = true
-  ticker = window.setInterval(() => (now.value = Date.now()), 15000)
-  window.addEventListener('online', onOnline)
-  document.addEventListener('visibilitychange', onVisible)
+onMounted(() => {
   let gpsWanted = false
   try {
     gpsWanted = localStorage.getItem('turbol.fly.gps') === '1'
@@ -628,25 +498,15 @@ onMounted(async () => {
     // ignore
   }
   if (gpsWanted) startGps()
-  await syncNow()
-})
-
-watch(selectedId, () => {
-  failures = 0
-  if (loaded.value) syncNow()
 })
 
 onBeforeUnmount(() => {
-  window.clearInterval(ticker)
-  window.clearTimeout(syncTimer)
-  window.removeEventListener('online', onOnline)
-  document.removeEventListener('visibilitychange', onVisible)
   if (watchId !== undefined) navigator.geolocation.clearWatch(watchId)
 })
 </script>
 
 <style scoped>
-.fly-page {
+.flight-page {
   width: 100%;
   max-width: 880px;
   margin: 0 auto;
@@ -660,6 +520,12 @@ onBeforeUnmount(() => {
   color: #0f172a;
   backdrop-filter: blur(6px);
   border-radius: 10px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -6px -8px 0 0;
 }
 .eyebrow {
   font-size: 12px;
@@ -686,6 +552,20 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.stats > div > span:first-child {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
 }
 .cat-row {
   display: flex;

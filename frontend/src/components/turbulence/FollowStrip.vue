@@ -16,13 +16,37 @@
       <div class="who-head">
         <span class="callsign">{{ title }}</span>
         <span v-if="a?.typeCode" class="type">{{ a.typeCode }}</span>
+        <template v-if="mobile && offline">
+          <v-btn
+            v-if="saved"
+            size="small"
+            variant="tonal"
+            theme="dark"
+            class="ml-auto"
+            :prepend-icon="offline.icon"
+            :to="savedLink"
+            >{{ offline.short }}</v-btn
+          >
+          <v-btn
+            v-else
+            size="small"
+            variant="tonal"
+            theme="dark"
+            class="ml-auto"
+            prepend-icon="mdi-download"
+            aria-label="Download for offline"
+            :loading="downloading"
+            @click="download"
+            >Download</v-btn
+          >
+        </template>
         <v-btn
           v-if="mobile"
           icon="mdi-close"
           size="small"
           variant="text"
           theme="dark"
-          class="ml-auto"
+          :class="{ 'ml-auto': !offline }"
           aria-label="Stop following"
           @click="emit('close')"
         />
@@ -133,7 +157,29 @@
         :to="`/analyze?q=${encodeURIComponent(a.callsign)}`"
         >Analyze</v-btn
       >
+      <template v-if="offline">
+        <v-btn
+          v-if="saved"
+          size="small"
+          variant="tonal"
+          theme="dark"
+          :prepend-icon="offline.icon"
+          :to="savedLink"
+          >{{ offline.text }}</v-btn
+        >
+        <v-btn
+          v-else
+          size="small"
+          variant="tonal"
+          theme="dark"
+          prepend-icon="mdi-download"
+          :loading="downloading"
+          @click="download"
+          >Download for offline</v-btn
+        >
+      </template>
     </div>
+    <div v-if="downloadError" class="download-error">{{ downloadError }}</div>
   </div>
 </template>
 
@@ -141,6 +187,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { formatDuration } from '@/api/flights'
 import { type LiveFlightUpdate, followFlight } from '@/api/follow'
+import { downloads, packStatus } from '@/fly/downloads'
+import { flightFromLive, sameFlight } from '@/fly/live'
 import {
   type TurbulenceCategory,
   categoryColors,
@@ -181,6 +229,48 @@ const endLabel = computed(() => {
   })
   return `Arrive ~${arrive}`
 })
+
+/** This flight, to download for offline use, once its route is known. */
+const toDownload = computed(() =>
+  update.value?.usingRoute && update.value.status === 'tracking'
+    ? flightFromLive(update.value, Date.now())
+    : undefined
+)
+/** The same flight, already downloaded on this phone. */
+const saved = computed(() => {
+  const f = toDownload.value
+  return f && downloads.flights.value.find((d) => sameFlight(d, f))
+})
+const savedLink = computed(() =>
+  saved.value ? { path: '/analyze', query: { flight: saved.value.id } } : undefined
+)
+/** What the download button shows: none until the flight can be downloaded, then where its download stands. */
+const offline = computed(() => {
+  if (!toDownload.value && !saved.value) return undefined
+  if (!saved.value) return { text: 'Download for offline', short: 'Download', icon: 'mdi-download' }
+  const state = downloads.states[saved.value.id]
+  const s = packStatus(saved.value, state)
+  if (s.ready) return { text: 'Ready offline', short: 'Offline', icon: 'mdi-check-circle' }
+  const p = state?.syncing ? state.progress : undefined
+  return { text: s.text, short: p ? `${p.done}/${p.total}` : 'Saved', icon: s.icon }
+})
+const downloading = ref(false)
+const downloadError = ref<string>()
+
+/** Downloads this flight for offline use; the map stays open and the button follows the download. */
+async function download() {
+  const f = toDownload.value
+  if (!f) return
+  downloading.value = true
+  downloadError.value = undefined
+  try {
+    await downloads.download(f)
+  } catch (e) {
+    downloadError.value = `Couldn't download the flight on this phone: ${e}`
+  } finally {
+    downloading.value = false
+  }
+}
 
 /** Share of the great-circle distance flown so far, for the origin → destination progress line. */
 const progress = computed(() => {
@@ -374,6 +464,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
+}
+.download-error {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #fecaca;
 }
 
 /* Phones: a bottom sheet above the tab bar; tapping the handle folds it down to the flight line. */

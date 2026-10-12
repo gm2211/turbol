@@ -1,6 +1,6 @@
 /**
- * Where the Fly view keeps a saved flight and its Flight Pack on the phone: IndexedDB, so both survive airplane mode,
- * reloads and the browser being closed. Slabs are stored by URL as the server sent them (delta-coded, unzipped); a
+ * Where Turbol keeps the flights downloaded for offline use and their Flight Packs on the phone: IndexedDB, so both
+ * survive airplane mode, reloads and the browser being closed. Slabs are stored by URL as the server sent them (delta-coded, unzipped); a
  * slab URL never changes meaning, so a slab is shared by every manifest that lists it.
  */
 import type { SavedFlight } from './flights'

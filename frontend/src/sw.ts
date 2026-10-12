@@ -2,9 +2,9 @@
 /**
  * Turbol's service worker. It keeps the app shell (index.html and the scripts, styles, fonts and images the app
  * needs to start) on the phone, so the app opens with no connection: in airplane mode, behind a captive portal, or
- * when the plane's Wi-Fi drops. It caches no data; the Fly view keeps its flights in IndexedDB.
+ * when the plane's Wi-Fi drops. It caches no data; flights downloaded for offline use live in IndexedDB.
  *
- * While a saved flight is in the air (the Fly view says so in the turbol-state cache, see src/fly/flying.ts) the
+ * While a downloaded flight is in the air (the app says so in the turbol-state cache, see src/fly/flying.ts) the
  * build on the phone stays as it is: a new one isn't downloaded over the plane's Wi-Fi, and opening the app doesn't
  * wait for the network.
  *
@@ -113,7 +113,7 @@ async function fromShell(request: Request): Promise<Response> {
   return kept ?? fetch(request)
 }
 
-/** Whether the Fly view has a flight in the air right now. */
+/** Whether a downloaded flight is in the air right now. */
 async function flying(): Promise<boolean> {
   try {
     const marker = await caches.match(flyingKey, { cacheName: stateCache })

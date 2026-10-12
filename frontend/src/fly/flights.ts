@@ -1,5 +1,5 @@
 /**
- * A flight saved for the Fly view, and its Flight Pack: which pack is in use, which newer one is on its way, and
+ * A flight downloaded for offline use, and its Flight Pack: which pack is in use, which newer one is on its way, and
  * how to turn the stored slabs back into something the sampler can read.
  */
 import type { Place } from '@/api/flights'
@@ -14,6 +14,8 @@ export interface GpsFix {
   lon: number
   speedMps?: number
   accuracyM?: number
+  /** Where the fix came from when not the phone's GPS: the plane's own position, as the live map tracked it. */
+  source?: 'adsb'
 }
 
 export interface SavedFlight {

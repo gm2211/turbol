@@ -1,4 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { START_LOCATION, createRouter, createWebHistory } from 'vue-router'
+import { downloads, inOrder } from '@/fly/downloads'
+import { estimate } from '@/fly/position'
 import LiveMapView from '@/views/LiveMapView.vue'
 
 const router = createRouter({
@@ -19,10 +21,9 @@ const router = createRouter({
       component: () => import('@/views/AnalyzeView.vue')
     },
     {
-      // Your own flight, from the gate to landing, with or without a connection.
+      // Flights downloaded for offline use open in Analyze now; links to the old Fly page still find theirs.
       path: '/fly',
-      name: 'fly',
-      component: () => import('@/views/FlyView.vue')
+      redirect: (to) => ({ path: '/analyze', query: to.query })
     },
     {
       // Following a flight now happens on the live map; old links open the map with that flight followed.
@@ -39,6 +40,26 @@ const router = createRouter({
       })
     }
   ]
+})
+
+/**
+ * Opening Turbol with no connection, or while a downloaded flight is in the air, goes straight to that flight: the
+ * live map needs the network, and plane Wi-Fi is better spent on the flight's turbulence. A link to the old Fly page
+ * opens the flight it would have shown.
+ */
+router.beforeEach(async (to, from) => {
+  const opening =
+    from === START_LOCATION && to.path === '/map' && Object.keys(to.query).length === 0
+  const oldFly = to.redirectedFrom?.path === '/fly' && !to.query.flight
+  if (!opening && !oldFly) return
+  // Never hold the app back on a slow or blocked IndexedDB.
+  await Promise.race([downloads.load(), new Promise((done) => setTimeout(done, 1500))])
+  const now = Date.now()
+  const flight = inOrder(downloads.flights.value, now)[0]
+  if (!flight) return
+  const phase = estimate(flight, now).phase
+  if (oldFly || (phase !== 'landed' && (!navigator.onLine || phase === 'air')))
+    return { path: '/analyze', query: { flight: flight.id } }
 })
 
 export default router

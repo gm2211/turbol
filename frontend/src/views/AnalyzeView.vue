@@ -1,6 +1,9 @@
 <template>
-  <div class="analyze-page" :class="{ 'has-result': analysis }">
-    <v-card class="panel form-card px-4 py-3">
+  <div class="analyze-page" :class="{ 'has-result': analysis && !flightId }">
+    <!-- A downloaded flight: worked out on the phone, so it opens with no connection too. -->
+    <DownloadedFlight v-if="flightId" :flight-id="flightId" />
+    <DownloadedFlights v-else-if="!analysis && downloadedFlights.length > 0" />
+    <v-card v-if="!flightId" class="panel form-card px-4 py-3">
       <div class="form-row">
         <v-btn-toggle v-model="mode" mandatory density="compact" variant="outlined" divided class="mode">
           <v-btn value="flight">Flight</v-btn>
@@ -70,7 +73,7 @@
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-2" density="compact">{{ error }}</v-alert>
     </v-card>
 
-    <template v-if="analysis">
+    <template v-if="analysis && !flightId">
       <v-card class="panel verdict-card pa-4">
         <div class="eyebrow">Forecast verdict</div>
         <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" class="mb-2" label>
@@ -78,15 +81,27 @@
         </v-chip>
         <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
         <v-btn
+          v-if="downloaded"
+          size="small"
+          :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
+          variant="flat"
+          class="mb-3"
+          :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
+          :to="{ path: '/analyze', query: { flight: downloaded.id } }"
+        >
+          {{ downloadedStatus?.ready ? 'Open downloaded flight' : downloadedStatus?.text }}
+        </v-btn>
+        <v-btn
+          v-else
           size="small"
           color="#10324f"
           variant="flat"
           class="mb-3"
-          prepend-icon="mdi-airplane-takeoff"
-          :loading="savingForFlight"
-          @click="saveForFlight"
+          prepend-icon="mdi-download"
+          :loading="downloading"
+          @click="downloadForOffline"
         >
-          Save for the flight (works offline)
+          Download for offline
         </v-btn>
         <div class="stats">
           <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
@@ -159,9 +174,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AirportPicker from '@/components/analysis/AirportPicker.vue'
+import DownloadedFlight from '@/components/fly/DownloadedFlight.vue'
+import DownloadedFlights from '@/components/fly/DownloadedFlights.vue'
 import RouteMap from '@/components/analysis/RouteMap.vue'
 import TimelineBar from '@/components/analysis/TimelineBar.vue'
 import TurbulenceProfile from '@/components/analysis/TurbulenceProfile.vue'
@@ -184,8 +201,8 @@ import {
   flightLevel,
   formatUtc
 } from '@/api/turbulence'
-import { idbStore } from '@/fly/db'
-import { newFlight, saveFlight } from '@/fly/flights'
+import { downloads, packStatus } from '@/fly/downloads'
+import { newFlight } from '@/fly/flights'
 
 const route = useRoute()
 const router = useRouter()
@@ -201,8 +218,13 @@ const lookup = ref<FlightLookup>()
 const analysis = ref<RouteAnalysis>()
 const analyzedOrigin = ref<Place>()
 const analyzedDestination = ref<Place>()
-const savingForFlight = ref(false)
+const downloading = ref(false)
 const allThresholds = ref<Record<AircraftClass, Thresholds>>()
+const downloadedFlights = downloads.flights
+/** A flight downloaded for offline use, to show instead of the form: `?flight=<id>`. */
+const flightId = computed(() => (typeof route.query.flight === 'string' ? route.query.flight : undefined))
+/** What the result on screen was analyzed for, as the query has it: `q:UA1517` or `route:JFK-LAX`. */
+let shown: string | undefined
 
 const thresholds = computed(
   () => allThresholds.value?.[analysis.value?.aircraftClass ?? 'Medium'] ?? { light: 0.12, moderate: 0.14 }
@@ -230,6 +252,29 @@ const worstLabel = computed(() => {
   const at = s.worstMinute !== undefined ? ` at ${formatDuration(s.worstMinute)}` : ''
   return `Worst forecast bump: ${categoryLabels[s.worstCategory]}${at}`
 })
+/** The flight on screen, as it would be downloaded for offline use. */
+const toDownload = computed(() => {
+  const a = analysis.value
+  const from = analyzedOrigin.value
+  const to = analyzedDestination.value
+  if (!a || !from || !to) return undefined
+  const found = lookup.value?.route
+  return newFlight({
+    label: found ? (found.iataCallsign ?? found.callsign) : `${from.code} → ${to.code}`,
+    callsign: lookup.value?.callsign,
+    origin: from,
+    destination: to,
+    departure: new Date(a.start).getTime(),
+    aircraftClass: a.aircraftClass,
+    aircraftType: a.aircraftType,
+    cruiseFt: a.cruiseAltitudeFt
+  })
+})
+/** That flight, if it is already on the phone. */
+const downloaded = computed(() => downloadedFlights.value.find((f) => f.id === toDownload.value?.id))
+const downloadedStatus = computed(
+  () => downloaded.value && packStatus(downloaded.value, downloads.states[downloaded.value.id])
+)
 const arrival = computed(() =>
   analysis.value
     ? new Date(new Date(analysis.value.start).getTime() + analysis.value.durationMinutes * 60000).toISOString()
@@ -270,6 +315,7 @@ async function analyze() {
       }
       from = lookup.value.route.origin
       to = lookup.value.route.destination
+      shown = `q:${flightQuery.value.trim()}`
       router.replace({ query: { q: flightQuery.value.trim() } })
     } else {
       lookup.value = undefined
@@ -277,6 +323,7 @@ async function analyze() {
         error.value = 'Pick both airports.'
         return
       }
+      shown = `route:${from.code}-${to.code}`
       router.replace({ query: { from: from.code, to: to.code } })
     }
     analysis.value = await analyzeFlight({
@@ -294,47 +341,55 @@ async function analyze() {
   }
 }
 
-/** Keeps this flight on the phone for the Fly view, which downloads its Flight Pack. */
-async function saveForFlight() {
-  const a = analysis.value
-  const from = analyzedOrigin.value
-  const to = analyzedDestination.value
-  if (!a || !from || !to) return
-  savingForFlight.value = true
+/** Downloads this flight for offline use, then opens it: the same page works with no connection. */
+async function downloadForOffline() {
+  const flight = toDownload.value
+  if (!flight) return
+  downloading.value = true
   try {
-    const found = lookup.value?.route
-    const flight = newFlight({
-      label: found ? (found.iataCallsign ?? found.callsign) : `${from.code} → ${to.code}`,
-      callsign: lookup.value?.callsign,
-      origin: from,
-      destination: to,
-      departure: new Date(a.start).getTime(),
-      aircraftClass: a.aircraftClass,
-      aircraftType: a.aircraftType,
-      cruiseFt: a.cruiseAltitudeFt
-    })
-    await saveFlight(idbStore, flight)
-    await router.push({ path: '/fly', query: { flight: flight.id } })
+    const saved = await downloads.download({ ...flight, savedAt: Date.now() })
+    await router.push({ path: '/analyze', query: { flight: saved.id } })
   } catch (e) {
-    error.value = `Couldn't save the flight on this phone: ${e}`
+    error.value = `Couldn't download the flight on this phone: ${e}`
   } finally {
-    savingForFlight.value = false
+    downloading.value = false
   }
 }
 
-onMounted(async () => {
-  fetchStatus()
-    .then((s) => (allThresholds.value = s.thresholds))
-    .catch(() => undefined)
+/** Shows what the query asks for: a link, Back or Forward, or the Analyze tab (no query: the start page). */
+async function fromQuery() {
+  if (route.path !== '/analyze' || flightId.value) return
   const { q, from, to } = route.query
+  const key =
+    typeof q === 'string' && q
+      ? `q:${q}`
+      : typeof from === 'string' && typeof to === 'string'
+        ? `route:${from}-${to}`
+        : undefined
+  if (key === shown) return
+  shown = key
   if (typeof q === 'string' && q) {
+    mode.value = 'flight'
     flightQuery.value = q
     await analyze()
   } else if (typeof from === 'string' && typeof to === 'string') {
     mode.value = 'route'
     ;[origin.value, destination.value] = await Promise.all([airportByCode(from), airportByCode(to)])
     await analyze()
+  } else {
+    analysis.value = undefined
+    lookup.value = undefined
+    error.value = undefined
   }
+}
+
+watch(() => route.fullPath, fromQuery)
+
+onMounted(async () => {
+  fetchStatus()
+    .then((s) => (allThresholds.value = s.thresholds))
+    .catch(() => undefined)
+  await fromQuery()
 })
 </script>
 
