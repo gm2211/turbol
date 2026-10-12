@@ -97,7 +97,7 @@ final case class PackSlab(frame: EdrFrame, rowStart: Int, rowEnd: Int)
  * A Flight Pack is the raw EDR a phone needs to work out a flight's turbulence with no network: for every frame the
  * flight can use (the GTGN nowcast, each GTG forecast hour, and each frame of the coarse global layer that answers
  * outside and past GTG), the rows of the [[PackGrid]] the plane can be over while that frame counts, on the
- * forecast's 12 levels. One slab per frame, so a new nowcast, GTG cycle or GFS cycle replaces only the slabs whose
+ * pack's 12 levels. One slab per frame, so a new nowcast, GTG cycle or GFS cycle replaces only the slabs whose
  * frame it supersedes.
  *
  * A slab is `levels * rows * cols` bytes, laid out [level][row][col], each byte an [[EdrLayer]] code (EDR * 200, 255
@@ -108,8 +108,11 @@ object FlightPack {
   /** 2: global-layer slabs, and GTG cells straddling GTG's edge take the edge value. */
   val version = 2
 
-  /** The forecast's levels: the nowcast has 51 levels, but the pack keeps the 12 the forecast has. */
-  val levelsFt: Vector[Int] = TurbulenceDataUpdater.forecastLevelsFt.toVector.sorted
+  /**
+   * 12 levels, all present in the nowcast (51 levels), the forecast and the global layer. Kept at 12 though the forecast
+   * now has 22, so a pack's download doesn't grow.
+   */
+  val levelsFt: Vector[Int] = Vector(3000, 6000, 10000, 15000, 20000, 25000, 30000, 33000, 35000, 37000, 39000, 41000)
 
   /** Takeoff can be this much earlier or later than planned and the pack still covers the flight. */
   val takeoffSlackMinutes = 90.0

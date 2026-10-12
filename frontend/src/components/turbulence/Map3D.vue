@@ -111,6 +111,8 @@ import {
   columnCategories
 } from '@/components/turbulence/volumeTypes'
 import { planeFill, planePath, ringColor } from '@/components/turbulence/planeIcon'
+import { decodeVolume } from '@/components/turbulence/volumeCodec'
+import { VolumeProfiles, levelNear } from '@/components/turbulence/volumeProfile'
 import { useMobile } from '@/util/useMobile'
 // Inlined into this chunk: a separate worker file was one more round trip before anything could draw.
 import VolumeWorker from '@/components/turbulence/volumeWorker?worker&inline'
@@ -368,21 +370,43 @@ function tooltip(info: PickingInfo) {
   const bottomLevel = Math.max(store.levelFt[i]!, lo)
   const topLevel = Math.min(store.topLevelFt[i]!, hi)
   const stacked = topLevel !== bottomLevel
-  const levels = stacked
-    ? `${flightLevel(bottomLevel)}–${flightLevel(topLevel)}`
-    : flightLevel(bottomLevel)
+  const category = categoryLabels[columnCategories[store.category[i]!]!]
+  if (!stacked)
+    return {
+      html: `<b>${flightLevel(bottomLevel)}</b> · ${category} (EDR ${store.edr[i]!.toFixed(2)})`,
+      style: tooltipStyle
+    }
+  const range = `${flightLevel(bottomLevel)}–${flightLevel(topLevel)}`
+  const hovered = levelUnderPointer(info, i, bottomLevel, topLevel)
   return {
-    html:
-      `<b>${levels}</b> · ${categoryLabels[columnCategories[store.category[i]!]!]} ` +
-      `(${stacked ? 'worst ' : ''}EDR ${store.edr[i]!.toFixed(2)})`,
+    html: hovered
+      ? `<b>${flightLevel(hovered.levelFt)}</b> · ${category} (EDR ${hovered.edr.toFixed(2)})<br/>` +
+        `<span style="opacity:.7">${category} ${range}, worst EDR ${store.edr[i]!.toFixed(2)}</span>`
+      : `<b>${range}</b> · ${category} (worst EDR ${store.edr[i]!.toFixed(2)})`,
     style: tooltipStyle
   }
+}
+
+/**
+ * The level of stacked column `i` under the pointer, and its own EDR: the pointer's altitude comes from the depth
+ * buffer, the level's EDR from the frame's volume (each level is 1,000 ft in the nowcast).
+ */
+function levelUnderPointer(info: PickingInfo, i: number, lo: number, hi: number) {
+  const picked = deck?.pickObject({ x: info.x, y: info.y, layerIds: ['voxels'], unproject3D: true })
+  const altitudeM = picked?.coordinate?.[2]
+  if (altitudeM === undefined || !loadedVolume) return undefined
+  profiles ??= new VolumeProfiles(decodeVolume(loadedVolume))
+  const profile = profiles.at(store.lat[i]!, store.lon[i]!, store.sizeKm[i]!)
+  return profile && levelNear(profile, altitudeM / ftToM / exaggeration.value, lo, hi)
 }
 
 // Same object until the visible columns change, so streaming aircraft updates don't make deck.gl rebuild every column.
 const columnData = computed(() => ({ length: visible.value.count }))
 
 let loadedFrame: string | undefined
+/** The drawn frame's volume, and its per-level EDR for the tooltip (built on the first hover over a stacked column). */
+let loadedVolume: ArrayBuffer | undefined
+let profiles: VolumeProfiles | undefined
 let worker: Worker | undefined
 async function loadVolume() {
   const frame = props.frame
@@ -417,6 +441,8 @@ async function loadVolume() {
       // A newer frame: drop the old columns only now, so the scene doesn't go blank while downloading.
       store = emptyBatch(m.total)
       storeLength = 0
+      loadedVolume = volume
+      profiles = undefined
       total = m.total
     } else if (m.type === 'batch') {
       // Timings for measuring how fast 3D opens (performance.getEntriesByName('3d-first-blocks')).
