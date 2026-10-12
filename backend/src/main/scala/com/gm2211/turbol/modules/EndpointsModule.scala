@@ -11,6 +11,8 @@ import com.gm2211.turbol.endpoints.{
   FlightsEndpoint,
   FrontendConfigEndpoint,
   LiveEndpoint,
+  PackEndpoint,
+  PingEndpoint,
   TurbulenceEndpoint
 }
 import com.gm2211.turbol.turbulence.VolumeSampler
@@ -27,4 +29,6 @@ class EndpointsModule(servicesModule: ServicesModule, @unused configModule: Conf
   lazy val flightsEndpoint: FlightsEndpoint =
     FlightsEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
   lazy val liveEndpoint: LiveEndpoint = LiveEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
+  lazy val packEndpoint: PackEndpoint = PackEndpoint(servicesModule.turbulenceStore)
+  lazy val pingEndpoint: PingEndpoint = PingEndpoint()
 }

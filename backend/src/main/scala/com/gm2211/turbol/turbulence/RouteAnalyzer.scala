@@ -117,6 +117,10 @@ object RouteAnalyzer {
   def defaultCruiseFt(distanceKm: Double): Int =
     if (distanceKm < 400) 24000 else if (distanceKm < 900) 31000 else 35000
 
+  /** Minutes after takeoff at each distance along a gate-to-gate flight of `totalKm` (the profile analyzeFlight uses). */
+  def plannedMinutesAt(totalKm: Double, cruiseFt: Option[Int] = None): Double => Double =
+    Profile(totalKm, 0, cruiseFt.getOrElse(defaultCruiseFt(totalKm)), cruiseSpeedKmh, includeClimb = true).minutesAt
+
   /**
    * Analyse a whole flight, gate to gate.
    */

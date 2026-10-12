@@ -36,7 +36,7 @@ final case class LiveFlightUpdate(
 
 /** Builds [[LiveFlightUpdate]]s: current position from adsb.lol, turbulence now and along the rest of the flight. */
 final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficService) {
-  private val horizonMinutes = 60.0
+  import LiveFlightTracker.*
 
   def update(hex: String, now: Instant = Instant.now()): LiveFlightUpdate =
     LiveTrafficClient.byHex(hex) match {
@@ -73,12 +73,17 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
           edrNow,
           route,
           destination.isDefined,
-          ahead.map(summarize(_, edrNow, aircraftClass)),
+          ahead.map(upcoming(_, edrNow, aircraftClass)),
           ahead
         )
     }
+}
 
-  private def summarize(ahead: RouteAnalysis, edrNow: Option[Double], aircraftClass: AircraftClass): Upcoming = {
+object LiveFlightTracker {
+  private val horizonMinutes = 60.0
+
+  /** The headline for the next hour: what it's like now, and when the next bumps start and how long they last. */
+  def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraftClass: AircraftClass): Upcoming = {
     val nowCategory = Thresholds.classify(edrNow.getOrElse(Double.NaN), aircraftClass)
     val window = ahead.points.filter(p => p.minutesFromStart <= horizonMinutes && !p.nearGround)
     val worst = window.map(_.category).maxByOption(_.rank).getOrElse(TurbulenceCategory.NoData)
