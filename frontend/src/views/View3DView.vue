@@ -127,6 +127,7 @@
 </template>
 
 <script setup lang="ts">
+import { deckCursor } from '@/components/turbulence/mapCursor'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Deck, type Layer, type PickingInfo, WebMercatorViewport } from '@deck.gl/core'
@@ -523,7 +524,8 @@ onMounted(async () => {
     },
     controller: { touchRotate: true },
     layers: buildLayers(),
-    getTooltip: tooltip
+    getTooltip: tooltip,
+    getCursor: deckCursor
   })
   mapEl.value!.addEventListener('pointerdown', onPointerDown)
   mapEl.value!.addEventListener('click', onCanvasClick)

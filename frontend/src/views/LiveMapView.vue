@@ -1,6 +1,6 @@
 <template>
   <div class="map-page" :class="{ 'is-3d': mode === '3d', mobile }">
-    <div ref="mapEl" class="map" />
+    <div ref="mapEl" class="map inspect-cursor" :style="{ '--inspect-cursor': inspectCursor }" />
 
     <component
       :is="Map3D"
@@ -187,6 +187,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import TurbulenceLegend from '@/components/turbulence/TurbulenceLegend.vue'
 import EdrHover from '@/components/turbulence/EdrHover.vue'
+import { inspectCursor } from '@/components/turbulence/mapCursor'
 import FollowStrip from '@/components/turbulence/FollowStrip.vue'
 import { canvasPlane, planeIcon } from '@/components/turbulence/planeIcon'
 import {
@@ -817,6 +818,16 @@ onBeforeUnmount(() => {
   map?.remove()
 })
 </script>
+
+<style>
+/* Inspect cursor instead of Leaflet's open hand; grabbing while dragging, pointer over planes stays. */
+.inspect-cursor.leaflet-grab {
+  cursor: var(--inspect-cursor);
+}
+.leaflet-dragging .inspect-cursor.leaflet-grab {
+  cursor: grabbing;
+}
+</style>
 
 <style scoped>
 .map-page {
