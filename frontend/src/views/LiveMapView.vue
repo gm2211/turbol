@@ -315,6 +315,7 @@ import {
   fetchTraffic,
   flightLevel,
   formatUtc,
+  prefetchVolume,
   tileUrl
 } from '@/api/turbulence'
 import {
@@ -946,6 +947,13 @@ async function refreshStatus() {
 }
 
 watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
+
+// The 3D volume of the frame the map opens on, fetched as soon as it's known, so opening 3D draws without waiting.
+const stopVolumeWarm = watch(selectedFrame, (f) => {
+  if (!f) return
+  stopVolumeWarm()
+  if (goodConnection() || mode.value === '3d') prefetchVolume(f.id).catch(() => undefined)
+})
 
 // GTG's edge: 3 km inside, the coarse GFS-derived layer outside.
 let gtgOutline: L.Polyline | undefined

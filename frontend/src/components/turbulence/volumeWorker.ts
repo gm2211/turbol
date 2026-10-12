@@ -1,11 +1,17 @@
 /// <reference lib="webworker" />
 /**
- * Downloads and prepares a frame's turbulence volume off the main thread, so opening 3D never freezes the page.
+ * Prepares a frame's turbulence volume (downloaded by prefetchVolume) off the main thread, so opening 3D never freezes the page.
  * Cells are classified, stacked into same-category columns (see mergeColumns in scene3d.ts) and sent back nearest
  * to the camera first, in a few batches of transferable typed arrays, so the scene fills in from the middle out.
  */
-import type { Thresholds, TurbulenceVolume } from '@/api/turbulence'
-import type { ColumnBatch, VolumeMessage, VolumeRequest } from '@/components/turbulence/volumeTypes'
+import type { Thresholds } from '@/api/turbulence'
+import type {
+  BinaryVolume,
+  ColumnBatch,
+  VolumeMessage,
+  VolumeRequest
+} from '@/components/turbulence/volumeTypes'
+import { decodeVolume } from '@/components/turbulence/volumeCodec'
 
 const post = (m: VolumeMessage, transfer: Transferable[] = []) => self.postMessage(m, transfer)
 
@@ -17,37 +23,16 @@ function classify(edr: number, t: Thresholds): number {
   return 4
 }
 
-async function download(url: string): Promise<TurbulenceVolume> {
-  const res = await fetch(url)
-  if (!res.ok || !res.body) throw new Error(`volume request failed: ${res.status}`)
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let bytes = 0
-  let lastReport = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    bytes += value.length
-    if (bytes - lastReport > 256 * 1024) {
-      lastReport = bytes
-      post({ type: 'progress', bytes })
-    }
-  }
-  post({ type: 'progress', bytes })
-  const all = new Uint8Array(bytes)
-  let at = 0
-  for (const c of chunks) {
-    all.set(c, at)
-    at += c.length
-  }
-  return JSON.parse(new TextDecoder().decode(all))
-}
-
 type Columns = Record<keyof ColumnBatch, number[]>
 
 /** Stack one voxel set (GTG's, or the global layer's) into columns of `sizeKm` blocks. */
-function stack(cols: Columns, vox: number[], levels: number[], sizeKm: number, t: Thresholds) {
+function stack(
+  cols: Columns,
+  vox: ArrayLike<number>,
+  levels: number[],
+  sizeKm: number,
+  t: Thresholds
+) {
   const n = vox.length / 4
   // Sort cells by grid point, then level, so each point's stack can be walked bottom-up.
   const order = new Uint32Array(n)
@@ -95,7 +80,7 @@ function stack(cols: Columns, vox: number[], levels: number[], sizeKm: number, t
   }
 }
 
-function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
+function build(v: BinaryVolume, t: Thresholds, center: [number, number]) {
   const cols: Columns = {
     lat: [],
     lon: [],
@@ -108,8 +93,7 @@ function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
     sizeKm: []
   }
   stack(cols, v.voxels, v.levelsFt, v.cellKm, t)
-  if (v.globalVoxels?.length && v.globalLevelsFt && v.globalCellKm)
-    stack(cols, v.globalVoxels, v.globalLevelsFt, v.globalCellKm, t)
+  if (v.globalVoxels.length) stack(cols, v.globalVoxels, v.globalLevelsFt, v.globalCellKm, t)
 
   // Nearest to the camera first.
   const m = cols.lat.length
@@ -126,9 +110,9 @@ function build(v: TurbulenceVolume, t: Thresholds, center: [number, number]) {
   return { cols, byDistance }
 }
 
-self.onmessage = async (e: MessageEvent<VolumeRequest>) => {
+self.onmessage = (e: MessageEvent<VolumeRequest>) => {
   try {
-    const v = await download(e.data.url)
+    const v = decodeVolume(e.data.volume)
     const { cols, byDistance } = build(v, e.data.thresholds, e.data.center)
     const total = byDistance.length
     post({ type: 'meta', cellKm: v.cellKm, total })
