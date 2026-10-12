@@ -76,16 +76,24 @@ window.addEventListener('vite:preloadError', (event) => {
   })
 })
 
-/** Whether the server's index.html names a different build from this page's. Offline counts as yes, as before. */
+/**
+ * Whether the server's index.html names a different build from this page's. In Safari, requests made while a new
+ * service worker takes over the page fail (preloads and this check alike), so a failed check is asked again a moment
+ * later, and only counts as yes when the phone is offline (the case this reload is for).
+ */
 async function newBuildDeployed(): Promise<boolean> {
   if (!currentBuild) return true
-  try {
-    const html = await (await fetch('/map', { cache: 'no-store' })).text()
-    const name = new URL(currentBuild).pathname
-    return !html.includes(name)
-  } catch {
-    return true
+  const name = new URL(currentBuild).pathname
+  for (const wait of [0, 2000]) {
+    await new Promise((resolve) => setTimeout(resolve, wait))
+    try {
+      const html = await (await fetch('/map', { cache: 'no-store' })).text()
+      return !html.includes(name)
+    } catch {
+      // Ask again, or decide below.
+    }
   }
+  return !navigator.onLine
 }
 
 if (import.meta.env.DEV) {
