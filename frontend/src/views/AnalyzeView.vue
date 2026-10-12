@@ -5,7 +5,14 @@
     <DownloadedFlights v-else-if="!analysis && downloadedFlights.length > 0" />
     <v-card v-if="!flightId" class="panel form-card px-4 py-3">
       <div class="form-row">
-        <v-btn-toggle v-model="mode" mandatory density="compact" variant="outlined" divided class="mode">
+        <v-btn-toggle
+          v-model="mode"
+          mandatory
+          density="compact"
+          variant="outlined"
+          divided
+          class="mode"
+        >
           <v-btn value="flight">Flight</v-btn>
           <v-btn value="route">Route</v-btn>
         </v-btn-toggle>
@@ -55,8 +62,9 @@
           </v-btn>
         </template>
         <span v-else-if="lookup.otherLeg">
-          · its aircraft is in the air on another leg right now ({{ flightLevel(lookup.otherLeg.altitudeFt) }},
-          heading {{ compass(lookup.otherLeg.trackDeg) }}), not {{ lookup.route.origin.code }} →
+          · its aircraft is in the air on another leg right now ({{
+            flightLevel(lookup.otherLeg.altitudeFt)
+          }}, heading {{ compass(lookup.otherLeg.trackDeg) }}), not {{ lookup.route.origin.code }} →
           {{ lookup.route.destination.code }}
         </span>
         <v-btn
@@ -70,13 +78,20 @@
           View in 3D
         </v-btn>
       </div>
-      <v-alert v-if="error" type="warning" variant="tonal" class="mt-2" density="compact">{{ error }}</v-alert>
+      <v-alert v-if="error" type="warning" variant="tonal" class="mt-2" density="compact">{{
+        error
+      }}</v-alert>
     </v-card>
 
     <template v-if="analysis && !flightId">
       <v-card class="panel verdict-card pa-4">
         <div class="eyebrow">Forecast verdict</div>
-        <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" class="mb-2" label>
+        <v-chip
+          :color="categoryColors[analysis.summary.worstCategory]"
+          variant="flat"
+          class="mb-2"
+          label
+        >
           Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
         </v-chip>
         <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
@@ -104,7 +119,9 @@
           Download for offline
         </v-btn>
         <div class="stats">
-          <div><span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</div>
+          <div>
+            <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
+          </div>
           <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
           <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
           <div><span>Aircraft</span>{{ aircraftLabel }}</div>
@@ -186,10 +203,10 @@ import {
   type FlightLookup,
   type Place,
   type RouteAnalysis,
+  airportByCode,
   analyzeFlight,
   formatDuration,
-  lookupFlight,
-  searchAirports
+  lookupFlight
 } from '@/api/flights'
 import {
   type AircraftClass,
@@ -222,12 +239,18 @@ const downloading = ref(false)
 const allThresholds = ref<Record<AircraftClass, Thresholds>>()
 const downloadedFlights = downloads.flights
 /** A flight downloaded for offline use, to show instead of the form: `?flight=<id>`. */
-const flightId = computed(() => (typeof route.query.flight === 'string' ? route.query.flight : undefined))
+const flightId = computed(() =>
+  typeof route.query.flight === 'string' ? route.query.flight : undefined
+)
 /** What the result on screen was analyzed for, as the query has it: `q:UA1517` or `route:JFK-LAX`. */
 let shown: string | undefined
 
 const thresholds = computed(
-  () => allThresholds.value?.[analysis.value?.aircraftClass ?? 'Medium'] ?? { light: 0.12, moderate: 0.14 }
+  () =>
+    allThresholds.value?.[analysis.value?.aircraftClass ?? 'Medium'] ?? {
+      light: 0.12,
+      moderate: 0.14
+    }
 )
 const aircraftLabel = computed(() => {
   const a = analysis.value
@@ -271,13 +294,17 @@ const toDownload = computed(() => {
   })
 })
 /** That flight, if it is already on the phone. */
-const downloaded = computed(() => downloadedFlights.value.find((f) => f.id === toDownload.value?.id))
+const downloaded = computed(() =>
+  downloadedFlights.value.find((f) => f.id === toDownload.value?.id)
+)
 const downloadedStatus = computed(
   () => downloaded.value && packStatus(downloaded.value, downloads.states[downloaded.value.id])
 )
 const arrival = computed(() =>
   analysis.value
-    ? new Date(new Date(analysis.value.start).getTime() + analysis.value.durationMinutes * 60000).toISOString()
+    ? new Date(
+        new Date(analysis.value.start).getTime() + analysis.value.durationMinutes * 60000
+      ).toISOString()
     : ''
 )
 
@@ -290,12 +317,6 @@ const compass = (deg?: number) =>
 const fmt = (iso?: string) => (iso ? formatUtc(iso) : '–')
 const localTime = (iso: string) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-
-async function airportByCode(code: string): Promise<Place | undefined> {
-  const airports = await searchAirports(code)
-  const a = airports.find((x) => x.iata === code.toUpperCase() || x.icao === code.toUpperCase()) ?? airports[0]
-  return a && { code: a.iata || a.icao, name: a.name, lat: a.location.lat, lon: a.location.lon }
-}
 
 async function analyze() {
   error.value = undefined
@@ -359,15 +380,18 @@ async function downloadForOffline() {
 /** Shows what the query asks for: a link, Back or Forward, or the Analyze tab (no query: the start page). */
 async function fromQuery() {
   if (route.path !== '/analyze' || flightId.value) return
-  const { q, from, to } = route.query
+  const { q, from, to, day } = route.query
   const key =
     typeof q === 'string' && q
       ? `q:${q}`
       : typeof from === 'string' && typeof to === 'string'
-        ? `route:${from}-${to}`
+        ? `route:${from}-${to}:${day ?? ''}`
         : undefined
   if (key === shown) return
   shown = key
+  // ?day=YYYY-MM-DD (the live map's route search for another day): that day, at the current time of day.
+  if (typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day))
+    departureLocal.value = day + toLocalInput(new Date()).slice(10)
   if (typeof q === 'string' && q) {
     mode.value = 'flight'
     flightQuery.value = q

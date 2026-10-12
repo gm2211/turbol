@@ -98,6 +98,36 @@ export async function lookupFlight(q: string): Promise<FlightLookup> {
   return (await axios.get('/api/flights/lookup', { params: { q } })).data
 }
 
+/** An aircraft in the air now flying the searched route. */
+export interface RouteFlight {
+  callsign: string
+  minutesToGo?: number
+  aircraft: AircraftView
+}
+
+/** Flights in the air now from origin to destination. */
+export async function searchRoute(origin: Place, destination: Place): Promise<RouteFlight[]> {
+  return (await axios.post('/api/flights/route', { origin, destination })).data.flights
+}
+
+/** "JFK LAX", "jfk-lax", "KJFK to KLAX", "JFK→LAX": the two airport codes, or undefined for anything else. */
+export function parseRouteQuery(q: string): [string, string] | undefined {
+  const m = q
+    .trim()
+    .toUpperCase()
+    .match(/^([A-Z]{3,4})\s*(?:-|–|>|→|\s|\s+TO\s+)\s*([A-Z]{3,4})$/)
+  return m ? [m[1]!, m[2]!] : undefined
+}
+
+/** The airport with this IATA or ICAO code (else the best search hit), as a route endpoint. */
+export async function airportByCode(code: string): Promise<Place | undefined> {
+  const airports = await searchAirports(code)
+  const a =
+    airports.find((x) => x.iata === code.toUpperCase() || x.icao === code.toUpperCase()) ??
+    airports[0]
+  return a && { code: a.iata || a.icao, name: a.name, lat: a.location.lat, lon: a.location.lon }
+}
+
 export async function analyzeFlight(request: AnalyzeRequest): Promise<RouteAnalysis> {
   return (await axios.post('/api/flights/analyze', request)).data
 }

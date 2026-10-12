@@ -53,7 +53,7 @@ object Http {
   final class NotFound(url: String) extends RuntimeException(s"404 for $url")
 
   private def check[T](url: String, response: HttpResponse[T]): T = response.statusCode() match {
-    case 200 | 206 => response.body()
+    case 200 | 201 | 206 => response.body()
     case 404 => throw NotFound(url)
     case code => throw RuntimeException(s"HTTP $code for $url")
   }
@@ -62,6 +62,17 @@ object Http {
     withRetries(attempts) {
       check(url, client.send(request(url, timeout), HttpResponse.BodyHandlers.ofString()))
     }
+
+  def postJson(url: String, body: String, timeout: Duration = Duration.ofSeconds(20)): String = {
+    val req = HttpRequest
+      .newBuilder(URI.create(url))
+      .timeout(timeout)
+      .header("User-Agent", userAgent)
+      .header("Content-Type", "application/json")
+      .POST(HttpRequest.BodyPublishers.ofString(body))
+      .build()
+    check(url, client.send(req, HttpResponse.BodyHandlers.ofString()))
+  }
 
   def getBytes(url: String, range: Option[(Long, Long)] = None, attempts: Int = 4): Array[Byte] =
     withRetries(attempts) {
