@@ -89,3 +89,11 @@ behaviors:
       A new GFS cycle is fetched within about 10 minutes of its 30-hour forecast appearing on NOMADS,
       through the NOMADS GRIB filter (only the winds and heights it needs), is published hour by hour
       on a first run, and is kept on disk so a restart loads it before downloading again.
+  - id: global-layer-switch
+    description: >-
+      TURBOL_GLOBAL_LAYER=off skips the global layer entirely (no GFS or WAFS downloads), and Flight Packs
+      still count it as loaded so they don't wait for it; any other value, or none, keeps it on. The Docker
+      image sets it on.
+    details: >-
+      An emergency switch for a small instance (#64), added while the 512 MB Render instance ran out of memory
+      in the global layer's first refresh; on again since decodes were serialized and caches capped (#66, #67).
