@@ -198,15 +198,16 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
             case None => NotFound("frame not loaded")
           }
 
-        // The 3D map's form: binary, gzipped once when built (see Volume.toBinary), so serving it costs no CPU.
-        case GET -> Root / "volume" / id / "bin" :? StepParam(step) =>
+        // The 3D map's form: binary, gzipped once when built (see Volume.toBinary2), so serving it costs no CPU. "bin"
+        // is the older, larger Volume.toBinary, for pages loaded before "bin2" existed.
+        case GET -> Root / "volume" / id / (format @ ("bin" | "bin2")) :? StepParam(step) =>
           frame(id) match {
             case Some(f) =>
               val s = step.getOrElse(VolumeSampler.defaultStep).max(VolumeSampler.minStep).min(24)
               val global = store.current.globalNear(f.validTime)
               // A frame id names immutable data; "opening" moves with every new frame.
               val maxAge = if (id == openingFrame) 1.minute else 1.hour
-              IO.blocking(volumes.volumeGzip(f, global, s)).flatMap { gz =>
+              IO.blocking(volumes.volumeGzip(f, global, s, if (format == "bin") 1 else 2)).flatMap { gz =>
                 Ok(gz).map(
                   _.withContentType(`Content-Type`(MediaType.application.`octet-stream`))
                     .putHeaders(

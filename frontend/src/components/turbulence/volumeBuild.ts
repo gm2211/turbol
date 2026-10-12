@@ -39,31 +39,13 @@ function stack(
   sizeKm: number,
   t: Thresholds
 ) {
+  // Grouped by grid point, each bottom up (see decodeVolume), so a stack is a run of consecutive voxels.
   const n = vox.length / 4
-  // Cells by grid point, then level (the backend writes them level by level, so index order is level order), so
-  // each point's stack can be walked bottom-up.
-  const order = new Uint32Array(n)
-  if (n < indexBits) {
-    const keys = new Float64Array(n)
-    for (let i = 0; i < n; i++)
-      keys[i] = ((vox[i * 4]! + 9000) * 36001 + vox[i * 4 + 1]! + 18000) * indexBits + i
-    keys.sort()
-    for (let i = 0; i < n; i++) order[i] = keys[i]! % indexBits
-  } else {
-    for (let i = 0; i < n; i++) order[i] = i
-    order.sort(
-      (a, b) =>
-        vox[a * 4]! - vox[b * 4]! ||
-        vox[a * 4 + 1]! - vox[b * 4 + 1]! ||
-        vox[a * 4 + 2]! - vox[b * 4 + 2]!
-    )
-  }
   let last = -1
   let lastLat = NaN
   let lastLon = NaN
   let lastTop = NaN
-  for (let k = 0; k < n; k++) {
-    const i = order[k]!
+  for (let i = 0; i < n; i++) {
     const lat = vox[i * 4]!
     const lon = vox[i * 4 + 1]!
     const li = vox[i * 4 + 2]!

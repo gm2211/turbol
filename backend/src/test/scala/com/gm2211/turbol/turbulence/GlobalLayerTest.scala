@@ -120,7 +120,7 @@ class GlobalLayerTest extends BaseTest {
     val global = uniformFrame(FrameKind.Global, t0, Map(35000 -> 0.20))
     val sampler = VolumeSampler()
     val volume = sampler.volume(gtg, Some(global), 8)
-    val gz = sampler.volumeGzip(gtg, Some(global), 8)
+    val gz = sampler.volumeGzip(gtg, Some(global), 8, format = 1)
     val raw = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(gz)).readAllBytes()
     java.util.Arrays.equals(raw, volume.toBinary) shouldBe true
     val buf = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
@@ -153,6 +153,65 @@ class GlobalLayerTest extends BaseTest {
     n should be > 0
     globalN should be > 0
     buf.remaining() shouldBe 0
+  }
+
+  test("the compact binary volume holds the same voxels, grouped by point, EDR in hundredths") {
+    // Written level by level as the sampler does, across the antimeridian, with a point holding a gap in its stack.
+    val volume = Volume(
+      levelsFt = Vector(30000, 33000, 35000),
+      step = 6,
+      cellKm = 18,
+      voxels = Array(4012, -9750, 0, 41, 1500, 17950, 0, 30, 4012, -9750, 2, 254, 1500, -17950, 1, 88, 4012, -9750, 1, 24),
+      globalLevelsFt = Vector(35000),
+      globalCellKm = 168,
+      globalVoxels = Array(-7950, 17950, 0, 158)
+    )
+    val raw = volume.toBinary2
+    new String(raw, 0, 4, "US-ASCII") shouldBe "TVB2"
+    val buf = java.nio.ByteBuffer.wrap(raw).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    buf.position(4)
+    def head() = (Vector.fill(buf.getInt())(buf.getInt()), buf.getFloat().toDouble, buf.getInt(), buf.getInt())
+    val (levels, km, points, n) = head()
+    val (globalLevels, globalKm, globalPoints, globalN) = head()
+    (levels, km, points, n) shouldBe ((volume.levelsFt, 18.0, 3, 5))
+    (globalLevels, globalKm, globalPoints, globalN) shouldBe ((Vector(35000), 168.0, 1, 1))
+    def voxels(points: Int, n: Int): Seq[(Int, Int, Int, Int)] = {
+      val lat = new Array[Int](points)
+      val lon = new Array[Int](points)
+      for (out <- Seq(lat, lon)) {
+        var prev = 0
+        for (p <- 0 until points) { prev = (prev + buf.getShort()).toShort; out(p) = prev }
+      }
+      val pointOf = new Array[Int](n)
+      var k = 0
+      for (p <- 0 until points) {
+        val count = buf.get() & 0xff
+        for (_ <- 0 until count) { pointOf(k) = p; k += 1 }
+      }
+      k shouldBe n
+      val levelOf = new Array[Int](n)
+      for (k <- 0 until n)
+        levelOf(k) = (if (k == 0 || pointOf(k) != pointOf(k - 1)) 0 else levelOf(k - 1)) + (buf.get() & 0xff)
+      for (k <- 0 until n) yield (lat(pointOf(k)), lon(pointOf(k)), levelOf(k), (buf.get() & 0xff) * 2)
+    }
+    // West to east, then bottom up; EDR bytes rounded down to even (41 -> 40).
+    voxels(points, n) shouldBe Seq(
+      (1500, -17950, 1, 88),
+      (4012, -9750, 0, 40),
+      (4012, -9750, 1, 24),
+      (4012, -9750, 2, 254),
+      (1500, 17950, 0, 30)
+    )
+    voxels(globalPoints, globalN) shouldBe Seq((-7950, 17950, 0, 158))
+    buf.remaining() shouldBe 0
+  }
+
+  test("the sampler serves the compact volume by default") {
+    val gtg = uniformFrame(FrameKind.Nowcast, t0, Map(30000 -> 0.20, 35000 -> 0.20))
+    val sampler = VolumeSampler()
+    val gz = sampler.volumeGzip(gtg, None, 8)
+    val raw = new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(gz)).readAllBytes()
+    java.util.Arrays.equals(raw, sampler.volume(gtg, None, 8).toBinary2) shouldBe true
   }
 
   // Decodes a real GFS file when one is around (data-pipeline/gfs_turbulence.py collect downloads it). Expected values
