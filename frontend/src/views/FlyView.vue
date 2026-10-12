@@ -232,6 +232,8 @@ const online = ref<boolean>()
 const syncing = ref(false)
 const progress = ref<SyncProgress>()
 const syncError = ref<string>()
+/** Set while Turbol has just restarted and is still loading turbulence data: how soon to ask again (ms). */
+const loadingRetryMs = ref<number>()
 const adding = ref(false)
 const confirmRemove = ref(false)
 const gpsOn = ref(false)
@@ -301,6 +303,8 @@ const packChip = computed(() => {
       color: 'blue-darken-2',
       icon: 'mdi-download'
     }
+  if (loadingRetryMs.value !== undefined && !f.manifest?.frames.length)
+    return { text: 'Downloading soon', color: 'amber-darken-4', icon: 'mdi-timer-sand' }
   if (f.manifest && !f.pending)
     return { text: 'Ready offline', color: 'green-darken-2', icon: 'mdi-check-circle' }
   if (f.manifest)
@@ -314,6 +318,8 @@ const packChip = computed(() => {
 
 const noPackText = computed(() => {
   const f = flight.value
+  if (loadingRetryMs.value !== undefined)
+    return 'Turbol has just restarted and is still loading the latest turbulence. Keep it open: your flight downloads in a few minutes.'
   if (f?.manifest && f.manifest.frames.length === 0)
     return 'No forecast reaches this flight yet. Turbol downloads it when you open the app closer to the day.'
   if (syncing.value) return 'Downloading the turbulence along your flight…'
@@ -446,11 +452,13 @@ async function syncNow() {
     online.value = await ping()
     if (!online.value) {
       failures += 1
+      loadingRetryMs.value = undefined
       return
     }
     const result = await syncFlight(idbStore, f, { onProgress: (p) => (progress.value = p) })
     const { manifest, pending, checkedAt } = result.flight
     patchFlight(f.id, { manifest, pending, checkedAt })
+    loadingRetryMs.value = result.status === 'loading' ? result.retryAfterMs : undefined
     if (result.status === 'offline') {
       failures += 1
       syncError.value = 'the connection dropped; Turbol picks up where it left off next time.'
@@ -461,6 +469,7 @@ async function syncNow() {
     }
   } catch (e) {
     failures += 1
+    loadingRetryMs.value = undefined
     syncError.value = String(e)
   } finally {
     syncing.value = false
@@ -471,12 +480,18 @@ async function syncNow() {
   }
 }
 
-/** Check for a newer pack every few minutes in the air, less often on the ground, sooner after a failed try. */
+/**
+ * Check for a newer pack every few minutes in the air, less often on the ground, sooner after a failed try or while
+ * Turbol is still loading after a restart.
+ */
 function scheduleSync() {
   window.clearTimeout(syncTimer)
   if (!flight.value || est.value?.phase === 'landed') return
   const every = est.value?.phase === 'air' ? 3 : 10
-  const minutes = failures > 0 ? Math.min(every, 0.5 * 2 ** (failures - 1)) : every
+  const minutes =
+    failures > 0
+      ? Math.min(every, 0.5 * 2 ** (failures - 1))
+      : Math.min(every, (loadingRetryMs.value ?? Infinity) / 60000)
   syncTimer = window.setTimeout(syncNow, minutes * 60000)
 }
 

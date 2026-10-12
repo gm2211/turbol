@@ -57,8 +57,17 @@ function manifest(frames: PackFrameInfo[]): PackManifest {
   }
 }
 
-/** A Turbol server that serves `current` and records what the phone asked for. */
-function server(state: { current: PackManifest; failing?: Set<string>; portal?: boolean }) {
+/**
+ * A Turbol server that serves `current` and records what the phone asked for. `loading`: it has just restarted and
+ * is still loading turbulence data; `down`: the host answers for it with its own error page.
+ */
+function server(state: {
+  current: PackManifest
+  failing?: Set<string>
+  portal?: boolean
+  loading?: boolean
+  down?: boolean
+}) {
   const asked: string[] = []
   const fetchFn = async (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input)
@@ -67,6 +76,16 @@ function server(state: { current: PackManifest; failing?: Set<string>; portal?: 
       return new Response('<html>Sign in to Wi-Fi</html>', {
         headers: { 'Content-Type': 'text/html' }
       })
+    if (state.down)
+      return new Response('<html>Service unavailable</html>', {
+        status: 503,
+        headers: { 'Content-Type': 'text/html' }
+      })
+    if (state.loading && url.startsWith('/api/packs/manifest'))
+      return new Response(
+        JSON.stringify({ loading: true, retryAfterSeconds: 30, sources: ['forecast', 'global'] }),
+        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '30' } }
+      )
     if (url.startsWith('/api/packs/manifest'))
       return new Response(JSON.stringify(state.current), {
         headers: { 'Content-Type': 'application/json' }
@@ -197,6 +216,35 @@ describe('keeping a flight pack current', () => {
     expect(again.manifest).toEqual(r.flight.manifest)
     expect(again.takeoff).toEqual(takeoff)
     expect(await store.flights()).toEqual([again])
+  })
+
+  it('waits for a server still loading after a restart, keeping the pack it has', async () => {
+    const store = memoryStore()
+    await store.putFlight(flight())
+    const state = { current: manifest([frame('forecast', 1)]), loading: true }
+    const s = server(state)
+    let r = await syncFlight(store, flight(), { fetch: s.fetch })
+    expect(r).toMatchObject({ status: 'loading', retryAfterMs: 30_000 })
+    expect(r.flight.manifest).toBeUndefined()
+    expect(s.asked.filter((u) => u.includes('/slab/'))).toEqual([])
+
+    state.loading = false
+    r = await syncFlight(store, r.flight, { fetch: s.fetch })
+    expect(r.status).toBe('updated')
+
+    // Restarted again: the phone keeps its whole pack rather than trading it for the few frames loaded so far.
+    state.loading = true
+    state.current = manifest([frame('nowcast', 1)])
+    const kept = await syncFlight(store, r.flight, { fetch: s.fetch })
+    expect(kept.status).toBe('loading')
+    expect(kept.flight.manifest?.frames.map((f) => f.id)).toEqual(['f1'])
+    expect((await store.flights())[0].manifest?.frames.map((f) => f.id)).toEqual(['f1'])
+
+    // The host's own 503 page is no Turbol answer: no connection, as far as the phone can tell.
+    const down = await syncFlight(store, r.flight, {
+      fetch: server({ ...state, down: true }).fetch
+    })
+    expect(down.status).toBe('offline')
   })
 
   it('asks for a reload when the server speaks a newer pack format', async () => {

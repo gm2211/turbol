@@ -29,7 +29,13 @@ behaviors:
       The Fly view (/fly) saves a flight, by flight number or route there or with "Save for the
       flight" under an analysis, and downloads its Flight Pack into the phone's IndexedDB. With no
       connection it opens from the app shell and shows the flight's verdict, timeline and turbulence
-      profile worked out on the phone from that pack, at the gate and in the air.
+      profile worked out on the phone from that pack, at the gate and in the air. For a few minutes
+      after the server starts (every deploy), it holds only part of the turbulence data, so until it has
+      checked each source once the manifest says it is still loading instead of handing out a partial
+      pack. The phone then shows "Downloading soon", keeps any pack it already has, and asks again
+      until the whole pack is there. Production showed why on 2026-10-12: for about 7 minutes after each
+      deploy, packs came back empty or partial while the view said "Ready offline". Implementation
+      choices, not requirements: the HTTP 503 answer and the 30-second retry.
     source:
       text: >-
         You are at the airport, open the site, look up your flight, but then board the plane and you

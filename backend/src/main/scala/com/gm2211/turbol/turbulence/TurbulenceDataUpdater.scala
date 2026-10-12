@@ -31,6 +31,9 @@ object TurbulenceDataUpdater {
    * hours later, so +3 h to +30 h covers from a couple of hours ago to beyond GTG's 18-hour horizon the whole time.
    */
   val globalForecastHours: Range = 3 to 30 by 3
+
+  /** What the updater keeps fresh; a store starts with all of them loading (see [[TurbulenceData.loading]]). */
+  val sources: Set[String] = Set("nowcast", "forecast", "global")
   private val completeMarker = "COMPLETE"
   private val wafsMarker = "WAFS"
 
@@ -75,10 +78,11 @@ final class TurbulenceDataUpdater(
         IO.both(poll("forecast", 3.minutes)(refreshForecast()), poll("global", 10.minutes)(refreshGlobal()))
       ).void
 
+  // After its first check, found or failed, a source no longer holds back Flight Packs.
   private def poll(name: String, every: FiniteDuration)(refresh: => Unit): IO[Nothing] =
     (IO.blocking(refresh).handleErrorWith(e =>
       IO(log.warn("Turbulence refresh failed", safe("product", name), unsafe("error", e)))
-    ) >> IO.sleep(every)).foreverM
+    ) >> IO(store.loaded(name)) >> IO.sleep(every)).foreverM
 
   /** Load the newest complete nowcast and forecast left on disk by a previous run. */
   def loadCached(): Unit = {

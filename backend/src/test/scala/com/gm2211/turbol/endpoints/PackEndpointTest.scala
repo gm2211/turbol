@@ -10,9 +10,9 @@ import cats.effect.IO
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BaseTest
 import io.circe.parser.parse
-import org.http4s.headers.{`Accept-Encoding`, `Cache-Control`, `Content-Encoding`}
+import org.http4s.headers.{`Accept-Encoding`, `Cache-Control`, `Content-Encoding`, `Content-Type`, `Retry-After`}
 import org.http4s.server.Router
-import org.http4s.{ContentCoding, Method, Request, Response, Status, Uri}
+import org.http4s.{ContentCoding, MediaType, Method, Request, Response, Status, Uri}
 
 import java.io.ByteArrayInputStream
 import java.time.Instant
@@ -82,6 +82,31 @@ class PackEndpointTest extends BaseTest {
     plain.status shouldBe Status.Ok
     plain.headers.get[`Content-Encoding`] shouldBe None
     body(plain) shouldBe bytes
+  }
+
+  test("just after the server starts, the manifest asks the phone to come back until every source is checked") {
+    val starting = new TurbulenceStore(loading = TurbulenceDataUpdater.sources)
+    // The first GTG hours are in, the rest and the other sources on their way.
+    starting.setForecast(store.current.forecast.take(2))
+    val routes = Router[IO]("/api/packs" -> PackEndpoint(starting).routes).orNotFound
+    def manifest() = routes.run(Request[IO](Method.GET, Uri.unsafeFromString(manifestUri))).unsafeRunSync()
+
+    val waiting = manifest()
+    waiting.status shouldBe Status.ServiceUnavailable
+    waiting.headers.get[`Retry-After`].map(_.retry) shouldBe Some(Right(PackEndpoint.retryAfterSeconds))
+    waiting.headers.get[`Cache-Control`].map(_.values.toList.map(_.toString)) shouldBe Some(List("no-store"))
+    // JSON, so the phone can tell it from a captive portal or the host's own error page.
+    waiting.headers.get[`Content-Type`].map(_.mediaType) shouldBe Some(MediaType.application.json)
+    val json = parse(new String(body(waiting), "UTF-8")).toOption.get
+    json.hcursor.get[Boolean]("loading") shouldBe Right(true)
+    json.hcursor.get[Seq[String]]("sources") shouldBe Right(Seq("forecast", "global", "nowcast"))
+
+    // A source counts once checked, whether or not it found data.
+    starting.loaded("nowcast")
+    starting.loaded("forecast")
+    manifest().status shouldBe Status.ServiceUnavailable
+    starting.loaded("global")
+    manifest().status shouldBe Status.Ok
   }
 
   test("bad requests say what is wrong") {
