@@ -332,6 +332,7 @@ import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { fineForOneOffs, goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
 import { listenKeyPan } from '@/util/keyPan'
+import { smoothWheelZoom } from '@/util/smoothWheelZoom'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
 
 interface TrackedFlight {
@@ -400,6 +401,7 @@ const selectedFrameLabel = computed(() => {
 })
 
 let map: L.Map | undefined
+let stopWheelZoom: (() => void) | undefined
 const leafletMap = shallowRef<L.Map>()
 const planeRenderer = L.canvas({ padding: 0.2 })
 const planes = L.layerGroup()
@@ -429,60 +431,102 @@ function frameTileUrl(frame: FrameInfo | undefined): string {
 }
 
 /**
- * One tile layer per frame at the selected altitude, all kept on the map: hidden ones are loaded one after another
- * once the visible one has finished (nearest hours first, so the first paint doesn't compete with them), and moving
- * the time slider or playing it only swaps which layer is visible. Preloading only runs on a good connection; on a
- * slow one each hour loads when picked. Frame ids are immutable, so the browser caches tiles; a status refresh drops
- * hours that have passed, and a new nowcast or forecast cycle brings new ids (and new layers).
+ * Only the selected hour's tile layer is on the map. Leaflet moves, rescales and refills every layer on the map on
+ * each pan and zoom, so keeping every hour on the map (18 layers, ~500 tiles) made every move stutter and asked the
+ * server for each hour's tiles on every pan. Picking another hour adds its layer hidden and swaps it in once its
+ * tiles have loaded, so the map never flashes empty. The other hours' tiles for the area in view are fetched into the
+ * browser cache instead, nearest hours first, while the map is still, so moving the time slider or playing it still
+ * swaps instantly. That preloading only runs on a good connection; on a slow one each hour loads when picked. Frame
+ * ids are immutable, so the browser caches tiles; a new nowcast or forecast cycle brings new ids.
  */
-const turbulenceLayers = new Map<string, L.TileLayer>()
 const overlayOpacity = 0.85
-let preloadGeneration = 0
-
-function addTurbulenceLayer(url: string, onLoaded?: () => void): L.TileLayer {
-  const layer = L.tileLayer(url, {
-    opacity: 0,
-    maxNativeZoom: 9,
-    zIndex: 5,
-    attribution: 'Turbulence: NOAA GTG-N / GTG (US, 3 km), WAFS (AWC) + NOAA GFS elsewhere (~28 km)'
-  })
-  if (onLoaded) layer.once('load', onLoaded)
-  turbulenceLayers.set(url, layer.addTo(map!))
-  return layer
-}
+const turbulenceAttribution =
+  'Turbulence: NOAA GTG-N / GTG (US, 3 km), WAFS (AWC) + NOAA GFS elsewhere (~28 km)'
+/** Highest zoom the server draws tiles at; Leaflet scales them up beyond it. */
+const turbulenceMaxNativeZoom = 9
+/** The layer shown, and the layers on the map still waiting to be swapped in or out. */
+let turbulenceLayer: L.TileLayer | undefined
+let turbulenceLayersOnMap: { url: string; layer: L.TileLayer }[] = []
 
 function updateTurbulenceLayers() {
   if (!map) return
-  const selected = frameIndex.value
-  const ordered = (frames.value.length ? frames.value : [undefined])
-    .map((frame, i) => ({ url: frameTileUrl(frame), distance: Math.abs(i - selected) }))
-    .sort((a, b) => a.distance - b.distance)
-    .map((o) => o.url)
-  const wanted = new Set(ordered)
-  for (const [url, layer] of turbulenceLayers) {
-    if (!wanted.has(url)) {
-      map.removeLayer(layer)
-      turbulenceLayers.delete(url)
-    }
+  const url = frameTileUrl(selectedFrame.value)
+  const current = turbulenceLayersOnMap.find((l) => l.url === url)?.layer
+  if (current && current === turbulenceLayer) return schedulePreload()
+  const layer =
+    current ??
+    L.tileLayer(url, {
+      opacity: 0,
+      maxNativeZoom: turbulenceMaxNativeZoom,
+      zIndex: 5,
+      attribution: turbulenceAttribution
+    }).addTo(map)
+  if (!current) turbulenceLayersOnMap.push({ url, layer })
+  turbulenceLayer = layer
+  // The first layer has nothing to hide behind; later ones wait for their tiles.
+  const swapIn = () => {
+    if (layer !== turbulenceLayer || !map) return
+    layer.setOpacity(overlayOpacity).setZIndex(6)
+    for (const old of turbulenceLayersOnMap) if (old.layer !== layer) map.removeLayer(old.layer)
+    turbulenceLayersOnMap = [{ url, layer }]
+    schedulePreload()
   }
+  if (turbulenceLayersOnMap.length === 1 || !layer.isLoading()) swapIn()
+  else layer.once('load', swapIn)
+}
+
+let preloadGeneration = 0
+let preloadTimer: number | undefined
+
+/** Restarts preloading the other hours for the view, once the map has been still for a moment. */
+function schedulePreload() {
   const generation = ++preloadGeneration
-  const preloadNext = () => {
-    if (generation !== preloadGeneration || !goodConnection()) return
-    const next = ordered.find((url) => !turbulenceLayers.has(url))
-    if (next) addTurbulenceLayer(next, preloadNext)
+  window.clearTimeout(preloadTimer)
+  if (!goodConnection()) return
+  preloadTimer = window.setTimeout(() => preloadOtherHours(generation), 300)
+}
+
+function stopPreload() {
+  preloadGeneration++
+  window.clearTimeout(preloadTimer)
+}
+
+/** The tile coordinates covering the view at the zoom the overlay is drawn at. */
+function viewTiles(): { x: number; y: number; z: number }[] {
+  const z = Math.min(Math.max(Math.round(map!.getZoom()), 0), turbulenceMaxNativeZoom)
+  const n = 2 ** z
+  const nw = map!.project(map!.getBounds().getNorthWest(), z).divideBy(256).floor()
+  const se = map!.project(map!.getBounds().getSouthEast(), z).divideBy(256).floor()
+  const tiles: { x: number; y: number; z: number }[] = []
+  for (let y = Math.max(nw.y, 0); y <= Math.min(se.y, n - 1); y++)
+    for (let x = nw.x; x <= se.x && x - nw.x < n; x++) tiles.push({ x: ((x % n) + n) % n, y, z })
+  return tiles
+}
+
+/** Fetches the other hours' tiles for the view into the browser cache, two at a time, nearest hours first. */
+function preloadOtherHours(generation: number) {
+  const layer = turbulenceLayer
+  if (generation !== preloadGeneration || !map || !layer) return
+  if (layer.isLoading()) {
+    layer.once('load', () => preloadOtherHours(generation))
+    return
   }
-  const visibleUrl = ordered[0]!
-  const existing = turbulenceLayers.get(visibleUrl)
-  const visible = existing ?? addTurbulenceLayer(visibleUrl, preloadNext)
-  for (const layer of turbulenceLayers.values()) {
-    layer.setOpacity(layer === visible ? overlayOpacity : 0)
-    layer.setZIndex(layer === visible ? 6 : 5)
+  const selected = frameIndex.value
+  const tiles = viewTiles()
+  const urls = frames.value
+    .map((frame, i) => ({ frame, distance: Math.abs(i - selected) }))
+    .filter((o) => o.distance > 0)
+    .sort((a, b) => a.distance - b.distance)
+    .flatMap(({ frame }) => tiles.map((t) => L.Util.template(frameTileUrl(frame), t)))
+  let next = 0
+  const fetchNext = () => {
+    if (generation !== preloadGeneration || next >= urls.length) return
+    const img = new Image()
+    img.onload = img.onerror = fetchNext
+    img.src = urls[next++]!
   }
-  // A layer that was already there won't fire 'load' again, so restart the chain from it.
-  if (existing) {
-    if (existing.isLoading()) existing.once('load', preloadNext)
-    else preloadNext()
-  }
+  fetchNext()
+  fetchNext()
 }
 
 const playing = ref(false)
@@ -1022,7 +1066,7 @@ async function enter3d(pitch = 0, bearing = 0) {
 async function exit3d(): Promise<void> {
   if (mode.value !== '3d') return
   const v = (await map3d.value?.flatten()) ?? view3d.value
-  map?.setView([v.lat, v.lon], Math.round(v.zoom), { animate: false })
+  map?.setView([v.lat, v.lon], v.zoom, { animate: false })
   mode.value = '2d'
 }
 
@@ -1038,7 +1082,7 @@ async function setMode(m: '2d' | '3d') {
 function on3dMove(v: MapView) {
   view3d.value = v
   // A tilted camera sees further than straight down: fetch traffic for a wider area.
-  map?.setView([v.lat, v.lon], Math.max(Math.round(v.zoom - v.pitch / 40), 2), { animate: false })
+  map?.setView([v.lat, v.lon], Math.max(v.zoom - v.pitch / 40, 2), { animate: false })
 }
 
 async function on3dSelect(hex: string) {
@@ -1122,9 +1166,15 @@ function onTouchMove(e: TouchEvent) {
 let keyPanning = false
 const stopKeyPan = listenKeyPan(
   (dx, dy) => {
-    keyPanning = true
     if (mode.value === '3d') map3d.value?.panBy(dx, dy)
-    else map?.panBy([dx, dy], { animate: false })
+    else if (map) {
+      // Moved like a drag: one movestart, a move each frame, one moveend when the keys are let go. (panBy fires a
+      // moveend every call, which redrew every plane and refetched tiles every frame.)
+      if (!keyPanning) map.fire('movestart')
+      ;(map as L.Map & { _rawPanBy(offset: L.Point): void })._rawPanBy(L.point(dx, dy))
+      map.fire('move')
+    }
+    keyPanning = true
   },
   () => {
     if (!keyPanning) return
@@ -1142,11 +1192,18 @@ const mapResizeObserver = new ResizeObserver(() => map?.invalidateSize())
 
 onMounted(() => {
   if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
-  // boxZoom off: shift+drag opens 3D instead.
-  map = L.map(mapEl.value!, { zoomControl: false, worldCopyJump: true, boxZoom: false }).setView(
-    [39.5, -97],
-    5
-  )
+  // boxZoom off: shift+drag opens 3D instead. Zoom isn't snapped to whole levels and the wheel zooms continuously
+  // (smoothWheelZoom), so wheel, trackpad and pinch zooms glide and stop where they're let go.
+  map = L.map(mapEl.value!, {
+    zoomControl: false,
+    worldCopyJump: true,
+    boxZoom: false,
+    zoomSnap: 0,
+    scrollWheelZoom: false,
+    // The basemap's last level: beyond it the map was blank and the overlay tiles were scaled up 500 times.
+    maxZoom: 12
+  }).setView([39.5, -97], 5)
+  stopWheelZoom = smoothWheelZoom(map)
   // Zoom buttons sit bottom-right beside the 2D/3D switch, so the left panels can share one left edge.
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
@@ -1161,7 +1218,10 @@ onMounted(() => {
   mapEl.value!.addEventListener('touchmove', onTouchMove, { passive: true })
   trackedPlanes.addTo(map)
   followLayer.addTo(map)
+  // Preloading other hours waits until the map stops, so it never competes with the tiles coming into view.
+  map.on('movestart', stopPreload)
   map.on('moveend', () => {
+    schedulePreload()
     // Held W/A/S/D move the map every frame: fetch once they're let go.
     if (keyPanning) return
     if (trafficMode.value === 'all') refreshTraffic()
@@ -1196,6 +1256,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopKeyPan()
+  stopWheelZoom?.()
+  stopPreload()
   topLeftObserver.disconnect()
   window.clearTimeout(trafficTimer)
   window.clearInterval(trackedTimer)
