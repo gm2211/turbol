@@ -73,3 +73,19 @@ export function canvasPlane(
     size
   })
 }
+
+/** Moves and recolours a plane from `canvasPlane` in place (one redraw), instead of replacing it. */
+export function updateCanvasPlane(
+  marker: L.CircleMarker,
+  latlng: L.LatLngExpression,
+  category: TurbulenceCategory,
+  trackDeg: number,
+  size: number
+) {
+  const options = marker.options as L.CircleMarkerOptions & { trackDeg: number; size: number }
+  options.fillColor = categoryColors[category]
+  options.trackDeg = trackDeg
+  options.size = size
+  marker.setRadius(size / 2)
+  marker.setLatLng(latlng)
+}
