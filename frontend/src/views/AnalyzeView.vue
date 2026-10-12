@@ -3,85 +3,110 @@
     <!-- A downloaded flight: worked out on the phone, so it opens with no connection too. -->
     <DownloadedFlight v-if="flightId" :flight-id="flightId" />
     <DownloadedFlights v-else-if="!analysis && downloadedFlights.length > 0" />
-    <v-card v-if="!flightId" class="panel form-card px-4 py-3">
-      <div class="form-row">
-        <v-btn-toggle
-          v-model="mode"
-          mandatory
-          density="compact"
-          variant="outlined"
-          divided
-          class="mode"
-        >
-          <v-btn value="flight">Flight</v-btn>
-          <v-btn value="route">Route</v-btn>
-        </v-btn-toggle>
-        <template v-if="mode === 'flight'">
-          <v-text-field
-            v-model="flightQuery"
-            class="grow"
-            label="Flight number or callsign (UA1517, DAL2105)"
-            density="compact"
-            variant="outlined"
-            hide-details
-            @keyup.enter="analyze"
-          />
-        </template>
-        <template v-else>
-          <AirportPicker v-model="origin" class="grow" label="From" />
-          <AirportPicker v-model="destination" class="grow" label="To" />
-        </template>
-        <v-text-field
-          v-model="departureLocal"
-          class="departure"
-          type="datetime-local"
-          label="Departure (local time)"
-          density="compact"
-          variant="outlined"
-          hide-details
-        />
-        <v-btn color="#10324f" :loading="loading" height="40" @click="analyze">Analyze</v-btn>
-      </div>
-      <div v-if="lookup?.route" class="flight-line mt-2">
-        <b>{{ lookup.route.iataCallsign ?? lookup.route.callsign }}</b>
-        {{ lookup.route.airline ? `· ${lookup.route.airline}` : '' }} ·
-        {{ lookup.route.origin.code }} → {{ lookup.route.destination.code }}
-        <template v-if="lookup.live">
-          <v-chip size="small" color="green-darken-2" variant="flat" class="ml-2">
-            In the air now · {{ flightLevel(lookup.live.altitudeFt) }}
-          </v-chip>
-          <v-btn
-            size="small"
-            color="green-darken-2"
-            variant="flat"
-            class="ml-2"
-            prepend-icon="mdi-crosshairs-gps"
-            :to="`/map?follow=${lookup.live.hex}`"
-          >
-            Follow live
+    <!-- The search is a boarding pass: FROM/TO fill in once the flight is known, Analyze sits on the stub. -->
+    <div v-if="!flightId" class="form-card">
+      <v-btn-toggle v-model="mode" mandatory density="compact" variant="text" class="mode">
+        <v-btn value="flight" prepend-icon="mdi-airplane">Flight</v-btn>
+        <v-btn value="route" prepend-icon="mdi-map-marker-path">Route</v-btn>
+      </v-btn-toggle>
+      <div class="pass">
+        <div class="pass-main">
+          <div class="band">
+            <span>Turbulence forecast</span>
+            <span>Boarding · <b>analysis</b></span>
+          </div>
+          <div class="pass-body">
+            <div class="ends">
+              <div class="end">
+                <div class="lbl">From</div>
+                <div class="code" :class="{ ghost: !passFrom }">
+                  {{ passFrom?.code ?? '- - -' }}
+                </div>
+                <div class="city">{{ passFrom?.name ?? placeholderCity }}</div>
+              </div>
+              <div class="arc"><v-icon icon="mdi-airplane" /></div>
+              <div class="end to">
+                <div class="lbl">To</div>
+                <div class="code" :class="{ ghost: !passTo }">{{ passTo?.code ?? '- - -' }}</div>
+                <div class="city">{{ passTo?.name ?? placeholderCity }}</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <template v-if="mode === 'flight'">
+                <v-text-field
+                  v-model="flightQuery"
+                  class="grow"
+                  label="Flight number or callsign (UA1517, DAL2105)"
+                  density="comfortable"
+                  variant="outlined"
+                  hide-details
+                  @keyup.enter="analyze"
+                />
+              </template>
+              <template v-else>
+                <AirportPicker v-model="origin" class="grow" label="From" />
+                <AirportPicker v-model="destination" class="grow" label="To" />
+              </template>
+              <v-text-field
+                v-model="departureLocal"
+                class="departure"
+                type="datetime-local"
+                label="Departs (local time)"
+                density="comfortable"
+                variant="outlined"
+                hide-details
+              />
+            </div>
+            <div v-if="lookup?.route" class="flight-line">
+              <b>{{ lookup.route.iataCallsign ?? lookup.route.callsign }}</b>
+              {{ lookup.route.airline ? `· ${lookup.route.airline}` : '' }}
+              <template v-if="lookup.live">
+                <v-chip size="small" color="green-darken-2" variant="flat" class="ml-2">
+                  In the air now · {{ flightLevel(lookup.live.altitudeFt) }}
+                </v-chip>
+                <v-btn
+                  size="small"
+                  color="green-darken-2"
+                  variant="flat"
+                  class="ml-2"
+                  prepend-icon="mdi-crosshairs-gps"
+                  :to="`/map?follow=${lookup.live.hex}`"
+                >
+                  Follow live
+                </v-btn>
+              </template>
+              <span v-else-if="lookup.otherLeg">
+                · its aircraft is in the air on another leg right now ({{
+                  flightLevel(lookup.otherLeg.altitudeFt)
+                }}, heading {{ compass(lookup.otherLeg.trackDeg) }}), not
+                {{ lookup.route.origin.code }} →
+                {{ lookup.route.destination.code }}
+              </span>
+              <v-btn
+                size="small"
+                color="#10324f"
+                variant="flat"
+                class="ml-2"
+                prepend-icon="mdi-cube-outline"
+                :to="`/map?view=3d&flights=${encodeURIComponent(flightQuery.trim().toUpperCase())}`"
+              >
+                View in 3D
+              </v-btn>
+            </div>
+            <v-alert v-if="error" type="warning" variant="tonal" density="compact">{{
+              error
+            }}</v-alert>
+          </div>
+        </div>
+        <div class="stub">
+          <v-btn class="go" color="#10324f" variant="flat" :loading="loading" @click="analyze">
+            <v-icon icon="mdi-weather-windy" size="28" />
+            <span>Analyze</span>
           </v-btn>
-        </template>
-        <span v-else-if="lookup.otherLeg">
-          · its aircraft is in the air on another leg right now ({{
-            flightLevel(lookup.otherLeg.altitudeFt)
-          }}, heading {{ compass(lookup.otherLeg.trackDeg) }}), not {{ lookup.route.origin.code }} →
-          {{ lookup.route.destination.code }}
-        </span>
-        <v-btn
-          size="small"
-          color="#10324f"
-          variant="flat"
-          class="ml-2"
-          prepend-icon="mdi-cube-outline"
-          :to="`/map?view=3d&flights=${encodeURIComponent(flightQuery.trim().toUpperCase())}`"
-        >
-          View in 3D
-        </v-btn>
+          <div class="barcode" />
+        </div>
       </div>
-      <v-alert v-if="error" type="warning" variant="tonal" class="mt-2" density="compact">{{
-        error
-      }}</v-alert>
-    </v-card>
+    </div>
 
     <template v-if="analysis && !flightId">
       <v-card class="panel verdict-card pa-4">
@@ -300,6 +325,16 @@ const downloaded = computed(() =>
 const downloadedStatus = computed(
   () => downloaded.value && packStatus(downloaded.value, downloads.states[downloaded.value.id])
 )
+/** The airports on the pass: the ones picked on the Route tab, or the looked-up flight's. */
+const passFrom = computed(() =>
+  mode.value === 'route' ? origin.value : lookup.value?.route?.origin
+)
+const passTo = computed(() =>
+  mode.value === 'route' ? destination.value : lookup.value?.route?.destination
+)
+const placeholderCity = computed(() =>
+  mode.value === 'route' ? 'Pick an airport' : 'Filled from the flight'
+)
 const arrival = computed(() =>
   analysis.value
     ? new Date(
@@ -438,6 +473,7 @@ onMounted(async () => {
   }
   .form-card {
     grid-area: form;
+    min-width: 0;
   }
   .verdict-card {
     grid-area: verdict;
@@ -470,6 +506,133 @@ onMounted(async () => {
     min-height: 420px;
   }
 }
+/* The boarding pass. Ticket notches are cut out of both halves with masks, so the sky shows through. */
+.form-card {
+  --notch: 13px;
+  --navy: #10324f;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.analyze-page:not(.has-result) .form-card {
+  width: 100%;
+  max-width: 1000px;
+  margin: min(8vh, 72px) auto 0;
+}
+.mode {
+  align-self: flex-start;
+  height: 40px;
+  background: rgba(16, 50, 79, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+  padding: 3px;
+}
+.mode .v-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 8px !important;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.mode .v-btn.v-btn--active {
+  background: white;
+  color: var(--navy);
+}
+.mode .v-btn :deep(.v-btn__overlay) {
+  opacity: 0;
+}
+.pass {
+  display: flex;
+  filter: drop-shadow(0 18px 32px rgba(16, 50, 79, 0.4));
+}
+.pass-main,
+.stub {
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+}
+.pass-main {
+  flex: 1;
+  min-width: 0;
+  border-radius: 20px 0 0 20px;
+  overflow: hidden;
+  mask:
+    radial-gradient(circle var(--notch) at 100% 0, #0000 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle var(--notch) at 100% 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
+}
+.band {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--navy);
+  color: white;
+  padding: 10px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.band b {
+  color: rgb(127, 199, 184);
+}
+.pass-body {
+  padding: 18px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(16, 50, 79, 0.1);
+}
+.end.to {
+  text-align: right;
+}
+.lbl {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #475569;
+}
+.code {
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: var(--navy);
+}
+.code.ghost {
+  color: rgba(16, 50, 79, 0.16);
+}
+.city {
+  font-size: 13px;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arc {
+  width: 180px;
+  border-top: 2px dashed rgba(91, 143, 178, 0.6);
+  position: relative;
+  margin-top: 6px;
+}
+.arc .v-icon {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+  font-size: 26px;
+  color: var(--navy);
+  background: white;
+  padding: 0 4px;
+  box-sizing: content-box;
+}
 .form-row {
   display: flex;
   flex-wrap: wrap;
@@ -480,14 +643,152 @@ onMounted(async () => {
   flex: 1 1 220px;
 }
 .form-row .departure {
-  flex: 0 0 230px;
-}
-.mode {
-  height: 40px;
+  flex: 0 0 240px;
 }
 .flight-line {
   font-size: 15px;
   line-height: 32px;
+}
+.stub {
+  width: 190px;
+  flex: none;
+  border-radius: 0 20px 20px 0;
+  border-left: 2px dashed rgba(16, 50, 79, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px;
+  mask:
+    radial-gradient(circle var(--notch) at 0 0, #0000 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle var(--notch) at 0 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
+}
+.stub .go {
+  width: 100%;
+  height: 104px;
+  border-radius: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(16, 50, 79, 0.35);
+}
+.stub .go :deep(.v-btn__content) {
+  flex-direction: column;
+  gap: 6px;
+}
+.barcode {
+  width: 100%;
+  height: 32px;
+  border-radius: 2px;
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--navy) 0 2px,
+    transparent 2px 4px,
+    var(--navy) 4px 7px,
+    transparent 7px 9px
+  );
+}
+/* With a result on a laptop the pass folds into one slim row, leaving the screen to the result. */
+@media (min-width: 960px) {
+  .has-result .band,
+  .has-result .barcode {
+    display: none;
+  }
+  .has-result .pass-body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 18px;
+    gap: 10px 18px;
+  }
+  .has-result .ends {
+    border: 0;
+    padding: 0;
+    gap: 12px;
+  }
+  .has-result .code {
+    font-size: 28px;
+  }
+  .has-result .city {
+    max-width: 140px;
+  }
+  .has-result .arc {
+    width: 56px;
+  }
+  .has-result .form-row {
+    flex: 1 1 480px;
+  }
+  .has-result .flight-line,
+  .has-result .v-alert {
+    flex: 1 1 100%;
+  }
+  .has-result .pass-main {
+    border-radius: 16px 0 0 16px;
+  }
+  .has-result .stub {
+    width: 150px;
+    padding: 12px;
+    border-radius: 0 16px 16px 0;
+  }
+  .has-result .stub .go {
+    height: 56px;
+  }
+  .has-result .stub .go :deep(.v-btn__content) {
+    flex-direction: row;
+  }
+}
+/* Phones: the stub tears off along the bottom. */
+@media (max-width: 760px) {
+  .pass {
+    flex-direction: column;
+  }
+  .pass-main {
+    border-radius: 18px 18px 0 0;
+    mask:
+      radial-gradient(circle var(--notch) at 0 100%, #0000 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--notch) at 100% 100%, #0000 98%, #000) right / 51% 100% no-repeat;
+  }
+  .stub {
+    width: auto;
+    border-left: 0;
+    border-top: 2px dashed rgba(16, 50, 79, 0.25);
+    border-radius: 0 0 18px 18px;
+    padding: 14px 16px 16px;
+    mask:
+      radial-gradient(circle var(--notch) at 0 0, #0000 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--notch) at 100% 0, #0000 98%, #000) right / 51% 100% no-repeat;
+  }
+  .stub .go {
+    height: 52px;
+  }
+  .stub .go :deep(.v-btn__content) {
+    flex-direction: row;
+  }
+  .barcode {
+    display: none;
+  }
+  .band {
+    padding: 9px 16px;
+    font-size: 10px;
+  }
+  .pass-body {
+    padding: 14px 16px 16px;
+  }
+  .code {
+    font-size: 38px;
+  }
+  .arc {
+    width: 56px;
+  }
+  .form-row .departure {
+    flex: 1 1 100%;
+  }
+  .analyze-page:not(.has-result) .form-card {
+    margin-top: 8px;
+  }
 }
 .eyebrow {
   font-size: 12px;
