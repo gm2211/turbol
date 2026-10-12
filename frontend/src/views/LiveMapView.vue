@@ -64,10 +64,10 @@
         <span class="muted">Flights</span>
         <v-btn-toggle
           v-model="trafficMode"
+          class="flights-toggle"
           mandatory
           density="compact"
           theme="dark"
-          color="var(--my-accent)"
           variant="outlined"
           divided
         >
@@ -1142,10 +1142,24 @@ onBeforeUnmount(() => {
 .is-3d :deep(.edr-tip) {
   display: none;
 }
+/* Label above the control so all three segments fit the panel, on desktop and phones alike. */
 .flights-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.flights-toggle {
+  width: 100%;
+}
+.flights-toggle :deep(.v-btn) {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
+}
+.flights-toggle :deep(.v-btn--active) {
+  background: var(--my-accent);
+  color: #fff;
 }
 .search-area {
   position: absolute;
