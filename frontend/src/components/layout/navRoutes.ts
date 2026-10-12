@@ -26,12 +26,5 @@ export const navRoutes: NavRoute[] = [
     path: '/analyze',
     mdiIcon: 'mdi-airplane-search',
     mobileIcon: 'mdi-airplane-search'
-  },
-  {
-    name: '3D view',
-    short: '3D',
-    path: '/3d',
-    mdiIcon: 'mdi-cube-outline',
-    mobileIcon: 'mdi-cube-outline'
   }
 ]

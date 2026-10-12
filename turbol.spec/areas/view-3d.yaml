@@ -1,16 +1,36 @@
 id: view-3d
 name: 3D view
-prose: A 3D view of the turbulence volume, with routes and flight levels in context.
+prose: >-
+  The turbulence volume in 3D, with aircraft at their altitude. It lives in the live map's 3D mode;
+  there is no separate 3D page.
 behaviors:
   - id: volume-voxels
     description: >-
-      The 3D view draws a loaded frame's turbulence as voxels by category, with a translucent sheet at
-      the chosen flight level.
-  - id: route-visible-through-voxels
-    description: A route drawn in the 3D view stays visible where it passes through rough air.
-  - id: click-shows-column
+      3D draws a loaded frame's turbulence by category, stacking vertically adjacent cells of the same
+      category at a grid point into one column whose tooltip gives its level range and worst EDR.
+  - id: all-levels
     description: >-
-      Clicking a point shows the turbulence column there, level by level. If a newer nowcast replaced
-      the frame, the view reloads frames and retries.
+      Every flight level can be shown at once: the flight-level rail's full range is "All levels",
+      and light turbulence can be hidden.
+    source:
+      text: I should be able to see all flight levels
   - id: loads-on-demand
-    description: The 3D library loads only when the 3D view is opened, keeping other pages light.
+    description: >-
+      The 3D library loads only when 3D is first opened, or ahead of time while the live map is idle
+      on a good connection, keeping other pages light.
+  - id: loads-without-freezing
+    description: >-
+      Opening 3D never freezes the page: the volume downloads and is prepared off the main thread,
+      progress is shown, and columns nearest the camera appear first.
+    source:
+      text: >-
+        also first load takes forever (it's good we're caching and it's amazingly fast afterwards,
+        but incremental and smooth loading would be great instead of freezing the page)
+  - id: no-separate-page
+    description: >-
+      There is no 3D tab. Old /3d links, and the 3D buttons in aircraft popups and Analyze, open the
+      live map in 3D with that flight added.
+    source:
+      text: >-
+        since we have 3d view in live map, no need for dedicated tab (but we should borrow the
+        "vertical" FL control)
