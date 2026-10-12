@@ -26,11 +26,14 @@ WORKDIR /opt/turbol
 COPY --from=backend /src/backend/target/universal/stage/ ./
 COPY --from=frontend /src/frontend/dist/ ./static/
 COPY deployment/render/entrypoint.sh ./
+# PretenureSizeThreshold: decoding allocates arrays of several MB per grid level; copying them in every young GC
+# stopped the whole server for up to 300 ms of CPU (seconds on a tenth of a CPU). Allocated straight into the old
+# generation, a GFS + GTG decode's total pause time fell from 1.3 s to 0.36 s and the longest from 300 ms to 40 ms.
 ENV TURBOL_STATIC_DIR=/opt/turbol/static \
     TURBOL_DATA_DIR=/opt/turbol/var/data/turbulence \
     TURBOL_MIN_VOLUME_STEP=6 \
     MALLOC_ARENA_MAX=2 \
     TURBOL_GLOBAL_LAYER=on \
-    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
+    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -XX:+UseSerialGC -XX:PretenureSizeThreshold=1m -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
 EXPOSE 8081
 CMD ["./entrypoint.sh"]
