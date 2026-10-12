@@ -978,6 +978,7 @@ const stopConnectionWatch = onConnectionChange(() => {
 interface Map3DHandle {
   setRotation(pitch: number, bearing: number): void
   panBy(dx: number, dy: number): void
+  rotateBy(degrees: number): void
   tiltUp(): Promise<MapView>
   flatten(): Promise<MapView>
 }
@@ -1110,7 +1111,7 @@ function onTouchMove(e: TouchEvent) {
   } else if (pinch > 40) twoFinger = undefined
 }
 
-// W/A/S/D pan the map, in 2D and 3D, while held.
+// W/A/S/D pan the map, in 2D and 3D, and Q/E rotate it, while held.
 let keyPanning = false
 const stopKeyPan = listenKeyPan(
   (dx, dy) => {
@@ -1122,6 +1123,11 @@ const stopKeyPan = listenKeyPan(
     if (!keyPanning) return
     keyPanning = false
     if (mode.value === '2d') map?.fire('moveend')
+  },
+  (degrees) => {
+    // The 2D map can't turn: Q/E open 3D, still flat, and turn it there (like shift+drag opens 3D to tilt).
+    if (mode.value === '3d') map3d.value?.rotateBy(degrees)
+    else if (!loading3d.value) enter3d(0, degrees)
   }
 )
 

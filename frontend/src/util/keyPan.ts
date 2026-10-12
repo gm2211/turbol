@@ -1,10 +1,19 @@
 /**
- * W/A/S/D pan the map while held, like a game: smooth and continuous, at a steady screen speed. Keys typed into a
- * text field (the Add flight box) or pressed with Ctrl/Cmd/Alt are left alone.
+ * W/A/S/D pan the map and Q/E rotate it while held, like a game: smooth and continuous, at a steady speed. Keys typed
+ * into a text field (the Add flight box) or pressed with Ctrl/Cmd/Alt are left alone.
  */
 
 /** Screen pixels per second the map moves while a key is held. */
 export const keyPanSpeed = 700
+
+/** Degrees per second the map turns while Q or E is held. */
+export const keyRotateSpeed = 90
+
+const turns: Record<string, number> = {
+  // Q turns the map counter-clockwise, E clockwise.
+  KeyQ: 1,
+  KeyE: -1
+}
 
 const directions: Record<string, [number, number]> = {
   KeyW: [0, -1],
@@ -28,6 +37,13 @@ export function keyPanDirection(held: Iterable<string>): [number, number] {
   return length ? [x / length, y / length] : [0, 0]
 }
 
+/** Which way the held keys turn the map: 1 counter-clockwise (Q), -1 clockwise (E), 0 for neither or both. */
+export function keyRotateDirection(held: Iterable<string>): number {
+  let turn = 0
+  for (const code of held) turn += turns[code] ?? 0
+  return turn
+}
+
 /** Whether a key event belongs to something the user is typing into rather than the map. */
 export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
@@ -36,10 +52,15 @@ export function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Listens for W/A/S/D on the window and calls `pan(dx, dy)` every animation frame with the screen pixels to move,
- * then `end()` once all keys are up. Returns a function that stops listening.
+ * Listens for W/A/S/D and Q/E on the window. Every animation frame it calls `pan(dx, dy)` with the screen pixels to
+ * move and `rotate(degrees)` with how far to turn the map (positive is counter-clockwise), then `end()` once all keys
+ * are up. Returns a function that stops listening.
  */
-export function listenKeyPan(pan: (dx: number, dy: number) => void, end: () => void): () => void {
+export function listenKeyPan(
+  pan: (dx: number, dy: number) => void,
+  end: () => void,
+  rotate: (degrees: number) => void = () => undefined
+): () => void {
   const held = new Set<string>()
   let frame: number | undefined
   let last = 0
@@ -49,11 +70,19 @@ export function listenKeyPan(pan: (dx: number, dy: number) => void, end: () => v
     last = now
     const [x, y] = keyPanDirection(held)
     if (x || y) pan(x * keyPanSpeed * dt, y * keyPanSpeed * dt)
+    const turn = keyRotateDirection(held)
+    if (turn) rotate(turn * keyRotateSpeed * dt)
     frame = held.size ? requestAnimationFrame(step) : undefined
     if (!frame) end()
   }
   const down = (e: KeyboardEvent) => {
-    if (!(e.code in directions) || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target))
+    if (
+      !(e.code in directions || e.code in turns) ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      isTypingTarget(e.target)
+    )
       return
     e.preventDefault()
     held.add(e.code)

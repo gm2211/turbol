@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isTypingTarget, keyPanDirection } from '../keyPan'
+import { isTypingTarget, keyPanDirection, keyRotateDirection } from '../keyPan'
 
 describe('keyPanDirection', () => {
   it('maps W/A/S/D to screen directions', () => {
@@ -20,6 +20,19 @@ describe('keyPanDirection', () => {
     expect(keyPanDirection(['KeyA', 'KeyD'])).toEqual([0, 0])
     expect(keyPanDirection(['KeyQ'])).toEqual([0, 0])
     expect(keyPanDirection([])).toEqual([0, 0])
+  })
+})
+
+describe('keyRotateDirection', () => {
+  it('turns counter-clockwise on Q, clockwise on E, and not at all for both or neither', () => {
+    expect(keyRotateDirection(['KeyQ'])).toBe(1)
+    expect(keyRotateDirection(['KeyE'])).toBe(-1)
+    expect(keyRotateDirection(['KeyQ', 'KeyE'])).toBe(0)
+    expect(keyRotateDirection(['KeyW'])).toBe(0)
+  })
+
+  it('leaves Q and E out of panning', () => {
+    expect(keyPanDirection(['KeyQ', 'KeyE'])).toEqual([0, 0])
   })
 })
 
