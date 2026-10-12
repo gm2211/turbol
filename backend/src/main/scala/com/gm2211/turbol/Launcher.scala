@@ -7,7 +7,7 @@
 package com.gm2211.turbol
 
 import cats.effect.unsafe.IORuntime
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{ExitCode, IO, IOApp, Resource}
 import cats.syntax.foldable.*
 import com.gm2211.logging.BackendLogging
 import com.gm2211.reactive.Refreshable
@@ -17,9 +17,11 @@ import com.gm2211.turbol.config.install.InstallConfig
 import com.gm2211.turbol.config.runtime.RuntimeConfig
 import com.gm2211.turbol.config.secrets.AppSecrets
 import com.gm2211.turbol.modules.*
+import com.gm2211.turbol.turbulence.{NowcastHandoff, TurbulenceDataUpdater}
 import com.gm2211.turbol.util.{ConfigSerialization, MoreExecutors, OptionUtils, TryUtils}
 
 import java.nio.file.{Path, Paths}
+import scala.concurrent.duration.*
 import scala.io.Source
 
 object Launcher extends IOApp with ConfigSerialization with OptionUtils with TryUtils with BackendLogging {
@@ -60,7 +62,16 @@ object Launcher extends IOApp with ConfigSerialization with OptionUtils with Try
 
     appModule.storageModule.txnManager.awaitInitialized()
 
-    appServer
+    // On a deploy, take the nowcast over from the instance still serving the public URL before this one starts
+    // answering (and Render switches traffic to it), so the map never goes without turbulence (see NowcastHandoff).
+    val takeOverNowcast: IO[Unit] =
+      KeepAwake.publicUrl.traverse_(url =>
+        IO.interruptible(NowcastHandoff.fetch(url, TurbulenceDataUpdater.defaultDataDir))
+          .timeoutTo(90.seconds, IO(log.warn("Nowcast handoff timed out")))
+          .void
+      )
+
+    Resource.eval(takeOverNowcast).flatMap(_ => appServer)
       .use(_ =>
         for {
           _ <- appModule

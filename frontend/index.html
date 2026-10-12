@@ -12,6 +12,37 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Turbol">
     <title>Turbol</title>
+    <link rel="preconnect" href="https://server.arcgisonline.com">
+    <script>
+      // Opening the 2D live map: start loading the basemap and the latest turbulence for the view it opens on
+      // (LiveMapView: US at zoom 5, FL350) now, so the tiles are already coming in when the app's code has loaded and
+      // Leaflet asks for the same URLs. The map's size is the window's minus the nav and app bars (see base.css).
+      if (/^\/(map\/?)?$/.test(location.pathname) && !/(^|[?&])(view|follow|flights)=/.test(location.search)) {
+        (function () {
+          var mobile = matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px)').matches
+          var w = innerWidth - (mobile ? 8 : 88), h = innerHeight - (mobile ? 112 : 80)
+          var z = 5, scale = 256 * Math.pow(2, z)
+          var cx = ((-97 + 180) / 360) * scale
+          var s = Math.sin((39.5 * Math.PI) / 180)
+          var cy = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale
+          var x0 = Math.floor((cx - w / 2) / 256), x1 = Math.floor((cx + w / 2) / 256)
+          var y0 = Math.floor((cy - h / 2) / 256), y1 = Math.floor((cy + h / 2) / 256)
+          var tiles = []
+          for (var x = x0; x <= x1; x++) for (var y = y0; y <= y1; y++) tiles.push([x, y])
+          // Centre first, like Leaflet: the server renders turbulence tiles two at a time.
+          tiles.sort(function (a, b) {
+            return Math.hypot(a[0] + 0.5 - cx / 256, a[1] + 0.5 - cy / 256) - Math.hypot(b[0] + 0.5 - cx / 256, b[1] + 0.5 - cy / 256)
+          })
+          window.__openingTiles = []
+          tiles.forEach(function (t) {
+            var base = new Image(), turb = new Image()
+            base.src = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/' + z + '/' + t[1] + '/' + t[0]
+            turb.src = '/api/turbulence/tiles/latest/35000/' + z + '/' + t[0] + '/' + t[1] + '.png'
+            window.__openingTiles.push(base, turb)
+          })
+        })()
+      }
+    </script>
     <script>
       // Opening the map in 3D: start downloading the turbulence volume now, before the app's code has loaded
       // (prefetchVolume in src/api/turbulence.ts picks it up).

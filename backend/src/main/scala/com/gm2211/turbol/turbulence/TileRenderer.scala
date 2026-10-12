@@ -86,9 +86,25 @@ final class TileRenderer {
   def render(frame: EdrFrame, global: Option[EdrFrame], levelFt: Int, z: Int, x: Int, y: Int): Array[Byte] = {
     val gtgLayer = frame.nearestLayer(levelFt)
     val globalLayer = global.flatMap(_.nearestLayer(levelFt))
-    val key = s"${frame.id}/${global.fold("-")(_.id)}/${gtgLayer.fold(0)(_.levelFt)}/${globalLayer.fold(0)(_.levelFt)}"
-    if (!validTile(z, x, y) || (globalLayer.isEmpty && !overlapsGrid(z, x, y))) emptyTile
-    else cache.get(s"$key/$z/$x/$y", () => draw(gtgLayer, globalLayer, z, x, y))
+    if (isEmpty(globalLayer, z, x, y)) emptyTile
+    else cache.get(cacheKey(frame, global, levelFt, z, x, y), () => draw(gtgLayer, globalLayer, z, x, y))
+  }
+
+  /**
+   * The tile if it costs nothing to serve (empty, or already rendered), so the endpoint can answer it without queueing
+   * behind renders.
+   */
+  def cached(frame: EdrFrame, global: Option[EdrFrame], levelFt: Int, z: Int, x: Int, y: Int): Option[Array[Byte]] =
+    if (isEmpty(global.flatMap(_.nearestLayer(levelFt)), z, x, y)) Some(emptyTile)
+    else Option(cache.getIfPresent(cacheKey(frame, global, levelFt, z, x, y)))
+
+  private def isEmpty(globalLayer: Option[EdrLayer], z: Int, x: Int, y: Int): Boolean =
+    !validTile(z, x, y) || (globalLayer.isEmpty && !overlapsGrid(z, x, y))
+
+  private def cacheKey(frame: EdrFrame, global: Option[EdrFrame], levelFt: Int, z: Int, x: Int, y: Int): String = {
+    val gtgLevel = frame.nearestLayer(levelFt).fold(0)(_.levelFt)
+    val globalLevel = global.flatMap(_.nearestLayer(levelFt)).fold(0)(_.levelFt)
+    s"${frame.id}/${global.fold("-")(_.id)}/$gtgLevel/$globalLevel/$z/$x/$y"
   }
 
   /**

@@ -165,13 +165,27 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
               val global = store.current.globalNear(f.validTime)
               // A frame id names immutable data; "latest" moves every 15 minutes.
               val maxAge = if (id == latestNowcast) 1.minute else 7.days
-              tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y))).flatMap { png =>
+              // Rendered tiles (most of the opening view is prewarmed) skip the queue for a render slot.
+              val png = IO(tiles.cached(f, global, level, z, x, y)).flatMap {
+                case Some(png) => IO.pure(png)
+                case None => tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y)))
+              }
+              png.flatMap { png =>
                 Ok(png).map(
                   _.withContentType(`Content-Type`(MediaType.image.png))
                     .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))
                 )
               }
             case _ => NotFound("frame or level not loaded")
+          }
+
+        // The instance replacing this one on a deploy fetches the nowcast from here (see NowcastHandoff).
+        case GET -> Root / "handoff" / "nowcast" =>
+          NowcastHandoff.latest(TurbulenceDataUpdater.defaultDataDir) match {
+            case Some(dir) =>
+              val body = fs2.io.readOutputStream[IO](64 * 1024)(out => IO.blocking(NowcastHandoff.write(dir, out)))
+              Ok(body).map(_.withContentType(`Content-Type`(MediaType.application.`octet-stream`)))
+            case None => NotFound("no nowcast loaded")
           }
 
         case GET -> Root / "point" :? LatParam(lat) +& LonParam(lon) +& AltParam(alt) +& TimeParam(time) =>

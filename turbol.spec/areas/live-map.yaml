@@ -14,6 +14,19 @@ behaviors:
       not on that path and may fill in afterwards.
     source:
       text: too slow - 40s to fully load - should take under 1s - if we want to gradually populate aircrafts, that's ok
+  - id: load-time-goal
+    description: >-
+      On a cold load the basemap shows at once (about 1 s) and the map area is never blank, even
+      while the backend is slow or restarting; turbulence tiles start showing within 2 s and every
+      tile of the visible view at the current level is drawn within 6 s.
+    source:
+      text: map should always load immediately, turbulence data should start being displayed within 2seconds and fully load within 6 seconds
+      reference: Giulio, turbol project chat, 2026-10-12 12:54Z (screenshot of a blank map at FL350)
+    details: >-
+      Definitions are the coordinator's defaults, not Giulio's words: "immediately" = basemap by
+      about 1 s; "start" = first turbulence tile; "fully" = all visible-viewport tiles for the
+      selected level. A restart or deploy counts: the map must not sit without turbulence for
+      minutes while the server reloads data.
   - id: flights-toggle
     description: >-
       The map opens with turbulence only, and its Flights selector starts on None on every visit (an

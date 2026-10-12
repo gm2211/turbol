@@ -938,11 +938,18 @@ function onFollowUpdate(u: LiveFlightUpdate) {
 async function refreshStatus() {
   try {
     status.value = await fetchStatus()
-    openedWithNowcast ??= status.value.nowcast?.id
+    // 'none': the page opened before the server had a nowcast (it just restarted), so the first one must reload the
+    // 'latest' tiles that came back empty.
+    openedWithNowcast ??= status.value.nowcast?.id ?? 'none'
   } catch (e) {
+    openedWithNowcast ??= 'none'
     console.warn('status refresh failed', e)
   } finally {
     statusLoaded.value = true
+    // Every 2 minutes, or every 10 seconds while the server is still loading data after a restart, so turbulence
+    // appears as soon as it has some.
+    window.clearTimeout(statusTimer)
+    if (map) statusTimer = window.setTimeout(refreshStatus, status.value?.nowcast ? 120000 : 10000)
   }
 }
 
@@ -1131,6 +1138,8 @@ const stopKeyPan = listenKeyPan(
   }
 )
 
+const mapResizeObserver = new ResizeObserver(() => map?.invalidateSize())
+
 onMounted(() => {
   if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
   // boxZoom off: shift+drag opens 3D instead.
@@ -1141,6 +1150,8 @@ onMounted(() => {
   // Zoom buttons sit bottom-right beside the 2D/3D switch, so the left panels can share one left edge.
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   L.tileLayer(baseMapUrl, { attribution: baseMapAttribution, maxZoom: 12 }).addTo(map)
+  // Leaflet sizes itself once; if the page laid out after that (or the window changed), it would load no tiles.
+  mapResizeObserver.observe(mapEl.value!)
   updateTurbulenceLayers()
   planes.addTo(map)
   leafletMap.value = map
@@ -1157,7 +1168,6 @@ onMounted(() => {
     else if (trafficMode.value === 'sample') areaMoved.value = true
   })
   refreshStatus()
-  statusTimer = window.setInterval(refreshStatus, 120000)
   if (trafficMode.value !== 'off') refreshTraffic()
 
   const fromUrl = String(route.query.flights ?? '')
@@ -1189,12 +1199,14 @@ onBeforeUnmount(() => {
   topLeftObserver.disconnect()
   window.clearTimeout(trafficTimer)
   window.clearInterval(trackedTimer)
-  window.clearInterval(statusTimer)
+  window.clearTimeout(statusTimer)
   window.clearInterval(playTimer)
   trafficRequest++
   mapEl.value?.removeEventListener('click', onPopupClick)
   stopConnectionWatch()
+  mapResizeObserver.disconnect()
   map?.remove()
+  map = undefined
 })
 </script>
 
@@ -1219,6 +1231,8 @@ onBeforeUnmount(() => {
 .map {
   position: absolute;
   inset: 0;
+  /* The basemap's own grey, so the map area never shows the page's cloud photo while tiles load or if they fail. */
+  background: #e4e4e2;
 }
 .panel {
   position: absolute;
