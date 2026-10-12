@@ -75,7 +75,7 @@ export interface Bounds {
 export const categoryColors: Record<TurbulenceCategory, string> = {
   NoData: '#64748b',
   Smooth: '#16a34a',
-  Light: '#eab308',
+  Light: '#84cc16',
   Moderate: '#f97316',
   Severe: '#dc2626',
   Extreme: '#9333ea'
@@ -268,7 +268,7 @@ export function classify(edr: number, t: Thresholds): TurbulenceCategory {
 export const overlayRgba: Record<TurbulenceCategory, [number, number, number, number]> = {
   NoData: [100, 116, 139, 0],
   Smooth: [34, 197, 94, 36],
-  Light: [250, 204, 21, 140],
+  Light: [132, 204, 22, 140],
   Moderate: [249, 115, 22, 179],
   Severe: [220, 38, 38, 204],
   Extreme: [147, 51, 234, 217]
