@@ -4,6 +4,7 @@ import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { appShell } from './build/appShell.ts'
+import { preload3d } from './build/preload3d.ts'
 
 /**
  * luma.gl loads its WebGL device with a dynamic import, which the build turns into a tiny file of its own: one more
@@ -25,6 +26,7 @@ export default defineConfig({
   plugins: [
     vue(),
     staticWebglDevice,
+    preload3d(),
     vuetify({ autoImport: true }),
     // Keeps the app on the phone so it opens with no connection (see src/sw.ts).
     appShell({

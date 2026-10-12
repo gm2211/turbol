@@ -419,11 +419,14 @@ async function loadVolume() {
       storeLength = 0
       total = m.total
     } else if (m.type === 'batch') {
+      // Timings for measuring how fast 3D opens (performance.getEntriesByName('3d-first-blocks')).
+      if (!received) performance.mark('3d-first-blocks')
       append(m.batch)
       received += m.batch.lat.length
       loadState.value = `Drawing turbulence… ${Math.round((received / total) * 100)}%`
       loadProgress.value = (received / total) * 100
     } else {
+      if (m.type === 'done') performance.mark('3d-all-blocks')
       if (m.type === 'error') console.warn('volume load failed', m.message)
       loadState.value = ''
       current.terminate()

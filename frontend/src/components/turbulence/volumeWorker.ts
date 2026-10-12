@@ -16,7 +16,7 @@ self.onmessage = (e: MessageEvent<VolumeRequest>) => {
     const { cols, byDistance } = build(v, e.data.thresholds, e.data.center)
     const total = byDistance.length
     post({ type: 'meta', cellKm: v.cellKm, total })
-    // A small first batch paints quickly; later ones grow.
+    // A small first batch paints quickly; the rest follows in one, as each batch makes the scene rebuild every column.
     let start = 0
     let size = 8000
     while (start < total) {
@@ -45,7 +45,7 @@ self.onmessage = (e: MessageEvent<VolumeRequest>) => {
         Object.values(batch).map((a) => a.buffer)
       )
       start += size
-      size *= 2
+      size = total
     }
     post({ type: 'done' })
   } catch (err) {
