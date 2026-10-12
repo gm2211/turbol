@@ -5,7 +5,14 @@
     :class="{ 'is-3d': mode === '3d', mobile }"
     :style="{ '--top-left-h': `${topLeftHeight}px` }"
   >
-    <div ref="mapEl" class="map inspect-cursor" :style="{ '--inspect-cursor': inspectCursor }" />
+    <!-- Positioned inline, not only in the stylesheet: if Leaflet starts before the stylesheet applies (Safari, warm
+         loads from the service worker), it pins the container to position: relative, which has no height: a blank
+         map with no tiles or controls. -->
+    <div
+      ref="mapEl"
+      class="map inspect-cursor"
+      :style="{ position: 'absolute', inset: 0, '--inspect-cursor': inspectCursor }"
+    />
 
     <component
       :is="Map3D"

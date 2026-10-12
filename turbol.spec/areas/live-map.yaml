@@ -26,7 +26,9 @@ behaviors:
       Definitions are the coordinator's defaults, not Giulio's words: "immediately" = basemap by
       about 1 s; "start" = first turbulence tile; "fully" = all visible-viewport tiles for the
       selected level. A restart or deploy counts: the map must not sit without turbulence for
-      minutes while the server reloads data.
+      minutes while the server reloads data. The 12:54Z blank map was Leaflet starting before the
+      stylesheet applied (seen in WebKit on a warm, service-worker-served load): Leaflet pinned the
+      container to position: relative and it stayed 0 px high.
   - id: flights-toggle
     description: >-
       The map opens with turbulence only, and its Flights selector starts on None on every visit (an
