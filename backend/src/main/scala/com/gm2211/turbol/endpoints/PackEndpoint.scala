@@ -48,6 +48,9 @@ final case class PackManifest(
   nowcastValid: Option[Instant],
   forecastIssued: Option[Instant],
   forecastUntil: Option[Instant],
+  globalIssued: Option[Instant],
+  /** The WAFS cycle blended into the global layer from FL140 up, when one was available. */
+  wafsIssued: Option[Instant],
   thresholds: Map[String, Thresholds],
   generatedAt: Instant
 )
@@ -110,6 +113,8 @@ object PackEndpoint {
       data.nowcast.map(_.validTime),
       data.forecastIssued,
       data.forecast.lastOption.map(_.validTime),
+      data.globalIssued,
+      data.globalWafsIssued,
       Thresholds.byClass.map { case (k, v) => k.toString -> v },
       now
     )
@@ -159,7 +164,7 @@ final class PackEndpoint(store: TurbulenceStore) extends Endpoint with BackendSe
         grid = PackGrid(from.lat, from.lon, to.lat, to.lon)
         (start, end) <- parseRows(rows) if start >= 0 && end > start && end <= grid.rows
         data = store.current
-        frame <- (data.nowcast.toSeq ++ data.forecast).find(_.id == frameId)
+        frame <- (data.nowcast.toSeq ++ data.forecast ++ data.global).find(_.id == frameId)
       } yield (
         grid,
         PackSlab(frame, start, end),
