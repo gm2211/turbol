@@ -64,6 +64,9 @@ final case class TurbulenceColumn(
 
 object TurbulenceEndpoint {
 
+  /** Characters per chunk of a streamed response body. */
+  val bodyChunkChars: Int = 64 * 1024
+
   /**
    * A frame's public id names its GTG frame and the GFS cycle drawn under it, so tiles (cached for a week) change when
    * either does.
@@ -172,8 +175,16 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
             case Some(f) =>
               val s = step.getOrElse(6).max(VolumeSampler.minStep).min(24)
               val global = store.current.globalNear(f.validTime)
-              IO.blocking(volumes.volume(f, global, s)).flatMap { v =>
-                Ok(v.toJson).map(_.putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour))))
+              IO.blocking(volumes.volumeJson(f, global, s)).flatMap { json =>
+                // In small chunks: one 12 MB body makes NIO copy it into a 12 MB direct buffer, outside the heap.
+                val body: fs2.Stream[IO, Byte] = fs2.Stream
+                  .range(0, json.length, TurbulenceEndpoint.bodyChunkChars)
+                  .map(k => json.substring(k, math.min(json.length, k + TurbulenceEndpoint.bodyChunkChars)))
+                  .through(fs2.text.utf8.encode)
+                Ok(body).map(
+                  _.withContentType(`Content-Type`(MediaType.application.json))
+                    .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour)))
+                )
               }
             case None => NotFound("frame not loaded")
           }

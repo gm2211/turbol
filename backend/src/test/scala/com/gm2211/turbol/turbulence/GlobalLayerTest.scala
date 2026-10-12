@@ -47,14 +47,18 @@ class GlobalLayerTest extends BaseTest {
     )
     val v = new Array[Float](u.length)
     val deform = GfsTurbulence.deformation(u, v)
-    Seq(-60.0, -20.0, 0.0, 35.0, 60.0).foreach(lat => deform(GlobalGrid.nearestIndex(lat, 10)).toDouble shouldBe k +- 1e-9)
+    Seq(
+      -60.0, -20.0, 0.0, 35.0, 60.0
+    ).foreach(lat => deform(GlobalGrid.nearestIndex(lat, 10)).toDouble shouldBe k +- 1e-9)
   }
 
   test("outside GTG the global layer answers, inside GTG wins, and the edge is a blend") {
     val store = new TurbulenceStore
     store.setForecast(Vector(uniformFrame(FrameKind.Forecast, t0, Map(35000 -> 0.02))))
     store.setGlobal(
-      Vector(0, 3).map(h => uniformFrame(FrameKind.Global, t0.plus(h.toLong, ChronoUnit.HOURS), Map(35000 -> (0.10 + h * 0.05))))
+      Vector(0, 3).map(h =>
+        uniformFrame(FrameKind.Global, t0.plus(h.toLong, ChronoUnit.HOURS), Map(35000 -> (0.10 + h * 0.05)))
+      )
     )
     val london = store.sample(51.5, -0.1, 35000, t0)
     london.source shouldBe EdrSource.Global
@@ -89,6 +93,26 @@ class GlobalLayerTest extends BaseTest {
       math.abs(lat) should be <= 80.0
       EdrLayer.decode(voxels(k + 3).toByte) shouldBe 0.20 +- 0.003
     }
+  }
+
+  test("the volume JSON written by hand parses back to the same volume") {
+    val gtg = uniformFrame(FrameKind.Nowcast, t0, Map(35000 -> 0.20))
+    val global = uniformFrame(FrameKind.Global, t0, Map(35000 -> 0.20))
+    val volume = VolumeSampler().volume(gtg, Some(global), 8)
+    val json = io.circe.parser.parse(volume.toJsonString).toOption.get.hcursor
+    json.get[Vector[Int]]("levelsFt") shouldBe Right(volume.levelsFt)
+    json.get[Int]("step") shouldBe Right(8)
+    json.get[Double]("cellKm") shouldBe Right(volume.cellKm)
+    def sameInts(name: String, expected: Array[Int]) = {
+      val parsed = json.get[Vector[Int]](name).toOption.get
+      parsed.length shouldBe expected.length
+      parsed.indices.find(k => parsed(k) != expected(k)) shouldBe None
+    }
+    sameInts("voxels", volume.voxels)
+    json.get[Vector[Int]]("globalLevelsFt") shouldBe Right(volume.globalLevelsFt)
+    json.get[Double]("globalCellKm") shouldBe Right(volume.globalCellKm)
+    sameInts("globalVoxels", volume.globalVoxels)
+    volume.voxels.length should be > 0
   }
 
   // Decodes a real GFS file when one is around (data-pipeline/gfs_turbulence.py collect downloads it). Expected values
@@ -141,7 +165,10 @@ class GlobalLayerTest extends BaseTest {
     import java.awt.image.BufferedImage
     val image = new BufferedImage(900, 600, BufferedImage.TYPE_INT_ARGB)
     val orange = Wafs.table.ramp(9) // step 10
-    for (x <- Range(0, 450); y <- Range(0, 600)) image.setRGB(x, y, (0xff << 24) | (orange(0) << 16) | (orange(1) << 8) | orange(2))
+    for {
+      x <- Range(0, 450)
+      y <- Range(0, 600)
+    } image.setRGB(x, y, (0xff << 24) | (orange(0) << 16) | (orange(1) << 8) | orange(2))
     val out = new java.io.ByteArrayOutputStream()
     javax.imageio.ImageIO.write(image, "png", out)
     val layer = Wafs.decodePng(out.toByteArray)

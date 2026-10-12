@@ -29,18 +29,54 @@ final case class Volume(
   globalLevelsFt: Vector[Int] = Vector.empty,
   globalCellKm: Double = 0,
   globalVoxels: Array[Int] = Array.emptyIntArray
-)
+) {
+
+  /**
+   * The JSON the 3D map reads, written straight into a string: a whole-country volume is ~3 million numbers, and a
+   * JSON tree of them took ~150 MB of heap per request.
+   */
+  def toJsonString: String = {
+    val out = new java.lang.StringBuilder(16 + 4 * (voxels.length + globalVoxels.length))
+    def ints(name: String, values: Array[Int]): Unit = {
+      out.append('"').append(name).append("\":[")
+      var k = 0
+      while (k < values.length) {
+        if (k > 0) out.append(','): Unit
+        out.append(values(k))
+        k += 1
+      }
+      out.append(']'): Unit
+    }
+    out.append('{')
+    ints("levelsFt", levelsFt.toArray)
+    out.append(",\"step\":").append(step).append(",\"cellKm\":").append(cellKm).append(',')
+    ints("voxels", voxels)
+    out.append(',')
+    ints("globalLevelsFt", globalLevelsFt.toArray)
+    out.append(",\"globalCellKm\":").append(globalCellKm).append(',')
+    ints("globalVoxels", globalVoxels)
+    out.append('}').toString
+  }
+}
 
 final class VolumeSampler {
-  private val cache: Cache[String, Volume] = CacheBuilder.newBuilder().maximumSize(40).build()
+  // Encoded volumes, capped by size: a whole-country one is ~13 MB of JSON, so a count cap of 40 could hold ~500 MB.
+  private val cache: Cache[String, String] = CacheBuilder
+    .newBuilder()
+    .maximumWeight(VolumeSampler.cacheChars)
+    .weigher((_: String, json: String) => json.length)
+    .build()
   private val t = Thresholds.byClass(AircraftClass.Medium)
   // Light, Moderate, Severe, Extreme as encoded bytes, worst last.
   private val thresholdBytes =
     Array(t.light, t.moderate, t.severe, t.extreme).map(e => EdrLayer.encode(e.toFloat) & 0xff)
   private val alwaysShown = 2 // index of Severe: any point at Severe or worse shows
 
-  def volume(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume =
-    cache.get(s"${frame.id}/${global.fold("-")(_.id)}/$step", () => sample(frame, global, step))
+  def volume(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume = sample(frame, global, step)
+
+  /** [[Volume.toJsonString]] of [[volume]], cached. */
+  def volumeJson(frame: EdrFrame, global: Option[EdrFrame], step: Int): String =
+    cache.get(s"${frame.id}/${global.fold("-")(_.id)}/$step", () => sample(frame, global, step).toJsonString)
 
   private def sample(frame: EdrFrame, global: Option[EdrFrame], step: Int): Volume = {
     val gtg = blocks(frame, LambertGrid.nx, LambertGrid.ny, step, (i, j) => Some(LambertGrid.latLonAt(i, j)))
@@ -133,6 +169,9 @@ final class VolumeSampler {
 
 object VolumeSampler {
   val minShare: Double = 0.25
+
+  /** Volume JSON kept in memory across frames and steps: ~3 whole-country volumes. */
+  val cacheChars: Long = 40_000_000L
 
   /**
    * Global-layer blocks are 6 x 6 GFS cells (1.5 degrees, ~170 km): the whole world at 0.25 degrees is far too many,

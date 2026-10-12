@@ -60,11 +60,12 @@ object Wafs {
   }
 
   /** The newest cycle (6-hourly, at or before `latestCycle`) that has a forecast for `valid`, with its lead time. */
-  def cyclesFor(valid: Instant, latestCycle: Instant): Seq[(Instant, Int)] =
-    (0 to 2).map(k => latestCycle.minus(6L * k, ChronoUnit.HOURS)).flatMap { cycle =>
-      val lead = ChronoUnit.HOURS.between(cycle, valid).toInt
-      Option.when(lead >= minLeadHours && lead <= maxLeadHours && lead % 3 == 0)(cycle -> lead)
-    }
+  def cyclesFor(valid: Instant, latestCycle: Instant): Seq[(Instant, Int)] = (0 to 2).map(k =>
+    latestCycle.minus(6L * k, ChronoUnit.HOURS)
+  ).flatMap { cycle =>
+    val lead = ChronoUnit.HOURS.between(cycle, valid).toInt
+    Option.when(lead >= minLeadHours && lead <= maxLeadHours && lead % 3 == 0)(cycle -> lead)
+  }
 
   /**
    * WAFS EDR at every level for `valid`, on the GFS 0.25 degree grid ([[EdrLayer.encode]]d, missing where the images
@@ -76,7 +77,9 @@ object Wafs {
     throttle: Throttle = Throttle.off
   ): Option[(Instant, Vector[Array[Byte]])] =
     cyclesFor(valid, latestCycle).iterator.flatMap { case (cycle, lead) =>
-      scala.util.Try(table.levelsHpa.map(hPa => decodePng(Http.getBytes(url(cycle, lead, hPa), attempts = 2), throttle))).toOption
+      scala.util.Try(table.levelsHpa.map(hPa =>
+        decodePng(Http.getBytes(url(cycle, lead, hPa), attempts = 2), throttle)
+      )).toOption
         .map(cycle -> _)
     }.nextOption()
 
@@ -91,7 +94,12 @@ object Wafs {
     if (a < 128 || (r == 255 && g == 255 && b == 255)) 0
     else 1 + ramp.indices.minBy { k =>
       val (rr, gg, bb) = ramp(k)
-      (r - rr) * (r - rr) + (g - gg) * (g - gg) + (b - bb) * (b - bb)
+      (r - rr) *
+        (r - rr) +
+        (g - gg) *
+        (g - gg) +
+        (b - bb) *
+        (b - bb)
     }
   }
 
