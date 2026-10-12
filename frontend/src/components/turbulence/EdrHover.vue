@@ -9,7 +9,7 @@
         categoryLabels[tip.category]
       }}</span>
       · {{ levelLabel }}
-      <span v-if="tip.coarse" class="coarse">· GFS ~28 km</span>
+      <span v-if="tip.coarse" class="coarse">· WAFS/GFS ~28 km</span>
     </template>
     <template v-else>No data · {{ levelLabel }}</template>
   </div>

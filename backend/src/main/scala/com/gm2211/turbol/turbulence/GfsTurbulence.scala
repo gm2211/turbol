@@ -128,11 +128,35 @@ object GfsTurbulence {
    * Decode a GFS file holding UGRD, VGRD and HGT on [[pressureLevelsHpa]] into EDR layers at [[levelsFt]] (MSL
    * altitude, like GTG), written to `outputDir/<levelFt>.u8` and memory-mapped. Works up the column two pressure
    * levels at a time, so only a few global fields are on the heap at once (~60 MB).
+   *
+   * With `wafs` (EDR per [[Wafs]] level on the same grid, see [[Wafs.fetch]]), levels WAFS covers blend it in.
    */
-  def decodeToLayers(gribFile: Path, outputDir: Path): SortedMap[Int, EdrLayer] = {
+  def decodeToLayers(
+    gribFile: Path,
+    outputDir: Path,
+    wafs: Option[Vector[Array[Byte]]] = None
+  ): SortedMap[Int, EdrLayer] = {
     Files.createDirectories(outputDir)
     val n = nx * ny
     val targetsM = levelsFt.map(_ * 0.3048f)
+    // Per target level: (blend table index, lower WAFS level, weight of the upper one) where WAFS covers it.
+    val wafsAt: Vector[Option[(Int, Int, Double)]] = levelsFt.map { ft =>
+      wafs.flatMap(_ => Wafs.blendLevel(ft)).map { b =>
+        val (k, t) = Wafs.bracket(ft)
+        (b, k, t)
+      }
+    }
+    def edrAt(t: Int, p: Int, ti1: Float): Float = {
+      val ti1Edr = edrFromTi1(t, ti1)
+      val blended = for {
+        (b, k, w) <- wafsAt(t)
+        levels <- wafs
+        lo = EdrLayer.decode(levels(k)(p))
+        hi = EdrLayer.decode(levels(k + 1)(p))
+        if !lo.isNaN && !hi.isNaN
+      } yield Wafs.blend(b, (1 - w) * lo + w * hi, ti1Edr)
+      blended.getOrElse(ti1Edr).toFloat
+    }
     val outputs =
       Array.fill(levelsFt.size) { val a = new Array[Byte](n); java.util.Arrays.fill(a, EdrLayer.missing); a }
 
@@ -185,7 +209,7 @@ object GfsTurbulence {
                 else if (first && h <= z0) previous.ti1(p)
                 else if (last && h > z1) current.ti1(p)
                 else Float.NaN
-              if (!ti1.isNaN) outputs(t)(p) = EdrLayer.encode(edrFromTi1(t, ti1).toFloat)
+              if (!ti1.isNaN) outputs(t)(p) = EdrLayer.encode(edrAt(t, p, ti1))
               t += 1
             }
             p += 1

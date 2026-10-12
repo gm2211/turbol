@@ -10,7 +10,7 @@
       {{
         compact
           ? `US 3 km · ~${Math.round(coarseKm)} km`
-          : `US: GTG 3 km · outside: GFS ~${Math.round(coarseKm)} km`
+          : `US: GTG 3 km · outside: WAFS/GFS ~${Math.round(coarseKm)} km`
       }}
     </div>
     <div v-if="aircraftKey" class="legend-row aircraft-key">
@@ -26,8 +26,8 @@ import { categoryColors, categoryLabels, type TurbulenceCategory } from '@/api/t
 /** coarseKm: resolution of the global layer outside GTG's dashed outline, when it's loaded. */
 defineProps<{ title: string; compact?: boolean; aircraftKey?: boolean; coarseKm?: number }>()
 const coarseTitle =
-  'Inside the dashed line: NOAA GTG at 3 km. Outside: turbulence estimated from NOAA GFS winds, ' +
-  'about ten times coarser and less precise.'
+  'Inside the dashed line: NOAA GTG at 3 km. Outside: the WAFS turbulence forecast blended with an estimate ' +
+  'from NOAA GFS winds (GFS alone below FL140), about ten times coarser and less precise.'
 const categories: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme']
 // One row on a phone screen.
 const shortLabels: Partial<Record<TurbulenceCategory, string>> = {

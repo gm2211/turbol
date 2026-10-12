@@ -53,8 +53,10 @@
         GTG-N nowcast valid {{ formatUtc(status.nowcast.validTime) }}
       </div>
       <div class="muted" v-if="status?.global && !mobile">
-        Outside the dashed line: NOAA GFS-derived, ~{{ Math.round(status.global.resolutionKm) }} km,
-        {{ formatUtc(status.global.issued) }} cycle
+        Outside the dashed line: {{ globalSource }}, ~{{
+          Math.round(status.global.resolutionKm)
+        }}
+        km, {{ formatUtc(status.global.issued) }} cycle
       </div>
       <div class="muted" v-else-if="statusLoaded && !status?.nowcast">Turbulence data loading…</div>
 
@@ -269,6 +271,9 @@ const route = useRoute()
 const router = useRouter()
 const mapEl = ref<HTMLDivElement>()
 const status = ref<TurbulenceStatus>()
+const globalSource = computed(() =>
+  status.value?.global?.wafsIssued ? 'WAFS + NOAA GFS' : 'NOAA GFS-derived'
+)
 const statusLoaded = ref(false)
 const levelFt = ref(35000)
 const frameIndex = ref(0)
@@ -366,7 +371,7 @@ function addTurbulenceLayer(url: string, onLoaded?: () => void): L.TileLayer {
     opacity: 0,
     maxNativeZoom: 9,
     zIndex: 5,
-    attribution: 'Turbulence: NOAA GTG-N / GTG (US, 3 km), NOAA GFS-derived elsewhere (~28 km)'
+    attribution: 'Turbulence: NOAA GTG-N / GTG (US, 3 km), WAFS (AWC) + NOAA GFS elsewhere (~28 km)'
   })
   if (onLoaded) layer.once('load', onLoaded)
   turbulenceLayers.set(url, layer.addTo(map!))

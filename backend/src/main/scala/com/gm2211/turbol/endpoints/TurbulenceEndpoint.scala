@@ -25,7 +25,9 @@ final case class GlobalLayerInfo(
   method: String,
   resolutionKm: Double,
   issued: Instant,
-  validTimes: Seq[Instant]
+  validTimes: Seq[Instant],
+  /** WAFS cycle blended in from FL140 up, when one was available. */
+  wafsIssued: Option[Instant] = None
 )
 
 /**
@@ -80,12 +82,16 @@ object TurbulenceEndpoint {
 
   def globalInfo(data: TurbulenceData): Option[GlobalLayerInfo] =
     data.globalIssued.map { issued =>
+      val wafs = data.globalWafsIssued
       GlobalLayerInfo(
-        source = "NOAA GFS 0.25°",
-        method = "Ellrod TI1 index from GFS winds, mapped to EDR by matching GTG over the US",
+        source = if (wafs.isDefined) "WAFS (AWC) + NOAA GFS" else "NOAA GFS 0.25°",
+        method =
+          (if (wafs.isDefined) "WAFS EDR (80%) blended with " else "") +
+            "Ellrod TI1 index from GFS winds, mapped to EDR by matching GTG over the US",
         resolutionKm = GlobalGrid.resolutionKm,
         issued = issued,
-        validTimes = data.global.map(_.validTime)
+        validTimes = data.global.map(_.validTime),
+        wafsIssued = wafs
       )
     }
 }

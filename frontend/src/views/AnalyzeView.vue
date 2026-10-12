@@ -112,7 +112,7 @@
           {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
           {{ fmt(analysis.dataSources.forecastUntil) }}
           <template v-if="analysis.dataSources.globalIssued">
-            · outside the US: NOAA GFS-derived (~28 km), cycle
+            · outside the US: WAFS + NOAA GFS (~28 km), cycle
             {{ fmt(analysis.dataSources.globalIssued) }}
           </template>
         </div>
