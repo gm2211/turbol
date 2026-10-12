@@ -6,6 +6,7 @@
 
 package com.gm2211.turbol.turbulence
 
+import com.gm2211.turbol.util.Visitors
 import ucar.nc2.grib.grib2.Grib2RecordScanner
 import ucar.unidata.io.RandomAccessFile
 
@@ -44,6 +45,8 @@ object GribDecoder {
           pds.getParameterNumber == edrParameter
         val levelFt = metresToLevelFt(pds.getLevelValue1)
         if (isEdr && (keepLevelsFt.isEmpty || keepLevelsFt.contains(levelFt))) {
+          // Unpacking a level takes the whole CPU for a while: let a visitor's page and tiles go first.
+          Visitors.waitForQuiet()
           val values: Array[Float] = record.readData(raf)
           require(
             values.length == LambertGrid.nx * LambertGrid.ny,
