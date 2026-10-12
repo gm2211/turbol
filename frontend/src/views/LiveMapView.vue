@@ -1312,6 +1312,9 @@ onBeforeUnmount(() => {
   width: 100%;
   height: var(--page-h);
   border-radius: 8px;
+}
+.map-page:not(.mobile) {
+  border-radius: 0;
   overflow: hidden;
 }
 .map {
