@@ -26,5 +26,12 @@ export const navRoutes: NavRoute[] = [
     path: '/analyze',
     mdiIcon: 'mdi-airplane-search',
     mobileIcon: 'mdi-airplane-search'
+  },
+  {
+    name: 'Your flight, offline',
+    short: 'Fly',
+    path: '/fly',
+    mdiIcon: 'mdi-airplane-takeoff',
+    mobileIcon: 'mdi-airplane-takeoff'
   }
 ]

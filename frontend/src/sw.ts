@@ -4,6 +4,10 @@
  * needs to start) on the phone, so the app opens with no connection: in airplane mode, behind a captive portal, or
  * when the plane's Wi-Fi drops. It caches no data; the Fly view keeps its flights in IndexedDB.
  *
+ * While a saved flight is in the air (the Fly view says so in the turbol-state cache, see src/fly/flying.ts) the
+ * build on the phone stays as it is: a new one isn't downloaded over the plane's Wi-Fi, and opening the app doesn't
+ * wait for the network.
+ *
  * build/appShell.ts compiles this file to /sw.js and fills in the three constants below for each build.
  */
 declare const __SHELL_VERSION__: string
@@ -15,10 +19,19 @@ const shellCache = `turbol-shell-${__SHELL_VERSION__}`
 const shellFiles = new Set(__SHELL_FILES__)
 /** How long opening the app waits for the network before using the copy on the phone. */
 const navigationTimeoutMs = 3000
+const stateCache = 'turbol-state'
+const flyingKey = '/__turbol/flying'
 
 sw.addEventListener('install', (event) => {
-  // A new build takes over as soon as all of it is on the phone; pages already open reload if they miss a file.
-  event.waitUntil(install().then(() => sw.skipWaiting()))
+  event.waitUntil(
+    (async () => {
+      // Plane Wi-Fi is too slow and spotty to spend on a new build: keep the one on the phone until after landing.
+      if (await flying()) throw new Error('A flight is in the air: Turbol updates after landing')
+      await install()
+      // A new build takes over as soon as all of it is on the phone; pages already open reload if they miss a file.
+      await sw.skipWaiting()
+    })()
+  )
 })
 
 sw.addEventListener('activate', (event) => {
@@ -75,6 +88,10 @@ async function install(): Promise<void> {
  * and opens the copy on the phone: on a dead or crawling connection the app opens anyway.
  */
 async function navigate(request: Request): Promise<Response> {
+  if (await flying()) {
+    const shell = await caches.match('/index.html', { cacheName: shellCache })
+    if (shell) return shell
+  }
   const network = fetch(request)
   network.catch(() => undefined) // handled below; this only keeps a late failure out of the console
   try {
@@ -87,9 +104,24 @@ async function navigate(request: Request): Promise<Response> {
 }
 
 async function fromShell(request: Request): Promise<Response> {
-  return (
-    (await caches.match(request, { cacheName: shellCache, ignoreVary: true })) ?? fetch(request)
-  )
+  // Shell files are kept under their bare path; a query on one (the icon font's ?v=7.4.47) changes nothing.
+  const kept = await caches.match(request, {
+    cacheName: shellCache,
+    ignoreVary: true,
+    ignoreSearch: true
+  })
+  return kept ?? fetch(request)
+}
+
+/** Whether the Fly view has a flight in the air right now. */
+async function flying(): Promise<boolean> {
+  try {
+    const marker = await caches.match(flyingKey, { cacheName: stateCache })
+    const until = marker ? ((await marker.json()) as { until?: unknown }).until : undefined
+    return typeof until === 'number' && Date.now() < until
+  } catch {
+    return false
+  }
 }
 
 function delay(ms: number): Promise<undefined> {

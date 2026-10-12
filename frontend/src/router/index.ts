@@ -19,6 +19,12 @@ const router = createRouter({
       component: () => import('@/views/AnalyzeView.vue')
     },
     {
+      // Your own flight, from the gate to landing, with or without a connection.
+      path: '/fly',
+      name: 'fly',
+      component: () => import('@/views/FlyView.vue')
+    },
+    {
       // Following a flight now happens on the live map; old links open the map with that flight followed.
       path: '/follow/:hex?',
       redirect: (to) =>
