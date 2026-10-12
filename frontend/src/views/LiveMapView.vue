@@ -1,5 +1,10 @@
 <template>
-  <div class="map-page" :class="{ 'is-3d': mode === '3d', mobile }">
+  <div
+    id="map-page"
+    class="map-page"
+    :class="{ 'is-3d': mode === '3d', mobile }"
+    :style="{ '--top-left-h': `${topLeftHeight}px` }"
+  >
     <div ref="mapEl" class="map inspect-cursor" :style="{ '--inspect-cursor': inspectCursor }" />
 
     <component
@@ -47,7 +52,7 @@
       >Search this area</v-btn
     >
 
-    <div class="panel glass-panel top-left">
+    <div ref="topLeftEl" class="panel glass-panel top-left">
       <div class="panel-title">Live turbulence</div>
       <div class="muted" v-if="status?.nowcast && !mobile">
         GTG-N nowcast valid {{ formatUtc(status.nowcast.validTime) }}
@@ -207,8 +212,11 @@
       @close="unfollow"
     />
 
-    <div v-show="!followHex" class="bottom-left">
+    <!-- One column for the bottom-left panels: 3D's settings (teleported in by Map3D) sit above the legend. -->
+    <div class="bottom-left">
+      <div id="map3d-panel-slot" />
       <TurbulenceLegend
+        v-show="!followHex"
         :title="`Turbulence at ${levelLabel}`"
         :compact="mobile"
         :aircraft-key="trafficMode !== 'off' || tracked.length > 0 || !!followHex"
@@ -270,6 +278,13 @@ interface TrackedFlight {
 const route = useRoute()
 const router = useRouter()
 const mapEl = ref<HTMLDivElement>()
+// The bottom-left column stops below the top-left panel, whose height changes with its contents.
+const topLeftEl = ref<HTMLDivElement>()
+const topLeftHeight = ref(0)
+const topLeftObserver = new ResizeObserver(([e]) => {
+  topLeftHeight.value =
+    e?.borderBoxSize?.[0]?.blockSize ?? e?.target.getBoundingClientRect().height ?? 0
+})
 const status = ref<TurbulenceStatus>()
 const globalSource = computed(() =>
   status.value?.global?.wafsIssued ? 'WAFS + NOAA GFS' : 'NOAA GFS-derived'
@@ -961,6 +976,7 @@ function onTouchMove(e: TouchEvent) {
 }
 
 onMounted(() => {
+  if (topLeftEl.value) topLeftObserver.observe(topLeftEl.value)
   // boxZoom off: shift+drag opens 3D instead.
   map = L.map(mapEl.value!, { zoomControl: true, worldCopyJump: true, boxZoom: false }).setView(
     [39.5, -97],
@@ -1009,6 +1025,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  topLeftObserver.disconnect()
   window.clearTimeout(trafficTimer)
   window.clearInterval(trackedTimer)
   window.clearInterval(statusTimer)
@@ -1070,6 +1087,21 @@ onBeforeUnmount(() => {
   z-index: 1000;
   bottom: 24px;
   left: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* Below the top-left panel, so a tall stack on a short window never runs into it. */
+  max-height: calc(100% - var(--top-left-h, 0px) - 48px);
+}
+#map3d-panel-slot {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.bottom-left > :not(#map3d-panel-slot) {
+  flex-shrink: 0;
 }
 .altitude-rail {
   position: absolute;
