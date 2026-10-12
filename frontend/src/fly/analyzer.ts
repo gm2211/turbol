@@ -288,7 +288,7 @@ function summarize(
   if (global > 0)
     notes.push(
       `${percentOfRoute(global)}% of the route is outside GTG coverage (contiguous US and nearby) and uses ` +
-        "the coarser global forecast (NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
+        "the coarser global forecast (WAFS and NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
     )
   if (coverage < 99.5) {
     const outside = enRoute.filter(

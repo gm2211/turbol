@@ -1,16 +1,20 @@
 /**
  * A Flight Pack on the phone: the raw EDR for a flight's corridor that the backend's PackEndpoint serves, and the
  * sampler that answers "how rough is it here, at this altitude and time" from it with no network. The sampler is the
- * backend's TurbulenceStore.sampleAt over pack cells instead of HRRR grid points: the GTGN nowcast wins near its
- * valid time and tapers into the GTG forecast, which is interpolated between forecast hours and between levels.
+ * backend's TurbulenceStore.sampleIn over pack cells instead of grid points: the GTGN nowcast wins near its valid
+ * time and tapers into the GTG forecast, which is interpolated between forecast hours and between levels; outside
+ * GTG, or past its last hour, the coarse global layer answers, blended with GTG across the last 120 km of its grid.
  */
 import type { AircraftClass, Thresholds } from '@/api/turbulence'
 import type { TurbulenceSource } from './analyzer'
 import { PackGrid } from './geo'
+import { interiorWeightAt, nearestIndex } from './lambert'
+
+export type PackFrameKind = 'nowcast' | 'forecast' | 'global'
 
 export interface PackFrameInfo {
   id: string
-  kind: 'nowcast' | 'forecast'
+  kind: PackFrameKind
   validTime: string
   issued: string
   rowStart: number
@@ -33,6 +37,9 @@ export interface PackManifest {
   nowcastValid?: string
   forecastIssued?: string
   forecastUntil?: string
+  globalIssued?: string
+  /** The WAFS cycle blended into the global layer from FL140 up, when one was available. */
+  wafsIssued?: string
   thresholds: Record<AircraftClass, Thresholds>
   generatedAt: string
 }
@@ -40,7 +47,7 @@ export interface PackManifest {
 /** One frame's slab, decoded: EDR codes laid out [level][row - rowStart][col]. */
 export interface PackFrame {
   id: string
-  kind: 'nowcast' | 'forecast'
+  kind: PackFrameKind
   /** Epoch ms. */
   validTime: number
   issued: number
@@ -49,12 +56,13 @@ export interface PackFrame {
   codes: Uint8Array
 }
 
-/** What the sampler reads: one nowcast at most and the forecast hours in time order, as on the server. */
+/** What the sampler reads: one nowcast at most, and the forecast hours and global frames in time order. */
 export interface PackData {
   grid: PackGrid
   levelsFt: number[]
   nowcast?: PackFrame
   forecast: PackFrame[]
+  global: PackFrame[]
 }
 
 export type EdrSource = 'Nowcast' | 'Forecast' | 'Blend' | 'Global' | 'NoData'
@@ -113,11 +121,16 @@ export function packSource(data: PackData): TurbulenceSource {
     sample: (lat, lon, altitudeFt, time) => sample(data, lat, lon, altitudeFt, time),
     nowcastValid: data.nowcast?.validTime,
     forecastIssued: data.forecast[0]?.issued,
-    forecastUntil: data.forecast[data.forecast.length - 1]?.validTime
+    forecastUntil: data.forecast[data.forecast.length - 1]?.validTime,
+    globalIssued: data.global[0]?.issued
   }
 }
 
-/** EDR at a location, altitude and time from the pack, or NaN / NoData outside it. */
+/**
+ * EDR at a location, altitude and time from the pack, or NaN / NoData outside it: GTG where it has data, the global
+ * layer elsewhere, blended near GTG's edge (TurbulenceStore.sampleIn). Whether GTG counts depends on the location
+ * itself, as on the server; the cell only supplies the values.
+ */
 export function sample(
   data: PackData,
   lat: number,
@@ -126,9 +139,22 @@ export function sample(
   time: number
 ): EdrSample {
   const cell = data.grid.cellOf(lat, lon)
-  return cell ? sampleCell(data, cell[0], cell[1], altitudeFt, time) : noData
+  if (!cell) return noData
+  const [row, col] = cell
+  const inside = nearestIndex(lat, lon) >= 0
+  const gtg = inside ? sampleCell(data, row, col, altitudeFt, time) : noData
+  const weight = inside ? interiorWeightAt(lat, lon) : 0.0
+  if (weight >= 1.0 && !Number.isNaN(gtg.edr)) return gtg
+  const global = globalAt(data, row, col, altitudeFt, time)
+  if (Number.isNaN(global)) return gtg
+  if (Number.isNaN(gtg.edr)) return { edr: global, source: 'Global' }
+  return {
+    edr: weight * gtg.edr + (1 - weight) * global,
+    source: weight >= 0.5 ? gtg.source : 'Global'
+  }
 }
 
+/** GTG alone at a cell: the nowcast blended into the forecast (TurbulenceStore.sampleAt). */
 export function sampleCell(
   data: PackData,
   row: number,
@@ -180,6 +206,36 @@ function forecastAt(
       : NaN
   }
   const hi = frames.findIndex((f) => !(f.validTime < time))
+  const after = frames[hi]
+  const before = frames[hi - 1]
+  const span = secondsBetween(before.validTime, after.validTime)
+  const w = secondsBetween(before.validTime, time) / span
+  const a = edrAt(data, before, row, col, altitudeFt)
+  const b = edrAt(data, after, row, col, altitudeFt)
+  if (Number.isNaN(a)) return b
+  if (Number.isNaN(b)) return a
+  return a + w * (b - a)
+}
+
+/** Global frames are 3 hours apart; one is used up to this far from its valid time before the first or after the last. */
+const globalSlackHours = 3.0
+
+/** Global-layer EDR interpolated in time between the two bracketing frames; NaN when no frame is close enough. */
+function globalAt(
+  data: PackData,
+  row: number,
+  col: number,
+  altitudeFt: number,
+  time: number
+): number {
+  const frames = data.global
+  if (frames.length === 0) return NaN
+  const hi = frames.findIndex((f) => !(f.validTime < time))
+  if (hi <= 0) {
+    const nearest = hi === 0 ? frames[0] : frames[frames.length - 1]
+    const gapHours = Math.abs(secondsBetween(nearest.validTime, time)) / 3600.0
+    return gapHours <= globalSlackHours ? edrAt(data, nearest, row, col, altitudeFt) : NaN
+  }
   const after = frames[hi]
   const before = frames[hi - 1]
   const span = secondsBetween(before.validTime, after.validTime)

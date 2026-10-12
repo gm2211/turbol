@@ -95,16 +95,18 @@ final case class PackSlab(frame: EdrFrame, rowStart: Int, rowEnd: Int)
 
 /**
  * A Flight Pack is the raw EDR a phone needs to work out a flight's turbulence with no network: for every frame the
- * flight can use (the GTGN nowcast and each GTG forecast hour), the rows of the [[PackGrid]] the plane can be over
- * while that frame counts, on the forecast's 12 levels. One slab per frame, so a new nowcast or GTG cycle replaces
- * only the slabs whose frame it supersedes.
+ * flight can use (the GTGN nowcast, each GTG forecast hour, and each frame of the coarse global layer that answers
+ * outside and past GTG), the rows of the [[PackGrid]] the plane can be over while that frame counts, on the
+ * forecast's 12 levels. One slab per frame, so a new nowcast, GTG cycle or GFS cycle replaces only the slabs whose
+ * frame it supersedes.
  *
  * A slab is `levels * rows * cols` bytes, laid out [level][row][col], each byte an [[EdrLayer]] code (EDR * 200, 255
  * missing). Within each level every row after the first is stored as its difference from the row before (mod 256),
  * which makes it compress about a fifth better, since neighbouring rows are 6 km apart.
  */
 object FlightPack {
-  val version = 1
+  /** 2: global-layer slabs, and GTG cells straddling GTG's edge take the edge value. */
+  val version = 2
 
   /** The forecast's levels: the nowcast has 51 levels, but the pack keeps the 12 the forecast has. */
   val levelsFt: Vector[Int] = TurbulenceDataUpdater.forecastLevelsFt.toVector.sorted
@@ -118,7 +120,8 @@ object FlightPack {
   /**
    * Slabs for a flight planned to take off at `departure`. A frame counts from `before` to `after` its valid time:
    * the nowcast from 2 h before to 1 h after (TurbulenceStore.nowcastWeight), a forecast hour between its neighbours
-   * (time interpolation), and the first forecast hour also up to 90 min before it.
+   * (time interpolation), and the first forecast hour also up to 90 min before it. A global frame counts between its
+   * neighbours too, and the first and last up to 3 h beyond them (TurbulenceStore.globalAt).
    */
   def slabs(grid: PackGrid, data: TurbulenceData, departure: Instant): Seq[PackSlab] = {
     val minutesAtRow = plannedMinutes(grid)
@@ -137,7 +140,15 @@ object FlightPack {
         if (k == data.forecast.size - 1) 0.0 else minutesBetween(frame.validTime, data.forecast(k + 1).validTime)
       rowsFor(frame.validTime, before, after).map { case (s, e) => PackSlab(frame, s, e) }
     }
-    nowcast.toSeq ++ forecast
+    val slackMinutes = TurbulenceStore.globalSlackHours * 60
+    val global = data.global.indices.flatMap { k =>
+      val frame = data.global(k)
+      val before = if (k == 0) slackMinutes else minutesBetween(data.global(k - 1).validTime, frame.validTime)
+      val after =
+        if (k == data.global.size - 1) slackMinutes else minutesBetween(frame.validTime, data.global(k + 1).validTime)
+      rowsFor(frame.validTime, before, after).map { case (s, e) => PackSlab(frame, s, e) }
+    }
+    nowcast.toSeq ++ forecast ++ global
   }
 
   /** Minutes after takeoff the flight profile reaches each row (RouteAnalyzer's gate-to-gate profile). */
@@ -148,12 +159,34 @@ object FlightPack {
 
   private def minutesBetween(a: Instant, b: Instant): Double = Duration.between(a, b).toSeconds / 60.0
 
+  /** How far outside GTG's grid, in grid points, a cell's centre can be and still take the value at the edge. */
+  val edgeMarginPoints = 2
+
+  /**
+   * The grid point a cell of a `kind` frame takes its value from: the one nearest the cell's centre. A GTG cell whose
+   * centre is just outside GTG's grid takes the nearest point on the edge, so a location just inside GTG always finds
+   * GTG data in its cell (cells are 6 km, GTG's points 3 km apart); the phone, like the server, only uses GTG where the
+   * location itself is inside the grid.
+   */
+  def cellIndex(kind: FrameKind, lat: Double, lon: Double): Int = kind match {
+    case FrameKind.Global => GlobalGrid.nearestIndex(lat, lon)
+    case _ =>
+      if (lat < 0 || lat > 89) -1
+      else {
+        val (fi, fj) = LambertGrid.fractionalIndex(lat, lon)
+        val (i, j) = (rint(fi).toInt, rint(fj).toInt)
+        val m = edgeMarginPoints
+        if (i < -m || i >= LambertGrid.nx + m || j < -m || j >= LambertGrid.ny + m) -1
+        else min(max(j, 0), LambertGrid.ny - 1) * LambertGrid.nx + min(max(i, 0), LambertGrid.nx - 1)
+      }
+  }
+
   /** The slab's bytes, delta-coded along the route (see the object doc). */
   def encode(grid: PackGrid, slab: PackSlab): Array[Byte] = {
     val rowCount = slab.rowEnd - slab.rowStart
     val flatIndex = Array.tabulate(rowCount * grid.cols) { k =>
       val (lat, lon) = grid.cellCenter(slab.rowStart + k / grid.cols, k % grid.cols)
-      LambertGrid.nearestIndex(lat, lon)
+      cellIndex(slab.frame.kind, lat, lon)
     }
     val out = new Array[Byte](levelsFt.size * rowCount * grid.cols)
     levelsFt.zipWithIndex.foreach { case (level, li) =>

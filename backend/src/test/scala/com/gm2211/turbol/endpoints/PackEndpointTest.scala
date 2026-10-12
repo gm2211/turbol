@@ -29,6 +29,14 @@ class PackEndpointTest extends BaseTest {
       .map(h => EdrFrame(FrameKind.Forecast, issued.plus(h.toLong, ChronoUnit.HOURS), issued, SortedMap.empty))
       .toVector
   )
+  private val gfsIssued = issued.minus(6, ChronoUnit.HOURS)
+  store.setGlobal(
+    Range
+      .inclusive(0, 8)
+      .map(k => EdrFrame(FrameKind.Global, issued.plus(3L * k, ChronoUnit.HOURS), gfsIssued, SortedMap.empty))
+      .toVector,
+    wafsIssued = Some(gfsIssued)
+  )
   private val app =
     Router[IO]("/api/packs" -> PackEndpoint(store).routes, "/api/ping" -> PingEndpoint().routes).orNotFound
 
@@ -48,7 +56,14 @@ class PackEndpointTest extends BaseTest {
     val cols = json.hcursor.get[Int]("cols").toOption.get
     cols shouldBe 81
     val frames = json.hcursor.downField("frames").values.get.toVector
-    frames.size shouldBe 9
+    // Nine GTG forecast hours, and the global frames from 12:00Z to 21:00Z for flying outside or past GTG.
+    frames.map(_.hcursor.get[String]("kind").toOption.get).groupBy(identity).view.mapValues(_.size).toMap shouldBe
+      Map("forecast" -> 9, "global" -> 4)
+    json.hcursor.get[Instant]("globalIssued").toOption shouldBe Some(gfsIssued)
+    json.hcursor.get[Instant]("wafsIssued").toOption shouldBe Some(gfsIssued)
+    val globalUrl = frames.last.hcursor.get[String]("url").toOption.get
+    globalUrl should startWith(s"/api/packs/slab/${store.current.global(3).id}?")
+    get(globalUrl, gzip = true).status shouldBe Status.Ok
     val first = frames.head.hcursor
     val (rowStart, rowEnd) = (first.get[Int]("rowStart").toOption.get, first.get[Int]("rowEnd").toOption.get)
     val url = first.get[String]("url").toOption.get

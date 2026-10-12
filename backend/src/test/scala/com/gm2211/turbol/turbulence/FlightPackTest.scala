@@ -116,6 +116,78 @@ class FlightPackTest extends BaseTest {
     forecastSlabs.last.rowEnd shouldBe grid.rows
   }
 
+  test("global frames cover the flight wherever and whenever GTG doesn't, 3 h beyond the first and last") {
+    val grid = PackGrid(jfkLat, jfkLon, laxLat, laxLon)
+    val global = Range.inclusive(0, 8).map(k =>
+      emptyFrame(FrameKind.Global, issued.plus(3L * k, ChronoUnit.HOURS), issued.minus(6, ChronoUnit.HOURS))
+    ).toVector
+    val departure = issued.plus(2, ChronoUnit.HOURS)
+    val slabs = FlightPack.slabs(grid, TurbulenceData(None, hourly, global), departure).filter(
+      _.frame.kind == FrameKind.Global
+    )
+    val minutesAt = RouteAnalyzer.plannedMinutesAt(grid.totalKm)
+    for {
+      slackMin <- Seq(-90, 0, 90)
+      km <- BigDecimal(0) to BigDecimal(grid.totalKm) by 15
+    } {
+      val time = departure.plusSeconds(slackMin * 60L + (minutesAt(km.toDouble) * 60).toLong)
+      val row = math.rint(km.toDouble / grid.alongStepKm).toInt
+      // The frames TurbulenceStore.globalAt would read at this time.
+      val after = global.indexWhere(f => !f.validTime.isBefore(time))
+      val used = if (after <= 0) Seq(global.head) else Seq(global(after - 1), global(after))
+      used.foreach(f =>
+        withClue(s"${f.id}, row $row, takeoff $slackMin min") {
+          slabs.exists(s => s.frame.id == f.id && row >= s.rowStart && row < s.rowEnd) shouldBe true
+        }
+      )
+    }
+    // Departure 14:00Z and ~5h08m gate to gate: the frames from 12:00Z to 21:00Z, not the ones after.
+    slabs.map(_.frame.validTime) shouldBe Range.inclusive(0, 3).map(k => issued.plus(3L * k, ChronoUnit.HOURS))
+  }
+
+  test("a GTG cell straddling GTG's edge takes the edge value, so every location inside GTG finds GTG data") {
+    // Key West to Havana leaves GTG's grid about 160 km south of Key West.
+    val grid = PackGrid(24.5561, -81.7596, 22.9892, -82.4091)
+    val gtgPattern = Array.tabulate[Byte](LambertGrid.nx * LambertGrid.ny)(k => (1 + k % 50).toByte)
+    val globalPattern = Array.tabulate[Byte](GlobalGrid.nx * GlobalGrid.ny)(k => (1 + k % 60).toByte)
+    def level0(kind: FrameKind, pattern: Array[Byte]): Array[Byte] = {
+      val layers = SortedMap.from(FlightPack.levelsFt.map(l => l -> EdrLayer(l, ByteBuffer.wrap(pattern))))
+      val slab = PackSlab(EdrFrame(kind, issued.plusSeconds(3600), issued, layers), 0, grid.rows)
+      java.util.Arrays.copyOf(
+        FlightPack.decode(FlightPack.encode(grid, slab), grid.rows, grid.cols),
+        grid.rows * grid.cols
+      )
+    }
+    val gtg = level0(FrameKind.Forecast, gtgPattern)
+    val global = level0(FrameKind.Global, globalPattern)
+    var straddling = 0
+    for {
+      row <- 0 until grid.rows
+      col <- 0 until grid.cols
+    } {
+      val (lat, lon) = grid.cellCenter(row, col)
+      val k = row * grid.cols + col
+      global(k) shouldBe globalPattern(GlobalGrid.nearestIndex(lat, lon))
+      val idx = LambertGrid.nearestIndex(lat, lon)
+      val (_, fj) = LambertGrid.fractionalIndex(lat, lon)
+      // The route leaves GTG through its southern edge: more than 2 points beyond it, a cell has no GTG data.
+      val expected =
+        if (idx >= 0) Some(gtgPattern(idx)) else if (fj < -2.5) Some(EdrLayer.missing) else None
+      expected match {
+        case Some(code) => gtg(k) shouldBe code
+        case None => if (gtg(k) != EdrLayer.missing) straddling += 1
+      }
+    }
+    straddling should be > 0
+    val rnd = new java.util.Random(7)
+    Range.inclusive(1, 5000).foreach { _ =>
+      val (lat, lon) = grid.pointAt(rnd.nextDouble() * grid.totalKm, (rnd.nextDouble() - 0.5) * 480)
+      if (LambertGrid.nearestIndex(lat, lon) >= 0) grid.cellOf(lat, lon).foreach { case (row, col) =>
+        withClue(s"$lat,$lon") { gtg(row * grid.cols + col) should not be EdrLayer.missing }
+      }
+    }
+  }
+
   test("JFK to LAX: frames the flight can't use are left out") {
     val grid = PackGrid(jfkLat, jfkLon, laxLat, laxLon)
     val departure = issued.plus(2, ChronoUnit.HOURS)
@@ -145,6 +217,6 @@ class FlightPackTest extends BaseTest {
     )
     manifest.frames.head.url shouldBe
       s"/api/packs/slab/${manifest.frames.head.id}?o=40.6413,-73.7781&d=33.9416,-118.4085" +
-      s"&rows=${manifest.frames.head.rowStart}-${manifest.frames.head.rowEnd}&v=1"
+      s"&rows=${manifest.frames.head.rowStart}-${manifest.frames.head.rowEnd}&v=2"
   }
 }

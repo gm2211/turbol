@@ -30,11 +30,28 @@ function project(lat: number, lon: number): [number, number] {
 
 const [x0, y0] = project(firstLat, firstLon)
 
+/** Fractional grid coordinates for a lat/lon. May be outside [0, nx) x [0, ny). */
+export function fractionalIndex(lat: number, lon: number): [number, number] {
+  const [x, y] = project(lat, lon)
+  return [(x - x0) / dx, (y - y0) / dx]
+}
+
 /** Flat index of the nearest grid point, or -1 outside the grid (where GTG has no data). */
 export function nearestIndex(lat: number, lon: number): number {
   if (lat < 0 || lat > 89) return -1
-  const [x, y] = project(lat, lon)
-  const i = rint((x - x0) / dx)
-  const j = rint((y - y0) / dx)
+  const [fi, fj] = fractionalIndex(lat, lon)
+  const i = rint(fi)
+  const j = rint(fj)
   return i < 0 || i >= nx || j < 0 || j >= ny ? -1 : j * nx + i
+}
+
+/** Grid points over which GTG fades into the coarse global layer at the edge of its domain (120 km). */
+export const blendCells = 40.0
+
+/** GTG's weight against the global layer: 1 at least blendCells inside the grid, falling to 0 at its edge. */
+export function interiorWeightAt(lat: number, lon: number): number {
+  if (lat < 0 || lat > 89) return 0.0
+  const [fi, fj] = fractionalIndex(lat, lon)
+  const edge = Math.min(Math.min(fi, nx - 1 - fi), Math.min(fj, ny - 1 - fj))
+  return Math.max(0.0, Math.min(1.0, edge / blendCells))
 }

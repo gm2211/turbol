@@ -19,7 +19,34 @@ import {
 } from '../pack'
 import fixture from './fixtures/pack-parity.json'
 
-type Expected = (typeof fixture.analyzer.flights)[number]['expected']
+/** An analysis as the backend's fixture writes it (FlightPackParityTest.analysisJson). */
+interface Expected {
+  totalDistanceKm: number
+  durationMinutes: number
+  start: number
+  cruiseAltitudeFt: number
+  aircraftClass: string
+  /** lat, lon, km, altitudeFt, minutes, time, edr, category, source, nearGround */
+  points: (string | number | boolean | null)[][]
+  /** category, startMinute, endMinute */
+  segments: (string | number)[][]
+  summary: {
+    verdict: string
+    worstCategory: string
+    maxEdr: number | null
+    worstMinute: number | null
+    worstLat: number | null
+    worstLon: number | null
+    minutesByCategory: Record<string, number>
+    percentByCategory: Record<string, number>
+    coveragePercent: number
+    notes: string[]
+  }
+  dataSources: Record<
+    'nowcastValid' | 'forecastIssued' | 'forecastUntil' | 'globalIssued',
+    number | null
+  >
+}
 
 const bytesOf = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
 const close = (actual: number | undefined, expected: number | null, digits = 9) => {
@@ -58,64 +85,72 @@ describe('pack geometry', () => {
 })
 
 describe('pack sampler', () => {
-  const s = fixture.sampler
-  const manifest = s.manifest as PackManifest
-  const slabs = s.slabs as Record<string, string>
-  const grid = gridOf(manifest)
-  const frames = manifest.frames.map((f) => packFrame(f, bytesOf(slabs[f.url]), manifest.cols))
-  const data: PackData = {
-    grid,
-    levelsFt: manifest.levelsFt,
-    nowcast: frames.find((f) => f.kind === 'nowcast'),
-    forecast: frames.filter((f) => f.kind === 'forecast').sort((a, b) => a.validTime - b.validTime)
-  }
-
-  it('reads back the EDR the backend sampled, blending nowcast and forecast hours the same way', () => {
+  it('reads back the EDR the backend sampled: nowcast, forecast and the global layer, blended the same way', () => {
     const sources = new Set<string>()
-    for (const q of s.queries) {
-      expect(grid.cellOf(q.lat, q.lon)).toEqual([q.row, q.col])
-      const r = sample(data, q.lat, q.lon, q.altitudeFt, q.time)
-      sources.add(r.source)
-      expect(r.source).toBe(q.source)
-      if (q.edr === null) expect(r.edr).toBeNaN()
-      else expect(r.edr).toBeCloseTo(q.edr, 12)
+    for (const s of fixture.sampler) {
+      const manifest = s.manifest as unknown as PackManifest
+      const slabs = s.slabs as unknown as Record<string, string>
+      const grid = gridOf(manifest)
+      const frames = manifest.frames.map((f) => packFrame(f, bytesOf(slabs[f.url]), manifest.cols))
+      const byTime = (kind: PackFrame['kind']) =>
+        frames.filter((f) => f.kind === kind).sort((a, b) => a.validTime - b.validTime)
+      const data: PackData = {
+        grid,
+        levelsFt: manifest.levelsFt,
+        nowcast: frames.find((f) => f.kind === 'nowcast'),
+        forecast: byTime('forecast'),
+        global: byTime('global')
+      }
+      for (const q of s.queries) {
+        expect(grid.cellOf(q.lat, q.lon)).toEqual([q.row, q.col])
+        const r = sample(data, q.lat, q.lon, q.altitudeFt, q.time)
+        sources.add(r.source)
+        expect(r.source).toBe(q.source)
+        if (q.edr === null) expect(r.edr).toBeNaN()
+        else expect(r.edr).toBeCloseTo(q.edr, 12)
+      }
     }
-    // The queries exercise every branch: nowcast only, blend, forecast only and no data.
-    expect([...sources].sort()).toEqual(['Blend', 'Forecast', 'NoData', 'Nowcast'])
+    // The queries exercise every branch, including GTG fading into the global layer at its edge.
+    expect([...sources].sort()).toEqual(['Blend', 'Forecast', 'Global', 'NoData', 'Nowcast'])
   })
 })
 
 describe('route analyzer', () => {
   const a = fixture.analyzer
-  const [ord, den] = [a.flights[0].input.origin, a.flights[0].input.destination]
-  const grid = new PackGrid(ord[0], ord[1], den[0], den[1])
-  // The backend's frames are the same everywhere, varying only by level and hour, so every cell gets the level's code.
-  const uniform = (
-    kind: PackFrame['kind'],
-    validTime: number,
-    issued: number,
-    codes: number[]
-  ): PackFrame => {
-    const perLevel = grid.rows * grid.cols
-    const bytes = new Uint8Array(codes.length * perLevel)
-    codes.forEach((code, li) => bytes.fill(code, li * perLevel, (li + 1) * perLevel))
+  type Point = number[]
+  // The backend's frames are the same everywhere, varying only by level and hour, so every cell of the flight's pack
+  // gets the level's code. Outside GTG's grid the phone ignores GTG cells, as the server has no GTG there.
+  const packFor = (origin: Point, destination: Point, withGlobal: boolean): PackData => {
+    const grid = new PackGrid(origin[0], origin[1], destination[0], destination[1])
+    const uniform = (
+      kind: PackFrame['kind'],
+      validTime: number,
+      issued: number,
+      codes: number[]
+    ): PackFrame => {
+      const perLevel = grid.rows * grid.cols
+      const bytes = new Uint8Array(codes.length * perLevel)
+      codes.forEach((code, li) => bytes.fill(code, li * perLevel, (li + 1) * perLevel))
+      return {
+        id: `${kind}${validTime}`,
+        kind,
+        validTime,
+        issued,
+        rowStart: 0,
+        rowEnd: grid.rows,
+        codes: bytes
+      }
+    }
     return {
-      id: `${kind}${validTime}`,
-      kind,
-      validTime,
-      issued,
-      rowStart: 0,
-      rowEnd: grid.rows,
-      codes: bytes
+      grid,
+      levelsFt: a.levelsFt,
+      nowcast: uniform('nowcast', a.nowcast.validTime, a.nowcast.validTime, a.nowcast.codes),
+      forecast: a.forecast.map((f) => uniform('forecast', f.validTime, f.issued, f.codes)),
+      global: withGlobal
+        ? a.global.map((f) => uniform('global', f.validTime, f.issued, f.codes))
+        : []
     }
   }
-  const data: PackData = {
-    grid,
-    levelsFt: a.levelsFt,
-    nowcast: uniform('nowcast', a.nowcast.validTime, a.nowcast.validTime, a.nowcast.codes),
-    forecast: a.forecast.map((f) => uniform('forecast', f.validTime, f.issued, f.codes))
-  }
-  const source = packSource(data)
 
   function expectSame(actual: RouteAnalysis, expected: Expected) {
     expect(actual.totalDistanceKm).toBeCloseTo(expected.totalDistanceKm, 9)
@@ -154,16 +189,20 @@ describe('route analyzer', () => {
     expect(actual.summary.notes).toEqual(sum.notes)
     const ds = actual.dataSources
     expect(
-      [ds.nowcastValid, ds.forecastIssued, ds.forecastUntil].map((t) => (t ? Date.parse(t) : null))
+      [ds.nowcastValid, ds.forecastIssued, ds.forecastUntil, ds.globalIssued].map((t) =>
+        t ? Date.parse(t) : null
+      )
     ).toEqual([
       expected.dataSources.nowcastValid,
       expected.dataSources.forecastIssued,
-      expected.dataSources.forecastUntil
+      expected.dataSources.forecastUntil,
+      expected.dataSources.globalIssued
     ])
   }
 
-  it('analyzes whole flights, gate to gate, exactly as the backend', () => {
+  it('analyzes whole flights, gate to gate, exactly as the backend, in and out of GTG', () => {
     for (const { input, expected } of a.flights) {
+      const source = packSource(packFor(input.origin, input.destination, input.global))
       const analysis = analyzeFlight(
         source,
         input.origin[0],
@@ -175,35 +214,38 @@ describe('route analyzer', () => {
         input.aircraftClass as AircraftClass,
         { now: input.departure }
       )
-      expectSame(analysis, expected)
+      expectSame(analysis, expected as Expected)
     }
   })
 
   it('analyzes the rest of a flight in the air, and says what the next hour holds', () => {
-    const { input, expected, edrNow, upcoming: next } = a.remaining
-    const ahead = analyzeRemaining(
-      source,
-      input.lat,
-      input.lon,
-      input.altitudeFt,
-      input.groundSpeedKts,
-      input.trackDeg,
-      [input.destination[0], input.destination[1]],
-      input.now,
-      input.aircraftClass as AircraftClass,
-      { now: input.now }
-    )
-    expectSame(ahead, expected)
-    const now = sample(data, input.lat, input.lon, input.altitudeFt, input.now)
-    expect(now.edr).toBeCloseTo(edrNow, 12)
-    const u = upcoming(ahead, now.edr, 'Medium')
-    expect(u.headline).toBe(next.headline)
-    expect([u.nowCategory, u.nextBumpCategory, u.worstNextHour]).toEqual([
-      next.nowCategory,
-      next.nextBumpCategory,
-      next.worstNextHour
-    ])
-    close(u.nextBumpInMinutes, next.nextBumpInMinutes)
-    close(u.nextBumpForMinutes, next.nextBumpForMinutes)
+    for (const { input, expected, edrNow, upcoming: next } of a.remaining) {
+      const data = packFor(input.origin, input.destination, input.global)
+      const ahead = analyzeRemaining(
+        packSource(data),
+        input.lat,
+        input.lon,
+        input.altitudeFt,
+        input.groundSpeedKts,
+        input.trackDeg,
+        [input.destination[0], input.destination[1]],
+        input.now,
+        input.aircraftClass as AircraftClass,
+        { now: input.now }
+      )
+      expectSame(ahead, expected as Expected)
+      const now = sample(data, input.lat, input.lon, input.altitudeFt, input.now)
+      if (edrNow === null) expect(now.edr).toBeNaN()
+      else expect(now.edr).toBeCloseTo(edrNow, 12)
+      const u = upcoming(ahead, now.edr, 'Medium')
+      expect(u.headline).toBe(next.headline)
+      expect([u.nowCategory, u.nextBumpCategory ?? null, u.worstNextHour]).toEqual([
+        next.nowCategory,
+        next.nextBumpCategory,
+        next.worstNextHour
+      ])
+      close(u.nextBumpInMinutes, next.nextBumpInMinutes)
+      close(u.nextBumpForMinutes, next.nextBumpForMinutes)
+    }
   })
 })
