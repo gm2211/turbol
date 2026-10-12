@@ -38,7 +38,8 @@ behaviors:
   - id: route-flights-for-day
     description: >-
       On the Route tab, the result lists the route's flights on the chosen day (flight number, airline,
-      takeoff and landing in local time, aircraft type) next to an "Any flight" great-circle option.
+      takeoff and landing in local time, aircraft type) next to an "Any flight" option that follows
+      the route's typical path (flown-track-path).
       Picking one analyzes that flight with its real aircraft type at its time on that day; the flight
       that takes off next from the chosen time is picked by default.
     details: >-
@@ -57,17 +58,47 @@ behaviors:
       reference: Giulio, turbol project thread, 2026-10-12, on the Analyze page's JFK to MXP result
   - id: flown-track-path
     description: >-
-      A picked flight is analyzed along the track it flew in the last day (positions, altitudes and
-      timing from takeoff to landing), shifted to its departure on the chosen day; gaps in ADS-B
-      coverage over oceans are crossed on the great circle. When the track can't be loaded the
-      analysis falls back to the great circle and says so.
+      A route is analyzed along the best path available, in this order: the filed flight plan; the
+      average of the route's tracks flown in the last day, when there are at least two and none
+      strays more than 200 km from their average; the picked flight's own flown track from the last
+      day, shifted to its departure on the chosen day; the great circle. The result names the path it
+      used.
     details: >-
-      Filed flight plans aren't public, so a flown track is the closest available stand-in for the
-      planned path. The result names which path it used.
+      Filed flight plans aren't public, so the first rung is never available today. Positions are
+      averaged on the sphere and altitudes and minutes after takeoff as plain means, point by point
+      along each track's length. Routes that move with the jet stream day to day (the North Atlantic
+      tracks) often differ by more than 200 km, and then the picked flight's own track is used. Gaps
+      in ADS-B coverage over oceans are crossed on the great circle. The average uses the tracks the
+      flight list already loaded and never starts a history scan itself. When a picked flight's track
+      can't be loaded and no average exists, the analysis falls back to the great circle and says so.
+    source:
+      text: >-
+        still not seeing flight list nor a way to play around in 3d with turbulence along planned
+        route (or average route based on past flight plans when past flight plans are similar enough
+        to one another) or geodesic if neither available
+      reference: Giulio, turbol project thread, 2026-10-12, on prod's Analyze page for JFK to MXP
+  - id: route-3d-exploration
+    description: >-
+      An analysis result has an "Explore in 3D" button that opens the live map's 3D view with the
+      analyzed route drawn at its altitudes, each stretch colored by the forecast category where and
+      when the flight passes, over a faint curtain to the ground. The view is fitted to the route, set
+      to its cruise level band and to the forecast hour nearest its roughest point, and the turbulence
+      blocks, level rail, time slider and camera can all be changed from there.
+    details: >-
+      Hovering the route shows the flight level, time and minutes after takeoff, category, EDR and
+      data source at that point. A banner names the route, its departure and the path it follows,
+      and its close button hides the route. The route is handed over in local storage with
+      `/map?view=3d&route3d=1`, so a reload keeps it.
+    source:
+      text: >-
+        still not seeing flight list nor a way to play around in 3d with turbulence along planned
+        route (or average route based on past flight plans when past flight plans are similar enough
+        to one another) or geodesic if neither available
+      reference: Giulio, turbol project thread, 2026-10-12, on prod's Analyze page for JFK to MXP
   - id: route-map-legend
     description: >-
       The analysis map has a legend explaining the ribbon colours (forecast category), what the line is
-      (a great-circle route, or the flight's flown track and its date), the red ring (worst forecast
+      (the average of the route's recent tracks, the flight's flown track and its date, or a great circle), the red ring (worst forecast
       bump with its category and time) and the live aircraft when it is flying this route. Airport
       labels sit on the side away from the route.
   - id: aircraft-class-from-flight

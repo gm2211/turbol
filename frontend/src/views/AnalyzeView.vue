@@ -129,7 +129,7 @@
             @click="pickFlight(undefined)"
           >
             <b>Any flight</b>
-            <span class="muted">Great circle at {{ localTime(departureIso) }}</span>
+            <span class="muted">Typical path at {{ localTime(departureIso) }}</span>
           </button>
           <button
             v-for="f in schedule?.flights ?? []"
@@ -178,6 +178,16 @@
           @click="downloadForOffline"
         >
           Download for offline
+        </v-btn>
+        <v-btn
+          size="small"
+          color="#10324f"
+          variant="flat"
+          class="mb-3 ml-2"
+          prepend-icon="mdi-cube-outline"
+          @click="explore3d"
+        >
+          Explore in 3D
         </v-btn>
         <div class="stats">
           <div>
@@ -272,7 +282,8 @@ import {
   analyzeFlight,
   fetchSchedule,
   formatDuration,
-  lookupFlight
+  lookupFlight,
+  saveRoute3d
 } from '@/api/flights'
 import {
   type AircraftClass,
@@ -425,6 +436,28 @@ function toLocalInput(d: Date): string {
 const compass = (deg?: number) =>
   deg === undefined ? '?' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]
 const fmt = (iso?: string) => (iso ? formatUtc(iso) : '–')
+/** Opens the live map's 3D view with this route drawn at its altitudes, colored by its forecast. */
+function explore3d() {
+  const a = analysis.value
+  if (!a) return
+  const ends = [analyzedOrigin.value?.code, analyzedDestination.value?.code].filter(Boolean)
+  const flight =
+    selectedFlight.value?.flightNumber ?? selectedFlight.value?.callsign ?? lookup.value?.callsign
+  saveRoute3d({
+    label: [
+      ends.join(' → '),
+      flight,
+      `departs ${new Date(a.start).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    path: a.path?.description,
+    start: a.start,
+    points: a.points
+  })
+  router.push('/map?view=3d&route3d=1')
+}
+
 const localTime = (iso: string) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 

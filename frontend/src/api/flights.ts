@@ -86,8 +86,8 @@ export interface RouteAnalysis {
     /** Sources still filling in after a server restart: missing data may be on its way. */
     loading?: string[]
   }
-  /** Where the line came from: a great circle, or the track this flight flew on an earlier day. */
-  path?: { kind: 'greatCircle' | 'flown'; description: string; flownOn?: string }
+  /** Where the line came from: the average of the route's recent tracks, one flight's own track, or a great circle. */
+  path?: { kind: 'greatCircle' | 'average' | 'flown'; description: string; flownOn?: string }
 }
 
 export interface AnalyzeRequest {
@@ -199,4 +199,33 @@ export async function searchAirports(query: string): Promise<AirportResult[]> {
 export function formatDuration(minutes: number): string {
   const m = Math.round(minutes)
   return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m} min`
+}
+
+/** An analyzed route handed from Analyze to the live map's 3D view (/map?view=3d&route3d=1). */
+export interface Route3D {
+  /** e.g. "JFK → MXP · DAL184 · Tue 22:00". */
+  label: string
+  /** Where the line came from (an average of recent tracks, one flown track, a great circle). */
+  path?: string
+  start: string
+  points: RoutePoint[]
+}
+
+const route3dKey = 'turbol.route3d'
+
+export function saveRoute3d(route: Route3D): void {
+  try {
+    localStorage.setItem(route3dKey, JSON.stringify(route))
+  } catch {
+    // Storage full or blocked: the 3D view just opens without the route.
+  }
+}
+
+export function loadRoute3d(): Route3D | undefined {
+  try {
+    const raw = localStorage.getItem(route3dKey)
+    return raw ? (JSON.parse(raw) as Route3D) : undefined
+  } catch {
+    return undefined
+  }
 }

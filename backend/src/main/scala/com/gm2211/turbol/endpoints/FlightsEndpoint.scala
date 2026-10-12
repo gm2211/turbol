@@ -126,58 +126,75 @@ final class FlightsEndpoint(
    * How strongly the aircraft feels turbulence comes from the flight's ADS-B type, not the user: its wing loading when
    * the type is in AircraftResponse's table, else its size class; a medium aircraft when the type isn't known.
    */
-  private def analyze(request: AnalyzeRequest): RouteAnalysis =
-    (for {
+  private def analyze(request: AnalyzeRequest): RouteAnalysis = {
+    val (origin, destination) = (request.origin, request.destination)
+    val departure = request.departure.getOrElse(Instant.now())
+    // The picked flight's own leg from the last day, when it was picked from /flights/scheduled.
+    val own = for {
       flown <- request.flown
       callsign <- request.callsign
-      leg <-
-        Try(schedules.leg(callsign, flown.hex, flown.takeoff, request.origin, request.destination)).toOption.flatten
-    } yield {
-      val start = leg.takeoff
-      val path = leg.points.map(p =>
-        PathPoint(Duration.between(start, p.time).toMillis / 60000.0, p.lat, p.lon, p.altitudeFt)
-      )
-      val aircraft = AircraftResponse.fromAdsb(None, leg.typeCode)
-      val analysis = RouteAnalyzer.analyzePath(store, path, request.departure.getOrElse(Instant.now()), aircraft)
-      val day = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneOffset.UTC).format(start)
-      val typeNote = leg.typeCode.filter(_ => aircraft.basis == "class").map(t =>
-        s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
-      )
-      analysis.copy(
-        aircraftType = leg.typeCode,
-        summary = analysis.summary.copy(notes = analysis.summary.notes ++ typeNote),
-        path =
-          Some(PathInfo("flown", s"${leg.callsign}'s flown track on $day (UTC), moved to this departure", Some(start)))
-      )
-    }).getOrElse(analyzeGreatCircle(request))
+      leg <- Try(schedules.leg(callsign, flown.hex, flown.takeoff, origin, destination)).toOption.flatten
+    } yield leg
+    val live =
+      if (own.isDefined) None else request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
+    val aircraft = own
+      .map(l => AircraftResponse.fromAdsb(None, l.typeCode))
+      .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))
+      .getOrElse(AircraftResponse.medium)
 
-  private def analyzeGreatCircle(request: AnalyzeRequest): RouteAnalysis = {
-    val live = request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
-    val aircraft = live.fold(AircraftResponse.medium)(a => AircraftResponse.fromAdsb(a.category, a.typeCode))
-    val analysis = RouteAnalyzer.analyzeFlight(
-      store,
-      request.origin.lat,
-      request.origin.lon,
-      request.destination.lat,
-      request.destination.lon,
-      request.departure.getOrElse(Instant.now()),
-      request.cruiseAltitudeFt,
-      aircraft
+    // The path, best first: a filed flight plan (not public, so never), the average of the route's recent tracks
+    // when they agree, the flight's own recent track, a great circle.
+    val day = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneOffset.UTC)
+    val average = RouteScheduleService.averagePath(Try(schedules.cachedLegs(origin, destination)).getOrElse(Seq.empty))
+    val path: Option[(IndexedSeq[PathPoint], PathInfo)] = average
+      .map(a =>
+        a.points -> PathInfo(
+          "average",
+          s"Average of ${a.legs} tracks flown on this route in the last day (all within ${math.round(a.spreadKm)} km of it)"
+        )
+      )
+      .orElse(own.map(l =>
+        RouteScheduleService.pathOf(l) -> PathInfo(
+          "flown",
+          s"${l.callsign}'s flown track on ${day.format(l.takeoff)} (UTC), moved to this departure; " +
+            "the route's recent tracks differ too much to average",
+          Some(l.takeoff)
+        )
+      ))
+    val analysis = path match {
+      case Some((points, info)) => RouteAnalyzer.analyzePath(store, points, departure, aircraft).copy(path = Some(info))
+      case None =>
+        RouteAnalyzer
+          .analyzeFlight(
+            store,
+            origin.lat,
+            origin.lon,
+            destination.lat,
+            destination.lon,
+            departure,
+            request.cruiseAltitudeFt,
+            aircraft
+          )
+          .copy(path =
+            Some(PathInfo("greatCircle", "Great-circle route: no filed or recent flown routes to follow"))
+          )
+    }
+
+    val typeCode = own.flatMap(_.typeCode).orElse(live.flatMap(_.typeCode))
+    val pathNote = Option.when(request.flown.isDefined && own.isEmpty)(
+      "This flight's recent track couldn't be loaded."
     )
     val note =
-      if (live.isDefined) None
+      if (own.isDefined || live.isDefined) None
       else if (request.callsign.exists(_.nonEmpty))
         Some("Aircraft type unknown (the flight isn't broadcasting it right now): assumed a medium aircraft.")
       else Some("No flight number, so the aircraft type is unknown: assumed a medium aircraft.")
     val typeNote = aircraft.typeCode.filter(_ => aircraft.basis == "class").map(t =>
       s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
     )
-    val pathNote =
-      request.flown.map(_ => "This flight's earlier track couldn't be loaded, so the route is a great circle.")
     analysis.copy(
-      aircraftType = live.flatMap(_.typeCode),
-      summary = analysis.summary.copy(notes = analysis.summary.notes ++ pathNote ++ note ++ typeNote),
-      path = Some(PathInfo("greatCircle", "Great-circle route: filed routes aren't public"))
+      aircraftType = typeCode,
+      summary = analysis.summary.copy(notes = analysis.summary.notes ++ pathNote ++ note ++ typeNote)
     )
   }
 
