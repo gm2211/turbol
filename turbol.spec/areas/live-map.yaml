@@ -16,10 +16,15 @@ behaviors:
       text: too slow - 40s to fully load - should take under 1s - if we want to gradually populate aircrafts, that's ok
   - id: flights-toggle
     description: >-
-      The map opens with turbulence only. A Flights selector (None by default, remembered per
-      browser) adds either every airborne aircraft in view or a random sample of 100.
+      The map opens with turbulence only, and its Flights selector starts on None on every visit (an
+      earlier choice is not remembered). Picking an option adds either every airborne aircraft in
+      view or a random sample of 100.
     source:
       text: starting with just the map with turbulence, then having a toggle to show all flights
+    details: >-
+      Changed 2026-10-12: the selector used to remember the last choice per browser; Giulio asked
+      for it to always start on None ("default selection should be no flights displayed", turbol
+      project chat, 2026-10-12 05:40Z).
   - id: flights-toggle-fits-panel
     description: >-
       The Flights selector fits inside the map's panel on desktop and phone widths, with every
