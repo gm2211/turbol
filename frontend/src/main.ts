@@ -34,6 +34,30 @@ app.use(vuetify)
 
 app.mount('#app')
 
+// The service worker keeps the app on the phone so it opens with no connection (see src/sw.ts).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .catch((e) => console.warn('Offline support unavailable', e))
+  })
+}
+
+// After a deploy, an open page can ask for a file of the old build that is gone: reload into the new build, which
+// the service worker already has. Only once a minute, so a file that can't load offline doesn't loop.
+window.addEventListener('vite:preloadError', (event) => {
+  const key = 'turbol.reloadedForNewBuild'
+  try {
+    const last = Number(sessionStorage.getItem(key) ?? 0)
+    if (Date.now() - last < 60_000) return
+    sessionStorage.setItem(key, String(Date.now()))
+  } catch {
+    return
+  }
+  event.preventDefault()
+  window.location.reload()
+})
+
 if (import.meta.env.DEV) {
   axios.defaults.baseURL = 'http://localhost:8081'
 }

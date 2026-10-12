@@ -46,3 +46,17 @@ behaviors:
     source:
       text: should still be able to use gps / dead reconing / inertia /... to keep updating your flight
       reference: Giulio, turbol project chat, 2026-10-11 22:39Z (Offline and low-bandwidth UX design)
+  - id: opens-with-no-connection
+    description: >-
+      Once Turbol has been opened with a connection, it opens again with none (airplane mode, a
+      captive portal, a dead or crawling link) and shows the app, not the browser's offline page.
+    details: >-
+      The offline app shell from the first phase Giulio picked. When the connection works, opening
+      the app still gets the latest deploy.
+    source:
+      text: Offline Fly
+      reference: >-
+        Giulio's answer on the decision card "Build which first: the offline Fly view or the
+        best-flight Plan flow?", whose Offline Fly option read "Four PRs: Flight Pack at the gate,
+        offline app shell, on-phone sampler, Fly view.", Offline and low-bandwidth UX design
+        thread, 2026-10-12 00:44Z
