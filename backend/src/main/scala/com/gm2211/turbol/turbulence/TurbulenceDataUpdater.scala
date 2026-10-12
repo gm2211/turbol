@@ -14,6 +14,7 @@ import java.nio.file.{Files, Path, Paths}
 import java.time.temporal.ChronoUnit
 import java.time.{Duration, Instant}
 import java.util.Comparator
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -119,8 +120,13 @@ final class TurbulenceDataUpdater(
       IO(log.warn("Turbulence refresh failed", safe("product", name), unsafe("error", e)))
     ) >> IO(store.loaded(name)) >> after >> IO.sleep(every)).foreverM
 
-  /** Load the newest complete nowcast and forecast left on disk by a previous run. */
-  def loadCached(): Unit = {
+  private val cacheLoaded = AtomicBoolean(false)
+
+  /**
+   * Load the newest complete nowcast and forecast left on disk by a previous run (or handed over by it), once: the
+   * launcher does it before the server starts answering, so the tiles a visitor opens on are already rendered.
+   */
+  def loadCached(): Unit = if (cacheLoaded.compareAndSet(false, true)) {
     subdirs(nowcastDir)
       .filter(d => Files.exists(d.resolve(completeMarker)))
       .maxByOption(_.getFileName.toString.toLong)
