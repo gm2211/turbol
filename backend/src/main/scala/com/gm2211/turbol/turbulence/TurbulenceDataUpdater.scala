@@ -77,6 +77,10 @@ final class TurbulenceDataUpdater(
   private val forecastDir = dataDir.resolve("forecast")
   private val globalDir = dataDir.resolve("global")
 
+  // One decode at a time across the three loops: each holds tens of MB of grids while it runs, and on a fresh start
+  // all three decode for minutes on a fraction of a CPU, which together ran the heap out. Downloads still overlap.
+  private val decoding = new Object
+
   // GTGN lands on NOMADS ~2-3 min after each quarter hour; a one-minute poll is two directory listings. The loops are
   // independent so a long forecast download (18 hours of GRIB) never holds back the next nowcast. GFS cycles land
   // every 6 hours, so the global layer checks every 10 minutes.
@@ -169,7 +173,7 @@ final class TurbulenceDataUpdater(
     val tmp = Files.createTempFile(nowcastDir, "gtgn", ".grib2")
     try {
       Http.download(file.url, tmp): Unit
-      val layers = GribDecoder.decodeToLayers(tmp, dir)
+      val layers = decoding.synchronized(GribDecoder.decodeToLayers(tmp, dir))
       if (layers.size < 51) {
         deleteRecursively(dir)
         throw RuntimeException(s"incomplete GTGN file ${file.url}: ${layers.size} levels")
@@ -211,7 +215,7 @@ final class TurbulenceDataUpdater(
     val tmp = Files.createTempFile(cycleDir, "gtg", ".grib2")
     try {
       val messages = NomadsClient.fetchGtgLevels(cycle, hour, forecastLevelsFt, tmp)
-      val layers = GribDecoder.decodeToLayers(tmp, hourDir, forecastLevelsFt)
+      val layers = decoding.synchronized(GribDecoder.decodeToLayers(tmp, hourDir, forecastLevelsFt))
       require(layers.size == forecastLevelsFt.size, s"F$hour: got ${layers.size} of ${forecastLevelsFt.size} levels")
       log.info("Fetched GTG forecast hour", safe("hour", hour), safe("messages", messages))
       EdrFrame(FrameKind.Forecast, cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS), cycle.initTime, layers)
@@ -249,9 +253,11 @@ final class TurbulenceDataUpdater(
       NomadsClient.fetchGfsHour(cycle, hour, GfsTurbulence.pressureLevelsHpa, tmp): Unit
       val valid = cycle.initTime.plus(hour.toLong, ChronoUnit.HOURS)
       // WAFS from AWC is blended in where available; without it the hour is GFS-only rather than missing.
-      val throttle = new Throttle(globalCpuDuty)
-      val wafs = Try(Wafs.fetch(valid, cycle.initTime, throttle)).toOption.flatten
-      val layers = GfsTurbulence.decodeToLayers(tmp, hourDir, wafs.map(_._2), throttle)
+      val (wafs, layers) = decoding.synchronized {
+        val throttle = new Throttle(globalCpuDuty)
+        val wafs = Try(Wafs.fetch(valid, cycle.initTime, throttle)).toOption.flatten
+        (wafs, GfsTurbulence.decodeToLayers(tmp, hourDir, wafs.map(_._2), throttle))
+      }
       wafs.foreach { case (wafsCycle, _) =>
         Files.writeString(hourDir.resolve(wafsMarker), wafsCycle.getEpochSecond.toString): Unit
       }

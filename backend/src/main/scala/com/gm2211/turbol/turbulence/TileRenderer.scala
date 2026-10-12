@@ -24,7 +24,12 @@ import scala.math.*
  */
 final class TileRenderer {
   private val tileSize = 256
-  private val cache: Cache[String, Array[Byte]] = CacheBuilder.newBuilder().maximumSize(3000).build()
+  // Capped by size (tiles are ~3 KB, up to ~25 KB) so a busy map can't crowd the heap.
+  private val cache: Cache[String, Array[Byte]] = CacheBuilder
+    .newBuilder()
+    .maximumWeight(12L * 1024 * 1024)
+    .weigher((key: String, png: Array[Byte]) => png.length + 2 * key.length + 64)
+    .build()
   private val thresholds = Thresholds.byClass(AircraftClass.Medium)
 
   private def argb(a: Double, r: Int, g: Int, b: Int): Int = (rint(a * 255).toInt << 24) | (r << 16) | (g << 8) | b
