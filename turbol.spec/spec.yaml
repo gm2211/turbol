@@ -17,6 +17,7 @@ areas:
   - areas/route-analysis.yaml
   - areas/live-map.yaml
   - areas/follow-flight.yaml
+  - areas/offline-flight.yaml
   - areas/view-3d.yaml
   - areas/airports.yaml
   - areas/deployment.yaml
