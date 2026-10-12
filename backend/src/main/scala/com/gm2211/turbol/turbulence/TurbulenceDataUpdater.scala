@@ -84,8 +84,17 @@ final class TurbulenceDataUpdater(
     IO.blocking(loadCached()) >>
       IO.both(
         poll("nowcast", 1.minute)(refreshNowcast()),
-        IO.both(poll("forecast", 3.minutes)(refreshForecast()), poll("global", 10.minutes)(refreshGlobal()))
+        IO.both(poll("forecast", 3.minutes)(refreshForecast()), globalLoop)
       ).void
+
+  // TURBOL_GLOBAL_LAYER=off skips GFS downloads (e.g. on a small instance); "global" still counts as loaded so Flight
+  // Packs don't wait for it.
+  private val globalEnabled: Boolean = !sys.env.get("TURBOL_GLOBAL_LAYER").contains("off")
+
+  private def globalLoop: IO[Nothing] =
+    if (globalEnabled) poll("global", 10.minutes)(refreshGlobal())
+    else IO(log.info("Global turbulence layer disabled by TURBOL_GLOBAL_LAYER=off")) >> IO(store.loaded("global")) >>
+      IO.never
 
   // After its first check, found or failed, a source no longer holds back Flight Packs.
   private def poll(name: String, every: FiniteDuration)(refresh: => Unit): IO[Nothing] =
