@@ -31,21 +31,35 @@ export type SyncResult =
   | { status: 'updated' | 'current'; flight: SavedFlight }
   /** No usable connection (offline, a captive portal, a dead link); `flight` is unchanged or partly downloaded. */
   | { status: 'offline'; flight: SavedFlight; error: string }
+  /**
+   * Turbol has just restarted and is still loading turbulence data, so it has no whole pack to give yet. `flight` is
+   * unchanged, keeping any pack it has; ask again after `retryAfterMs`.
+   */
+  | { status: 'loading'; flight: SavedFlight; retryAfterMs: number }
 
 class Unreachable extends Error {}
 
-/** Fetch with a deadline: a crawling plane link counts as no link. */
+class ServerLoading extends Error {
+  retryAfterMs: number
+  constructor(retryAfterMs: number) {
+    super('Turbol is still loading turbulence data')
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
+/** Fetch with a deadline: a crawling plane link counts as no link. Statuses in `allow` come back like a 200. */
 async function fetchWithin(
   f: typeof fetch,
   url: string,
   timeoutMs: number,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  allow: number[] = []
 ): Promise<Response> {
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), timeoutMs)
   try {
     const res = await f(url, { ...init, signal: abort.signal })
-    if (!res.ok) throw new Unreachable(`${url}: HTTP ${res.status}`)
+    if (!res.ok && !allow.includes(res.status)) throw new Unreachable(`${url}: HTTP ${res.status}`)
     return res
   } catch (e) {
     throw e instanceof Unreachable ? e : new Unreachable(`${url}: ${e}`)
@@ -76,8 +90,17 @@ export async function fetchManifest(
   f: typeof fetch = fetch,
   timeoutMs = 20000
 ): Promise<PackManifest> {
-  const res = await fetchWithin(f, manifestUrl(flight), timeoutMs, { cache: 'no-store' })
+  const res = await fetchWithin(f, manifestUrl(flight), timeoutMs, { cache: 'no-store' }, [503])
   expectType(res, 'application/json')
+  if (res.status === 503) {
+    // Turbol's own 503 (JSON, which a captive portal or the host's error page isn't): just restarted, still loading.
+    const body = await res.json().catch(() => undefined)
+    if (body?.loading !== true) throw new Unreachable(`${res.url}: HTTP 503`)
+    const after = Number(body.retryAfterSeconds)
+    throw new ServerLoading(
+      Number.isFinite(after) ? Math.min(300, Math.max(10, after)) * 1000 : 30_000
+    )
+  }
   const m = (await res.json()) as PackManifest
   if (m?.version !== packVersion || !Array.isArray(m.frames))
     throw new Error(`Unexpected pack version ${m?.version}: reload Turbol to update it`)
@@ -121,6 +144,8 @@ export async function syncFlight(
     manifest = await fetchManifest(flight, f, options.manifestTimeoutMs)
   } catch (e) {
     if (e instanceof Unreachable) return { status: 'offline', flight, error: e.message }
+    if (e instanceof ServerLoading)
+      return { status: 'loading', flight, retryAfterMs: e.retryAfterMs }
     throw e
   }
   if (sameFrames(manifest, flight.manifest)) {

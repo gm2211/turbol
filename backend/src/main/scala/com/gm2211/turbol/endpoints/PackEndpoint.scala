@@ -12,7 +12,7 @@ import com.gm2211.turbol.util.BackendSerialization
 import com.google.common.cache.{Cache, CacheBuilder, Weigher}
 import io.circe.generic.auto.*
 import org.http4s.circe.*
-import org.http4s.headers.{`Accept-Encoding`, `Cache-Control`, `Content-Encoding`, `Content-Type`}
+import org.http4s.headers.{`Accept-Encoding`, `Cache-Control`, `Content-Encoding`, `Content-Type`, `Retry-After`}
 import org.http4s.{CacheDirective, ContentCoding, Header, HttpRoutes, MediaType, Request}
 import org.typelevel.ci.*
 
@@ -55,7 +55,13 @@ final case class PackManifest(
   generatedAt: Instant
 )
 
+/** The manifest's answer while the server is still loading turbulence data after starting (HTTP 503). */
+final case class StillLoading(loading: Boolean, retryAfterSeconds: Long, sources: Seq[String])
+
 object PackEndpoint {
+  /** How soon a phone should ask again while the server is loading: its sources come in over a few minutes. */
+  val retryAfterSeconds: Long = 30
+
   /** Coordinates go into slab URLs, so they are rounded (to ~10 m) and printed the same way every time. */
   def formatPoint(lat: Double, lon: Double): String = String.format(Locale.ROOT, "%.4f,%.4f", lat, lon)
 
@@ -150,9 +156,20 @@ final class PackEndpoint(store: TurbulenceStore) extends Endpoint with BackendSe
     case GET -> Root / "manifest" :? Origin(o) +& Destination(d) +& Departure(dep) =>
       (parsePoint(o), parsePoint(d), parseInstant(dep)) match {
         case (Some(from), Some(to), Some(departure)) if routeKm(from, to) >= FlightPack.minRouteKm =>
-          val grid = PackGrid(from.lat, from.lon, to.lat, to.lon)
-          val m = manifest(grid, store.current, from, to, departure, Instant.now())
-          Ok(m.toJson.deepDropNullValues).map(_.putHeaders(`Cache-Control`(CacheDirective.`no-cache`())))
+          val data = store.current
+          if (data.loading.nonEmpty)
+            // Just started: a pack now would hold a few frames of what is on its way. The phone keeps the pack it has
+            // and asks again.
+            ServiceUnavailable(StillLoading(loading = true, retryAfterSeconds, data.loading.toSeq.sorted).toJson)
+              .map(_.putHeaders(
+                `Retry-After`.unsafeFromLong(retryAfterSeconds),
+                `Cache-Control`(CacheDirective.`no-store`)
+              ))
+          else {
+            val grid = PackGrid(from.lat, from.lon, to.lat, to.lon)
+            val m = manifest(grid, data, from, to, departure, Instant.now())
+            Ok(m.toJson.deepDropNullValues).map(_.putHeaders(`Cache-Control`(CacheDirective.`no-cache`())))
+          }
         case (Some(_), Some(_), Some(_)) => BadRequest("origin and destination are too close for a pack")
         case _ => BadRequest("expected o=lat,lon&d=lat,lon&dep=<ISO time or epoch seconds>")
       }

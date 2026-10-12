@@ -28,7 +28,12 @@ final case class TurbulenceData(
   forecast: Vector[EdrFrame],
   global: Vector[EdrFrame] = Vector.empty,
   /** Newest WAFS cycle blended into the global layer, if any (see [[Wafs]]). */
-  globalWafsIssued: Option[Instant] = None
+  globalWafsIssued: Option[Instant] = None,
+  /**
+   * Sources (nowcast, forecast, global) not yet checked since the server started. Until each has been, the data can
+   * be a few frames of what is on its way, so Flight Packs wait (see [[TurbulenceDataUpdater]]).
+   */
+  loading: Set[String] = Set.empty
 ) {
   def forecastIssued: Option[Instant] = forecast.headOption.map(_.issued)
   def globalIssued: Option[Instant] = global.headOption.map(_.issued)
@@ -48,10 +53,15 @@ final case class TurbulenceData(
  * Outside the GTG grid, or where GTG has no value, the coarse global layer answers instead; across the last
  * [[LambertGrid.blendCells]] cells inside the grid the two are mixed linearly so there is no seam.
  */
-final class TurbulenceStore {
-  private val ref = new AtomicReference(TurbulenceData(None, Vector.empty))
+final class TurbulenceStore(loading: Set[String] = Set.empty) {
+  private val ref = new AtomicReference(TurbulenceData(None, Vector.empty, loading = loading))
 
   def current: TurbulenceData = ref.get()
+
+  /** A source has been checked once since the server started, whether or not it found data. */
+  def loaded(source: String): Unit =
+    ref.updateAndGet(d => if (d.loading(source)) d.copy(loading = d.loading - source) else d): Unit
+
   def setNowcast(frame: EdrFrame): Unit = ref.updateAndGet(_.copy(nowcast = Some(frame))): Unit
   def setForecast(frames: Vector[EdrFrame]): Unit =
     ref.updateAndGet(_.copy(forecast = frames.sortBy(_.validTime))): Unit
