@@ -101,7 +101,17 @@ object MoreExecutors extends BackendLogging {
         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
         .start()
       require(renice.waitFor() == 0, s"renice exited with ${renice.exitValue()}")
-    }.failed.foreach(e => log.warn("Background thread keeps its normal CPU priority", e))
+      niceOfCurrentThread
+    }.fold(
+      e => log.warn("Background thread keeps its normal CPU priority", e),
+      nice => log.info("Background thread priority lowered", safe("nice", nice))
+    )
+
+  /** The calling thread's nice value: field 19 of /proc/thread-self/stat, counted after the command in parentheses. */
+  def niceOfCurrentThread: Int = {
+    val stat = Files.readString(Paths.get("/proc/thread-self/stat"))
+    stat.substring(stat.lastIndexOf(')') + 2).split(' ')(16).toInt
+  }
 
   private object ThreadFactoryBuilder extends BackendLogging {
 
