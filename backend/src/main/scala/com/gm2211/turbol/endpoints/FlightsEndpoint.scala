@@ -124,11 +124,13 @@ final class FlightsEndpoint(
 
   /**
    * How strongly the aircraft feels turbulence comes from the flight's ADS-B type, not the user: its wing loading when
-   * the type is in AircraftResponse's table, else its size class; a medium aircraft when the type isn't known.
+   * the type is in AircraftResponse's table, else its size class. When the type isn't known, the class typical for the
+   * route's length (a widebody for long haul), marked as assumed.
    */
   private def analyze(request: AnalyzeRequest): RouteAnalysis = {
     val (origin, destination) = (request.origin, request.destination)
     val departure = request.departure.getOrElse(Instant.now())
+    val distanceKm = RouteAnalyzer.greatCircleKm(origin.lat, origin.lon, destination.lat, destination.lon)
     // The picked flight's own leg from the last day, when it was picked from /flights/scheduled.
     val own = for {
       flown <- request.flown
@@ -140,7 +142,7 @@ final class FlightsEndpoint(
     val aircraft = own
       .map(l => AircraftResponse.fromAdsb(None, l.typeCode))
       .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))
-      .getOrElse(AircraftResponse.medium)
+      .getOrElse(AircraftResponse.assumedFor(distanceKm))
 
     // The path, best first: a filed flight plan (not public, so never), the average of the route's recent tracks
     // when they agree, the flight's own recent track, a great circle.
@@ -184,11 +186,17 @@ final class FlightsEndpoint(
     val pathNote = Option.when(request.flown.isDefined && own.isEmpty)(
       "This flight's recent track couldn't be loaded."
     )
+    val assumed = {
+      val km = f"${math.rint(distanceKm / 100) * 100}%,.0f"
+      if (aircraft.aircraftClass == AircraftClass.Heavy)
+        s"assumed a widebody, as on most $km km routes, with a typical heavy aircraft's sensitivity to turbulence."
+      else s"assumed a narrowbody like an A320, as on most $km km routes."
+    }
     val note =
       if (own.isDefined || live.isDefined) None
       else if (request.callsign.exists(_.nonEmpty))
-        Some("Aircraft type unknown (the flight isn't broadcasting it right now): assumed a medium aircraft.")
-      else Some("No flight number, so the aircraft type is unknown: assumed a medium aircraft.")
+        Some(s"Aircraft type unknown (the flight isn't broadcasting it right now): $assumed")
+      else Some(s"No flight picked, so the aircraft type is unknown: $assumed")
     val typeNote = aircraft.typeCode.filter(_ => aircraft.basis == "class").map(t =>
       s"No wing-loading data for $t yet: used a typical ${aircraft.aircraftClass.toString.toLowerCase} aircraft."
     )

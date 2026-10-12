@@ -660,6 +660,8 @@ watch(
   render
 )
 
+let overAircraft = false
+
 onMounted(() => {
   viewState = toDeck(props.view)
   deck = new Deck({
@@ -669,7 +671,11 @@ onMounted(() => {
     controller: { touchRotate: true },
     layers: buildLayers(),
     getTooltip: tooltip,
-    getCursor: deckCursor,
+    // Voxels are pickable only for their tooltip; keep the crosshair over them and show the pointer on aircraft.
+    onHover: (info: PickingInfo) => {
+      overAircraft = info.layer?.id === 'aircraft'
+    },
+    getCursor: ({ isDragging }: { isDragging: boolean }) => deckCursor(isDragging, overAircraft),
     onViewStateChange: ({ viewState: v }) => {
       viewState = v as MapViewState
       window.clearTimeout(moveTimer)

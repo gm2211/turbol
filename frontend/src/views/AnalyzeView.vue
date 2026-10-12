@@ -145,50 +145,44 @@
           </button>
         </div>
       </v-card>
-      <v-card class="panel verdict-card pa-4">
+      <v-card class="panel verdict-card px-4 py-3">
         <div class="eyebrow">Forecast verdict</div>
-        <v-chip
-          :color="categoryColors[analysis.summary.worstCategory]"
-          variant="flat"
-          class="mb-2"
-          label
-        >
-          Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
-        </v-chip>
-        <div class="verdict mb-3">{{ analysis.summary.verdict }}</div>
-        <v-btn
-          v-if="downloaded"
-          size="small"
-          :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
-          variant="flat"
-          class="mb-3"
-          :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
-          :to="{ path: '/analyze', query: { flight: downloaded.id } }"
-        >
-          {{ downloadedStatus?.ready ? 'Open downloaded flight' : downloadedStatus?.text }}
-        </v-btn>
-        <v-btn
-          v-else
-          size="small"
-          color="#10324f"
-          variant="flat"
-          class="mb-3"
-          prepend-icon="mdi-download"
-          :loading="downloading"
-          @click="downloadForOffline"
-        >
-          Download for offline
-        </v-btn>
-        <v-btn
-          size="small"
-          color="#10324f"
-          variant="flat"
-          class="mb-3 ml-2"
-          prepend-icon="mdi-cube-outline"
-          @click="explore3d"
-        >
-          Explore in 3D
-        </v-btn>
+        <div class="verdict-head">
+          <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" label>
+            Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
+          </v-chip>
+          <v-btn
+            v-if="downloaded"
+            size="small"
+            :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
+            variant="flat"
+            :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
+            :to="{ path: '/analyze', query: { flight: downloaded.id } }"
+          >
+            {{ downloadedStatus?.ready ? 'Open downloaded flight' : downloadedStatus?.text }}
+          </v-btn>
+          <v-btn
+            v-else
+            size="small"
+            color="#10324f"
+            variant="flat"
+            prepend-icon="mdi-download"
+            :loading="downloading"
+            @click="downloadForOffline"
+          >
+            Download for offline
+          </v-btn>
+          <v-btn
+            size="small"
+            color="#10324f"
+            variant="flat"
+            prepend-icon="mdi-cube-outline"
+            @click="explore3d"
+          >
+            Explore in 3D
+          </v-btn>
+        </div>
+        <div class="verdict mt-2 mb-3">{{ analysis.summary.verdict }}</div>
         <div class="stats">
           <div>
             <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
@@ -196,7 +190,9 @@
           <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
           <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
           <div><span>Aircraft</span>{{ aircraftLabel }}</div>
-          <div class="wide"><span>Ride</span>{{ responseLabel(response) }}</div>
+          <div v-if="response.basis === 'type'" class="wide">
+            <span>Ride</span>{{ responseLabel(response) }}
+          </div>
           <div class="wide">
             <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
             <template v-if="analysis.summary.worstMinute !== undefined">
@@ -205,7 +201,7 @@
             <template v-if="worstPoint"> · <span class="ring" /> on the map</template>
           </div>
         </div>
-        <div class="mt-3">
+        <div class="mt-2">
           <div v-for="c in shownCategories" :key="c" class="cat-row">
             <span class="swatch" :style="{ background: categoryColors[c] }" />
             <span class="cat-name">{{ categoryLabels[c] }}</span>
@@ -222,7 +218,7 @@
           class="mt-2 note"
           >{{ n }}</v-alert
         >
-        <div class="muted sources mt-3">
+        <div class="muted sources mt-2">
           GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
           {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
           {{ fmt(analysis.dataSources.forecastUntil) }}
@@ -241,6 +237,7 @@
           :worst-label="worstLabel"
           :aircraft="lookup?.live"
           :path-label="analysis.path?.description"
+          :cursor="hoverPoint"
           legend
         />
       </v-card>
@@ -250,6 +247,8 @@
           :segments="analysis.segments"
           :start-label="`Departure ${localTime(analysis.start)}`"
           :end-label="`Arrival ${localTime(arrival)}`"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
         <TurbulenceProfile
           class="mt-1"
@@ -257,6 +256,8 @@
           :light="thresholds.light"
           :moderate="thresholds.moderate"
           :height="100"
+          :hover-minute="hoverMinute"
+          @hover="hoverMinute = $event"
         />
       </v-card>
     </template>
@@ -283,6 +284,7 @@ import {
   fetchSchedule,
   formatDuration,
   lookupFlight,
+  pointAt,
   saveRoute3d
 } from '@/api/flights'
 import {
@@ -347,7 +349,10 @@ const thresholds = computed(() =>
 const aircraftLabel = computed(() => {
   const a = analysis.value
   if (!a) return ''
-  return a.aircraftType ? `${a.aircraftType} · ${a.aircraftClass}` : `${a.aircraftClass} (assumed)`
+  if (a.aircraftType) return `${a.aircraftType} · ${a.aircraftClass}`
+  if (a.aircraft?.basis === 'assumed')
+    return a.aircraftClass === 'Heavy' ? 'Widebody (assumed)' : 'Narrowbody (assumed)'
+  return `${a.aircraftClass} (assumed)`
 })
 /** Categories this flight actually has (Smooth always), so the breakdown stays short enough for one screen. */
 const shownCategories = computed(() =>
@@ -355,6 +360,14 @@ const shownCategories = computed(() =>
     (c) => c === 'Smooth' || (analysis.value?.summary.minutesByCategory[c] ?? 0) > 0
   )
 )
+/** The minute being read on the timeline (hover or drag), mirrored on the map. */
+const hoverMinute = ref<number>()
+const hoverPoint = computed(() =>
+  hoverMinute.value === undefined || !analysis.value
+    ? undefined
+    : pointAt(analysis.value.points, hoverMinute.value)
+)
+watch(analysis, () => (hoverMinute.value = undefined))
 const worstPoint = computed<[number, number] | undefined>(() => {
   const s = analysis.value?.summary
   return s?.worstLat !== undefined && s.worstLon !== undefined && s.worstCategory !== 'Smooth'
@@ -661,11 +674,12 @@ onMounted(async () => {
   gap: 8px;
 }
 @media (min-width: 960px) {
+  /* At least one screen; the verdict row grows rather than clip or scroll when its panel needs more room. */
   .analyze-page.has-result {
-    height: calc(100vh - 72px);
+    min-height: calc(100vh - 72px);
     display: grid;
     grid-template-columns: minmax(320px, 26%) 1fr;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       'form form'
       'flights flights'
@@ -678,7 +692,6 @@ onMounted(async () => {
   }
   .verdict-card {
     grid-area: verdict;
-    overflow-y: auto;
   }
   .map-card {
     grid-area: map;
@@ -1006,16 +1019,23 @@ onMounted(async () => {
   text-transform: uppercase;
   color: #334155;
 }
+.verdict-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
 .verdict {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 .stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-  font-size: 15px;
+  gap: 6px 12px;
+  font-size: 14px;
 }
 .stats .wide {
   grid-column: span 2;
@@ -1039,7 +1059,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .cat-name {
   width: 84px;
@@ -1053,10 +1074,10 @@ onMounted(async () => {
   color: #475569;
 }
 .sources {
-  font-size: 13px;
+  font-size: 12px;
 }
 .note {
-  font-size: 14px;
+  font-size: 13px;
 }
 /* The route's flights: one row of ticket stubs, scrolling sideways when there are many. */
 .flights-head {

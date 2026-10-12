@@ -201,6 +201,17 @@ export function formatDuration(minutes: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m} min`
 }
 
+/** The sampled point nearest `minute` into the flight; points are in time order. */
+export function pointAt(points: RoutePoint[], minute: number): RoutePoint | undefined {
+  let best: RoutePoint | undefined
+  for (const p of points) {
+    if (!best || Math.abs(p.minutesFromStart - minute) < Math.abs(best.minutesFromStart - minute))
+      best = p
+    else break
+  }
+  return best
+}
+
 /** An analyzed route handed from Analyze to the live map's 3D view (/map?view=3d&route3d=1). */
 export interface Route3D {
   /** e.g. "JFK → MXP · DAL184 · Tue 22:00". */
