@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.turbulence
 
-import cats.effect.IO
+import cats.effect.{Deferred, IO}
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.background.BackgroundJob
 
@@ -44,6 +44,9 @@ object TurbulenceDataUpdater {
    */
   val globalCpuDuty = 0.5
   val globalPauseBetweenHours: Duration = Duration.ofSeconds(20)
+
+  /** Longest the forecast and global layers wait for the nowcast's first check on a fresh start. */
+  val nowcastHeadStart: FiniteDuration = 4.minutes
 
   /** What the updater keeps fresh; a store starts with all of them loading (see [[TurbulenceData.loading]]). */
   val sources: Set[String] = Set("nowcast", "forecast", "global")
@@ -88,12 +91,18 @@ final class TurbulenceDataUpdater(
   // GTGN lands on NOMADS ~2-3 min after each quarter hour; a one-minute poll is two directory listings. The loops are
   // independent so a long forecast download (18 hours of GRIB) never holds back the next nowcast. GFS cycles land
   // every 6 hours, so the global layer checks every 10 minutes.
+  //
+  // On a fresh start (every deploy: the disk doesn't survive one) the nowcast goes first, since it's what the map opens
+  // on: the other two wait for its first check (or a few minutes) rather than take turns with it on the CPU and the
+  // decode lock, which left the map without turbulence for 4 minutes after a restart.
   override def run(): IO[Unit] =
-    IO.blocking(loadCached()) >>
+    IO.blocking(loadCached()) >> Deferred[IO, Unit].flatMap { nowcastChecked =>
       IO.both(
-        poll("nowcast", 1.minute)(refreshNowcast()),
-        IO.both(poll("forecast", 3.minutes)(refreshForecast()), globalLoop)
+        poll("nowcast", 1.minute)(refreshNowcast(), after = nowcastChecked.complete(()).void),
+        IO.race(nowcastChecked.get, IO.sleep(nowcastHeadStart)) >>
+          IO.both(poll("forecast", 3.minutes)(refreshForecast()), globalLoop)
       ).void
+    }
 
   // TURBOL_GLOBAL_LAYER=off skips GFS downloads (e.g. on a small instance); "global" still counts as loaded so Flight
   // Packs don't wait for it.
@@ -105,10 +114,10 @@ final class TurbulenceDataUpdater(
       IO.never
 
   // After its first check, found or failed, a source no longer holds back Flight Packs.
-  private def poll(name: String, every: FiniteDuration)(refresh: => Unit): IO[Nothing] =
+  private def poll(name: String, every: FiniteDuration)(refresh: => Unit, after: IO[Unit] = IO.unit): IO[Nothing] =
     (IO.blocking(refresh).handleErrorWith(e =>
       IO(log.warn("Turbulence refresh failed", safe("product", name), unsafe("error", e)))
-    ) >> IO(store.loaded(name)) >> IO.sleep(every)).foreverM
+    ) >> IO(store.loaded(name)) >> after >> IO.sleep(every)).foreverM
 
   /** Load the newest complete nowcast and forecast left on disk by a previous run. */
   def loadCached(): Unit = {

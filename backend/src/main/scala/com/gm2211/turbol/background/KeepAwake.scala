@@ -24,5 +24,8 @@ final class KeepAwake(publicUrl: String, every: FiniteDuration = 10.minutes) ext
 }
 
 object KeepAwake {
-  def fromEnv: Option[KeepAwake] = sys.env.get("RENDER_EXTERNAL_URL").filter(_.nonEmpty).map(KeepAwake(_))
+  /** The service's public URL on Render; unset elsewhere. */
+  def publicUrl: Option[String] = sys.env.get("RENDER_EXTERNAL_URL").filter(_.nonEmpty)
+
+  def fromEnv: Option[KeepAwake] = publicUrl.map(KeepAwake(_))
 }
