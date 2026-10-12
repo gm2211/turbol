@@ -40,4 +40,11 @@ class AircraftResponseTest extends BaseTest {
     Thresholds.classify(0.13) shouldBe TurbulenceCategory.Light
     Thresholds.byClass(AircraftClass.Medium) shouldBe Thresholds.reference
   }
+
+  test("an unknown aircraft is assumed from the route length: a widebody on long haul") {
+    AircraftResponse.assumedFor(6400).aircraftClass shouldBe AircraftClass.Heavy // JFK-MXP
+    AircraftResponse.assumedFor(6400).basis shouldBe "assumed"
+    AircraftResponse.assumedFor(6400).factor shouldBe 0.8
+    AircraftResponse.assumedFor(1200).aircraftClass shouldBe AircraftClass.Medium
+  }
 }

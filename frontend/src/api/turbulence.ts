@@ -16,7 +16,8 @@ export interface AircraftResponse {
   /** Mid-cruise weight over wing area, kg/m², when the type is known. */
   wingLoadingKgM2?: number
   factor: number
-  basis: 'type' | 'class'
+  /** type: its wing loading; class: its size class; assumed: unknown aircraft, class guessed from route length. */
+  basis: 'type' | 'class' | 'assumed'
 }
 
 /** Backend AircraftResponse.classFactor: for aircraft whose type isn't known. */
@@ -26,16 +27,27 @@ export function classResponse(aircraftClass: AircraftClass): AircraftResponse {
   return { aircraftClass, factor: classFactor[aircraftClass], basis: 'class' }
 }
 
-/** How a response reads to a passenger: "Wing loading 684 kg/m² · feels it 19% less than an A320". */
+/**
+ * How a response reads to a passenger. Only a known type's wing loading backs a comparison with the A320:
+ * "Wing loading 684 kg/m² · feels turbulence 19% less than an A320". Otherwise it says what was assumed.
+ */
 export function responseLabel(r: AircraftResponse): string {
-  const pct = Math.round(Math.abs(r.factor - 1) * 100)
-  const feel =
-    pct === 0
-      ? 'feels it like an A320'
-      : `feels it ${pct}% ${r.factor < 1 ? 'less' : 'more'} than an A320`
-  return r.basis === 'type' && r.wingLoadingKgM2 !== undefined
-    ? `Wing loading ${Math.round(r.wingLoadingKgM2)} kg/m² · ${feel}`
-    : `Typical ${r.aircraftClass.toLowerCase()} aircraft · ${feel}`
+  if (r.basis === 'type' && r.wingLoadingKgM2 !== undefined) {
+    const pct = Math.round(Math.abs(r.factor - 1) * 100)
+    const feel =
+      pct < 3
+        ? 'feels turbulence about as much as an A320'
+        : `feels turbulence ${pct}% ${r.factor < 1 ? 'less' : 'more'} than an A320`
+    return `Wing loading ${Math.round(r.wingLoadingKgM2)} kg/m² · ${feel}`
+  }
+  const size = r.aircraftClass.toLowerCase()
+  if (r.basis === 'assumed')
+    return r.aircraftClass === 'Heavy'
+      ? 'Aircraft unknown: assumed a widebody, usual for this distance'
+      : 'Aircraft unknown: assumed a narrowbody, usual for this distance'
+  return r.typeCode
+    ? `No wing-loading data for ${r.typeCode}: rated as a typical ${size} aircraft`
+    : `Rated as a typical ${size} aircraft`
 }
 
 /** The reference thresholds as EDR seen by an aircraft with response `factor`. */
