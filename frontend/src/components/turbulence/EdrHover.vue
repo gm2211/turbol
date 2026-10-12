@@ -41,60 +41,89 @@ interface Tip {
 }
 
 const tip = ref<Tip>()
-const cache = new Map<string, Promise<TurbulenceColumn | undefined>>()
+/** In-flight or finished lookups, and the finished ones by cell so a revisit shows instantly. */
+const pending = new Map<string, Promise<TurbulenceColumn | undefined>>()
+const resolved = new Map<string, TurbulenceColumn>()
 const CELL_DEG = 0.1
 let timer: number | undefined
 let lastLatLng: L.LatLng | undefined
-let seq = 0
+/** Cell (frame + snapped lat/lon) currently under the pointer; results for any other cell are dropped. */
+let currentKey: string | undefined
 
-function column(frameId: string, lat: number, lon: number) {
-  const la = Math.round(lat / CELL_DEG) * CELL_DEG
+interface Cell {
+  key: string
+  frameId: string
+  lat: number
+  lon: number
+}
+
+function cellAt(frameId: string, latlng: L.LatLng): Cell {
+  const lon = ((((latlng.lng + 180) % 360) + 360) % 360) - 180
+  const la = Math.round(latlng.lat / CELL_DEG) * CELL_DEG
   const lo = Math.round(lon / CELL_DEG) * CELL_DEG
-  const key = `${frameId}:${la.toFixed(1)}:${lo.toFixed(1)}`
-  let p = cache.get(key)
+  return { key: `${frameId}:${la.toFixed(1)}:${lo.toFixed(1)}`, frameId, lat: la, lon: lo }
+}
+
+function fetchCell(cell: Cell) {
+  let p = pending.get(cell.key)
   if (!p) {
-    if (cache.size > 5000) cache.clear()
-    p = fetchColumn(frameId, la, lo).catch(() => {
-      cache.delete(key)
-      return undefined
-    })
-    cache.set(key, p)
+    if (pending.size > 5000) {
+      pending.clear()
+      resolved.clear()
+    }
+    p = fetchColumn(cell.frameId, cell.lat, cell.lon).then(
+      (col) => {
+        resolved.set(cell.key, col)
+        return col
+      },
+      () => {
+        pending.delete(cell.key)
+        return undefined
+      }
+    )
+    pending.set(cell.key, p)
   }
   return p
 }
 
-async function lookup(latlng: L.LatLng, point: L.Point) {
+function render(x: number, y: number, col: TurbulenceColumn | undefined, loading: boolean) {
+  const level = col?.levels.find((l) => l.levelFt === props.levelFt)
+  tip.value = { x, y, loading, edr: level?.edr, category: level?.category ?? 'NoData' }
+}
+
+async function lookup(cell: Cell) {
+  const col = await fetchCell(cell)
+  if (cell.key !== currentKey || !tip.value) return
+  render(tip.value.x, tip.value.y, col, false)
+}
+
+/** Show the tooltip at the pointer: the cell's value if known, else the placeholder until it loads. */
+function update(latlng: L.LatLng, x: number, y: number, delay: number) {
+  lastLatLng = latlng
+  window.clearTimeout(timer)
   const frameId = props.frameId
   if (!frameId) return
-  const mySeq = ++seq
-  const lon = ((((latlng.lng + 180) % 360) + 360) % 360) - 180
-  const col = await column(frameId, latlng.lat, lon)
-  if (mySeq !== seq || !tip.value) return
-  const level = col?.levels.find((l) => l.levelFt === props.levelFt)
-  tip.value = {
-    x: point.x,
-    y: point.y,
-    loading: false,
-    edr: level?.edr,
-    category: level?.category ?? 'NoData'
+  const cell = cellAt(frameId, latlng)
+  const known = resolved.get(cell.key)
+  if (known) {
+    currentKey = cell.key
+    render(x, y, known, false)
+  } else if (cell.key !== currentKey || tip.value?.loading !== false) {
+    currentKey = cell.key
+    render(x, y, undefined, true)
+    timer = window.setTimeout(() => lookup(cell), delay)
+  } else {
+    tip.value = { ...tip.value, x, y }
   }
 }
 
 function show(e: L.LeafletMouseEvent, delay: number) {
-  lastLatLng = e.latlng
-  const prev = tip.value
-  tip.value = {
-    ...(prev ?? { loading: true, category: 'NoData' }),
-    x: e.containerPoint.x,
-    y: e.containerPoint.y
-  }
-  window.clearTimeout(timer)
-  timer = window.setTimeout(() => lookup(e.latlng, e.containerPoint), delay)
+  update(e.latlng, e.containerPoint.x, e.containerPoint.y, delay)
 }
 
 function hide() {
   window.clearTimeout(timer)
-  seq++
+  currentKey = undefined
   tip.value = undefined
 }
 
@@ -105,8 +134,9 @@ const onTap = (e: L.LeafletMouseEvent) => {
 }
 
 function refresh() {
-  if (tip.value && lastLatLng && props.map)
-    lookup(lastLatLng, props.map.latLngToContainerPoint(lastLatLng))
+  if (!tip.value || !lastLatLng) return
+  currentKey = undefined
+  update(lastLatLng, tip.value.x, tip.value.y, 0)
 }
 
 watch(

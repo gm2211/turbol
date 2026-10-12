@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import { deckCursor } from '@/components/turbulence/mapCursor'
 import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
 import {
   Deck,
@@ -473,6 +474,7 @@ onMounted(() => {
     controller: { touchRotate: true },
     layers: buildLayers(),
     getTooltip: tooltip,
+    getCursor: deckCursor,
     onViewStateChange: ({ viewState: v }) => {
       viewState = v as MapViewState
       window.clearTimeout(moveTimer)
