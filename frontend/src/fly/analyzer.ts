@@ -22,6 +22,8 @@ export interface TurbulenceSource {
   nowcastValid?: number
   forecastIssued?: number
   forecastUntil?: number
+  /** The GFS cycle behind the coarse global layer used outside GTG, when the source has it. */
+  globalIssued?: number
 }
 
 /** The backend's Thresholds.byClass; a pack's manifest carries the server's current values. */
@@ -218,7 +220,6 @@ function analyze(
       nearGround: alt < nearGroundFt
     })
   }
-  const lastTime = times[times.length - 1]
   return {
     totalDistanceKm: totalKm,
     durationMinutes: points[points.length - 1]?.minutesFromStart ?? 0.0,
@@ -227,11 +228,12 @@ function analyze(
     aircraftClass,
     points,
     segments: segments(points),
-    summary: summarize(points, source, start, lastTime, options.now ?? Date.now()),
+    summary: summarize(points, times, source, start, options.now ?? Date.now()),
     dataSources: {
       nowcastValid: source.nowcastValid === undefined ? undefined : iso(source.nowcastValid),
       forecastIssued: source.forecastIssued === undefined ? undefined : iso(source.forecastIssued),
-      forecastUntil: source.forecastUntil === undefined ? undefined : iso(source.forecastUntil)
+      forecastUntil: source.forecastUntil === undefined ? undefined : iso(source.forecastUntil),
+      globalIssued: source.globalIssued === undefined ? undefined : iso(source.globalIssued)
     }
   }
 }
@@ -260,9 +262,9 @@ export function fmtMinutes(m: number): string {
 
 function summarize(
   points: RoutePoint[],
+  times: number[],
   source: TurbulenceSource,
   start: number,
-  lastTime: number | undefined,
   now: number
 ): RouteSummary {
   const enRoute = points.filter((p) => !p.nearGround)
@@ -280,17 +282,25 @@ function summarize(
   const worstCategory: TurbulenceCategory = worst?.category ?? 'NoData'
   const coverage = enRoute.length === 0 ? 0.0 : (100.0 * withData.length) / enRoute.length
 
+  const percentOfRoute = (k: number) => ((100.0 * k) / enRoute.length).toFixed(0)
   const notes: string[] = []
+  const global = enRoute.filter((p) => p.source === 'Global').length
+  if (global > 0)
+    notes.push(
+      `${percentOfRoute(global)}% of the route is outside GTG coverage (contiguous US and nearby) and uses ` +
+        "the coarser global forecast (NOAA GFS, about 28 km), which is less precise than GTG's 3 km."
+    )
   if (coverage < 99.5) {
     const outside = enRoute.filter(
       (p) => p.edr === undefined && nearestIndex(p.lat, p.lon) < 0
     ).length
     if (outside > 0)
       notes.push(
-        `${((100.0 * outside) / enRoute.length).toFixed(0)}% of the route is outside GTG coverage (contiguous US and nearby).`
+        `${percentOfRoute(outside)}% of the route is outside GTG coverage (contiguous US and nearby)` +
+          ' and the global forecast has no data for it yet.'
       )
     const until = source.forecastUntil
-    if (until !== undefined && lastTime !== undefined && lastTime > until)
+    if (until !== undefined && points.some((p, k) => times[k] > until && p.edr === undefined))
       notes.push(
         `The forecast only reaches ${instantText(until)} (18 h after the latest GTG cycle); later parts of the flight have no data yet.`
       )
@@ -392,7 +402,7 @@ export function upcoming(
 
   let headline: string
   if (nowCategory === 'NoData' && !firstBump && worst === 'NoData')
-    headline = 'No turbulence data here (GTG covers the contiguous US).'
+    headline = 'No turbulence data here right now.'
   else if (categoryRank[nowCategory] >= categoryRank.Light)
     headline = `${nowCategory} turbulence right now.`
   else if (firstBump && worstInBump) {

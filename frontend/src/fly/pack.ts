@@ -57,7 +57,7 @@ export interface PackData {
   forecast: PackFrame[]
 }
 
-export type EdrSource = 'Nowcast' | 'Forecast' | 'Blend' | 'NoData'
+export type EdrSource = 'Nowcast' | 'Forecast' | 'Blend' | 'Global' | 'NoData'
 
 export interface EdrSample {
   edr: number
