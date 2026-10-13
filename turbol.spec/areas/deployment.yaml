@@ -1,6 +1,8 @@
 id: deployment
 name: Run and deploy
-prose: One Docker service (backend serving API and built frontend) plus Postgres.
+prose: >-
+  One Docker service plus Postgres. In the container nginx serves the built frontend and passes /api
+  to the backend, so the app's files never wait on the JVM.
 behaviors:
   - id: run-locally
     description: '`./run.sh` starts Postgres, the backend and the frontend for local use.'
@@ -18,3 +20,14 @@ behaviors:
       never wait on CI.
     source:
       text: never wait on ci - in fact, disable ci
+  - id: every-view-load-time
+    description: >-
+      Every view (live map in 2D and 3D, a followed flight, Analyze's start page, a flight and a
+      route) shows useful, interactive UI within 1 s and all of its data within 6 s, on cold and warm
+      loads.
+    source:
+      text: every view's initial load is < 1second, full load < 6 seconds
+  - id: static-files-off-jvm
+    description: >-
+      nginx in the container serves the frontend's files (precompressed) and proxies /api to the
+      backend, unbuffered so server-sent events and streamed bodies pass straight through.

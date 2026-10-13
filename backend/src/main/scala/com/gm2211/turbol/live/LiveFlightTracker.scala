@@ -10,6 +10,7 @@ import com.gm2211.turbol.turbulence.*
 
 import java.time.Instant
 import scala.math.*
+import scala.util.Try
 
 /** What's coming up for a tracked flight in the next hour, in passenger terms. */
 final case class Upcoming(
@@ -40,8 +41,15 @@ final case class LiveFlightUpdate(
 final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficService) {
   import LiveFlightTracker.*
 
-  def update(hex: String, now: Instant = Instant.now()): LiveFlightUpdate =
-    LiveTrafficClient.byHex(hex) match {
+  /**
+   * `fresh = false` takes the aircraft from the map's cached traffic when it's there (its first update then doesn't
+   * wait on adsb.lol); otherwise, or when adsb.lol fails, adsb.lol's latest report.
+   */
+  def update(hex: String, now: Instant = Instant.now(), fresh: Boolean = true): LiveFlightUpdate = {
+    val latest =
+      if (fresh) Try(LiveTrafficClient.byHex(hex)).toOption.flatten.orElse(traffic.cached(hex, now = now))
+      else traffic.cached(hex, now = now).orElse(LiveTrafficClient.byHex(hex))
+    latest match {
       case None =>
         LiveFlightUpdate(now, "lost", None, AircraftClass.Medium, None, None, usingRoute = false, None, None)
       case Some(a) =>
@@ -80,6 +88,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
           aircraft
         )
     }
+  }
 }
 
 object LiveFlightTracker {
