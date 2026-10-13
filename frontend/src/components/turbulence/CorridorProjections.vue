@@ -106,7 +106,7 @@ import {
   roughMinutes,
   whatIfPath
 } from '@/components/turbulence/corridor'
-import { hexRgb } from '@/components/turbulence/scene3d'
+import { hexRgb } from '@/components/turbulence/color'
 
 /**
  * Two flat views of the air around a flight, kept in step with its timeline: a side view (time along the route,
