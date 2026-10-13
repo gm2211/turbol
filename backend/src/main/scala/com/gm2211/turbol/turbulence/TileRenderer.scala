@@ -31,6 +31,14 @@ final class TileRenderer {
     .maximumWeight(12L * 1024 * 1024)
     .weigher((key: String, png: Array[Byte]) => png.length + 2 * key.length + 64)
     .build()
+  // The last tile drawn at each position of each frame and level, whatever coarse layer it used. A new GFS hour changes
+  // the global layer under a frame, which gives every one of its tiles a new key in `cache`; on a tenth of a CPU,
+  // redrawing a view on demand kept visitors waiting 10 s, so the endpoint serves these until the new ones are drawn.
+  private val previousByTile: Cache[String, Array[Byte]] = CacheBuilder
+    .newBuilder()
+    .maximumWeight(4L * 1024 * 1024)
+    .weigher((key: String, png: Array[Byte]) => png.length + 2 * key.length + 64)
+    .build()
   private val thresholds = Thresholds.reference
 
   private def argb(a: Double, r: Int, g: Int, b: Int): Int = (rint(a * 255).toInt << 24) | (r << 16) | (g << 8) | b
@@ -88,8 +96,23 @@ final class TileRenderer {
     val gtgLayer = frame.nearestLayer(levelFt)
     val globalLayer = global.flatMap(_.nearestLayer(levelFt))
     if (isEmpty(globalLayer, z, x, y)) emptyTile
-    else cache.get(cacheKey(frame, global, levelFt, z, x, y), () => draw(gtgLayer, globalLayer, z, x, y))
+    else
+      cache.get(
+        cacheKey(frame, global, levelFt, z, x, y),
+        () => {
+          val png = draw(gtgLayer, globalLayer, z, x, y)
+          previousByTile.put(tileKey(frame, levelFt, z, x, y), png)
+          png
+        }
+      )
   }
+
+  /** The last tile drawn at this position of `frame`, possibly with an older global layer (see `previousByTile`). */
+  def previous(frame: EdrFrame, levelFt: Int, z: Int, x: Int, y: Int): Option[Array[Byte]] =
+    Option(previousByTile.getIfPresent(tileKey(frame, levelFt, z, x, y)))
+
+  private def tileKey(frame: EdrFrame, levelFt: Int, z: Int, x: Int, y: Int): String =
+    s"${frame.id}/${frame.nearestLayer(levelFt).fold(0)(_.levelFt)}/$z/$x/$y"
 
   /**
    * The tile if it costs nothing to serve (empty, or already rendered), so the endpoint can answer it without queueing
