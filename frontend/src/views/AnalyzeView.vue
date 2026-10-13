@@ -60,6 +60,16 @@
             <div v-if="lookup?.route" class="flight-line">
               <b>{{ lookup.route.iataCallsign ?? lookup.route.callsign }}</b>
               {{ lookup.route.airline ? `· ${lookup.route.airline}` : '' }}
+              <template v-if="dated">
+                · {{ dated.origin }} {{ dated.departureLocal }} → {{ dated.destination }}
+                {{ dated.arrivalLocal
+                }}{{ dated.arrivalDayOffset > 0 ? ` +${dated.arrivalDayOffset}` : '' }}
+                <span v-if="dated.equipment" class="muted">· {{ dated.equipment }}</span>
+                <span v-if="!dated.scheduledOnDay" class="muted">
+                  · not scheduled on {{ scheduleDay }}; it flies {{ operatingDaysLabel }} at these
+                  times
+                </span>
+              </template>
               <template v-if="lookup.live">
                 <v-chip size="small" color="green-darken-2" variant="flat" class="ml-2">
                   In the air now · {{ flightLevel(lookup.live.altitudeFt) }}
@@ -425,6 +435,8 @@ import {
   analyzeFlight,
   fetchSchedule,
   formatDuration,
+  type DatedFlight,
+  fetchDatedFlight,
   lookupFlight,
   pointAt,
   saveRoute3d
@@ -633,6 +645,19 @@ const arrival = computed(() =>
 
 const departureIso = computed(() => new Date(departureLocal.value).toISOString())
 const pathOptions = computed(() => analysis.value?.pathOptions ?? [])
+/** The Flight tab's flight on the chosen day, from the timetable. */
+const dated = ref<DatedFlight>()
+const operatingDaysLabel = computed(() =>
+  (dated.value?.operatingDays ?? [])
+    .map((d) =>
+      new Date(d + 'T12:00').toLocaleDateString([], {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      })
+    )
+    .join(', ')
+)
 /** The path the shown analysis follows, as the picker names it. */
 const pathLabel = computed(
   () => pathOptions.value.find((o) => o.kind === analysis.value?.path?.kind)?.label
@@ -714,7 +739,36 @@ async function analyze() {
     let to = destination.value
     if (mode.value === 'flight') {
       if (!flightQuery.value.trim()) return
-      lookup.value = await lookupFlight(flightQuery.value.trim())
+      // The timetable for the chosen day first: flight numbers are reused, and the live databases only know the
+      // route a callsign flew last (DL286 was once Tokyo to Saipan).
+      const q = flightQuery.value.trim().toUpperCase()
+      const [found, live] = await Promise.all([
+        fetchDatedFlight(q, departureLocal.value.slice(0, 10)),
+        lookupFlight(q).catch(() => undefined)
+      ])
+      const ends = found
+        ? await Promise.all([airportByCode(found.origin), airportByCode(found.destination)])
+        : undefined
+      dated.value = ends?.[0] && ends[1] ? found : undefined
+      if (dated.value && ends?.[0] && ends[1]) {
+        const d = dated.value
+        const sameRoute =
+          live?.route?.origin.code === d.origin && live.route.destination.code === d.destination
+        lookup.value = {
+          query: q,
+          callsign: d.callsign ?? d.flightNumber,
+          route: {
+            callsign: d.callsign ?? d.flightNumber,
+            iataCallsign: d.flightNumber,
+            airline: d.airline,
+            origin: ends[0],
+            destination: ends[1]
+          },
+          live: sameRoute ? live?.live : undefined
+        }
+        // Analyze from just after the scheduled gate time, as the Route tab does.
+        departureLocal.value = toLocalInput(new Date(new Date(d.departure).getTime() + 20 * 60000))
+      } else lookup.value = live ?? { query: q }
       if (!lookup.value.route) {
         error.value = lookup.value.live
           ? `${lookup.value.callsign} is flying, but its route isn't in the public database. Try the Route tab.`
@@ -728,6 +782,7 @@ async function analyze() {
       router.replace({ query: { q: flightQuery.value.trim() } })
     } else {
       lookup.value = undefined
+      dated.value = undefined
       if (!from || !to) {
         error.value = 'Pick both airports.'
         return
@@ -742,6 +797,8 @@ async function analyze() {
       destination: to!,
       departure: new Date(departureLocal.value).toISOString(),
       callsign: mode.value === 'flight' ? lookup.value?.callsign : undefined,
+      flightNumber: mode.value === 'flight' ? dated.value?.flightNumber : undefined,
+      day: departureLocal.value.slice(0, 10),
       path: pathWanted.value
     })
     analyzedOrigin.value = from
@@ -819,9 +876,17 @@ async function pickFlight(f: ScheduledFlight | undefined) {
             departure: f.takeoff,
             callsign: f.callsign,
             flown: f.hex && f.flownTakeoff ? { hex: f.hex, takeoff: f.flownTakeoff } : undefined,
+            flightNumber: f.flightNumber,
+            day: departureLocal.value.slice(0, 10),
             path: pathWanted.value
           }
-        : { origin: from, destination: to, departure: departureIso.value, path: pathWanted.value }
+        : {
+            origin: from,
+            destination: to,
+            departure: departureIso.value,
+            day: departureLocal.value.slice(0, 10),
+            path: pathWanted.value
+          }
     )
     if (selectedFlight.value === f) analysis.value = result
     scheduleRetry()
@@ -835,12 +900,21 @@ async function pickFlight(f: ScheduledFlight | undefined) {
 /** Right after a server update the forecast fills in for a few minutes: analyze again once it has. */
 function scheduleRetry() {
   window.clearTimeout(retryTimer)
-  if (!analysis.value?.dataSources.loading?.length) return
-  retryTimer = window.setTimeout(() => {
-    if (mode.value === 'route' && analyzedOrigin.value) void pickFlight(selectedFlight.value)
-    else void analyze()
-  }, 60000)
+  const dataLoading = !!analysis.value?.dataSources.loading?.length
+  // Tracks still being looked up (two weeks of history on a cold server): ask again shortly, a few times.
+  const tracksPending = !!analysis.value?.pathOptions?.some((o) => o.pending)
+  pendingRetries = tracksPending ? pendingRetries + 1 : 0
+  const retryTracks = tracksPending && pendingRetries <= 6
+  if (!dataLoading && !retryTracks) return
+  retryTimer = window.setTimeout(
+    () => {
+      if (mode.value === 'route' && analyzedOrigin.value) void pickFlight(selectedFlight.value)
+      else void analyze()
+    },
+    retryTracks ? 15000 : 60000
+  )
 }
+let pendingRetries = 0
 
 /** Downloads this flight for offline use, then opens it: the same page works with no connection. */
 async function downloadForOffline() {

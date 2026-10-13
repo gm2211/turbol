@@ -13,13 +13,20 @@ behaviors:
       departure. Aircraft class is never a user input (see aircraft-class-from-flight).
   - id: lookup-flight-by-number
     description: >-
-      Looking up a flight number or callsign finds the first candidate callsign with a known route or
-      that is airborne right now, and returns its route and live position when available.
+      Looking up a flight number on the Flight tab resolves it against the published timetable for
+      the chosen date first (route, scheduled local times, aircraft type, and the days it operates
+      when it doesn't fly that date), and only falls back to the first candidate callsign with a
+      known route or that is airborne right now, returning its route and live position when
+      available.
     details: >-
       Airlines reuse a flight number for every leg of the day, so the live aircraft counts as flying
       the route only when it is near the origin-destination great circle and heading for the
       destination (any heading within 80 km of it). Otherwise it is reported as on another leg and not
-      drawn on the route map.
+      drawn on the route map. The dated timetable comes from FlightStats' flight pages (about three days
+      either side of today; beyond that its list of operating days, moved to the chosen date).
+      Callsign route databases go stale: DL286 on 2026-10-12 showed NRT to SPN from adsbdb while it
+      flies JFK to MXP 16:40 to 06:45 on a 767-300ER (Giulio, "uhm... wat", 2026-10-12, with Turbli
+      and turbol screenshots).
   - id: boarding-pass-search
     description: >-
       The analyze page's search is a boarding pass over the cloud backdrop: big FROM and TO airport
@@ -46,13 +53,17 @@ behaviors:
       The timetable comes from FlightStats' public route pages (website data, not a documented API),
       which reach about three days either side of today; further out the same weekday a week earlier
       is used and the strip says so. Codeshare numbers show on hover. Each flight's recent leg (for
-      its path and aircraft type) comes from the last two days of adsb.lol history: callsigns the
-      route directory (Virtual Radar Server standing data) lists for the pair, found in hourly
-      heatmap slots (callsign to airframe), then the airframe's trace, trying older sightings when
+      its path and aircraft type) comes from up to 14 days of adsb.lol history, since many flights
+      don't operate daily: the flight's callsigns (from the timetable and the route directory,
+      Virtual Radar Server standing data) are looked for in the heatmap slot just after its gate time
+      on each earlier day, newest first (callsign to airframe), then the airframe's trace, accepting
+      an aircraft seen at the gate or taxiing up to two hours before takeoff, trying older sightings when
       the newest is an onward leg under the same callsign or a flight still in the air, and stitching
-      legs split across trace files. A leg matches a flight by flight number, or for callsigns that
-      aren't the number (Emirates' EK206 flies as UAE5RQ) by the same airline taking off within
-      three hours of the gate time. When the timetable can't be read the list falls back to flights
+      legs split across trace files (including across hours-long ocean coverage gaps at cruise). The
+      list itself answers from the timetable at once; these searches run in the background and fill
+      in on later requests. Callsigns carrying the flight number are tried first, then the
+      same airline's callsigns that aren't the number (Emirates' EK206 flies as UAE5RQ), found in
+      the slot just after that flight's gate time. When the timetable can't be read the list falls back to flights
       seen flying the route, at their observed takeoff times, and says so. `?pick=` on the URL picks
       a flight by callsign or flight number. Prompted by Giulio asking "why does turbli find more
       flights than turbol" (2026-10-12, project chat), when Turbli listed DL286, AA198, DL184 and
@@ -72,13 +83,15 @@ behaviors:
       verdict, the timeline and the map legend.
     details: >-
       Filed flight plans aren't public, so Filed plan is always greyed out ("not public"). The
-      average needs at least two of the route's tracks from the last two days, none straying more
+      average needs at least two of the route's tracks from the last 14 days, none straying more
       than 200 km from their mean (positions averaged on the sphere, altitudes and minutes after
       takeoff as plain means, point by point along each track's length); otherwise it says how far
       apart they are. North Atlantic tracks move with the jet stream and often fail this. The last
       track is the flight's own most recent leg on the route, shifted to the chosen departure. Gaps in
-      ADS-B coverage over oceans are crossed on the great circle. The average uses tracks the flight
-      list already loaded and never starts a history scan itself. The average was first asked for as
+      ADS-B coverage over oceans are crossed on the great circle. The average and last track load on
+      their own: the analysis starts the route's track searches, waits a bounded time, and marks an
+      option still loading (rather than unavailable) while they run, and the page re-analyzes until
+      they finish. The average was first asked for as
       "average route based on past flight plans when past flight plans are similar enough to one
       another" (Giulio, 2026-10-12).
     source:

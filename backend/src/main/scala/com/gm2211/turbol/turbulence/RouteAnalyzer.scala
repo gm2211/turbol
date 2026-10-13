@@ -64,8 +64,17 @@ final case class RouteAnalysis(
  */
 final case class PathInfo(kind: String, description: String, flownOn: Option[Instant] = None)
 
-/** A path the person can pick: `label` names it; `note` says why it isn't available, or what it is when it is. */
-final case class PathOption(kind: String, label: String, available: Boolean, note: Option[String] = None)
+/**
+ * A path the person can pick: `label` names it; `note` says why it isn't available, or what it is when it is;
+ * `pending` while the tracks it needs are still being looked up (asking again shortly may find it).
+ */
+final case class PathOption(
+  kind: String,
+  label: String,
+  available: Boolean,
+  note: Option[String] = None,
+  pending: Boolean = false
+)
 
 /** One point of a path to analyse: minutes after the start, position and altitude. */
 final case class PathPoint(minutes: Double, lat: Double, lon: Double, altitudeFt: Double)

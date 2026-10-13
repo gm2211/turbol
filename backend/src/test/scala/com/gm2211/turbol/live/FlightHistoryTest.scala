@@ -92,11 +92,21 @@ class FlightHistoryTest extends BaseTest {
     RouteScheduleService.onDay(Instant.parse("2026-10-11T22:00:00Z"), from, from.plusSeconds(3600)) shouldBe None
   }
 
-  test("scans the last two days' hourly slots, skipping the ones still being written") {
+  test("scans the last day's hourly slots, skipping the ones still being written") {
     val slots = FlightHistory.slotsToScan(Instant.parse("2026-10-12T14:40:00Z"))
-    slots.size shouldBe 48
+    slots.size shouldBe 24
     slots.head shouldBe Instant.parse("2026-10-12T13:00:00Z")
-    slots.last shouldBe Instant.parse("2026-10-10T14:00:00Z")
+    slots.last shouldBe Instant.parse("2026-10-11T14:00:00Z")
+  }
+
+  test("looks for a flight one slot a day, the half hour after its gate time, newest first") {
+    // DL286: gate 20:40Z; asked at 00:10Z the next day, today's 21:00Z slot is the newest one already uploaded.
+    val slots =
+      RouteScheduleService.dailySlots(Instant.parse("2026-10-12T20:40:00Z"), Instant.parse("2026-10-13T00:10:00Z"), 14)
+    slots.size shouldBe 14
+    slots.head shouldBe Instant.parse("2026-10-12T21:00:00Z")
+    slots(1) shouldBe Instant.parse("2026-10-11T21:00:00Z")
+    slots.last shouldBe Instant.parse("2026-09-29T21:00:00Z")
   }
 
   test("stitches a flight cut apart by file boundaries back together") {
@@ -106,6 +116,12 @@ class FlightHistoryTest extends BaseTest {
     val stitched = FlightHistory.stitch(Seq(first.copy(points = b), first.copy(points = a ++ b.take(1)), legs(1)))
     stitched.map(_.callsign) shouldBe Seq("DAL184", "DAL185")
     stitched.head.points shouldBe first.points
+    // Over the ocean across midnight UTC: four hours apart, both ends at cruise.
+    val (climb, cruise) = first.points.splitAt(3)
+    FlightHistory.stitch(Seq(first.copy(points = climb), first.copy(points = cruise))).map(_.points) shouldBe
+      Seq(first.points)
+    // On the ground in between: two flights.
+    FlightHistory.stitch(Seq(first.copy(points = climb.take(1)), first.copy(points = cruise))).size shouldBe 2
   }
 
   // Shaped like the route page's embedded data: EK206 the evening before, AA198 with a codeshare.
@@ -133,20 +149,48 @@ class FlightHistoryTest extends BaseTest {
     aa.codeshares shouldBe Seq("BA1582")
   }
 
-  test("matches timetabled flights to their flown legs, by number or by the airline's time") {
-    val flights = Timetable.parsePage(routePage).map(_._2)
+  test("finds the callsigns a flight number can fly under on a route") {
     val entries = Seq(
       RouteEntry("AAL198", "AAL", "198", Seq("KJFK", "LIMC")),
       RouteEntry("UAE206", "UAE", "206", Seq("KJFK", "LIMC", "OMDB")),
-      RouteEntry("UAE5RQ", "UAE", "5RQ", Seq("KJFK", "LIMC", "OMDB"))
+      RouteEntry("UAE5RQ", "UAE", "5RQ", Seq("KJFK", "LIMC", "OMDB")),
+      RouteEntry("UAE205", "UAE", "205", Seq("OMDB", "LIMC", "KJFK"))
     )
-    def leg(cs: String, takeoff: String) =
-      FlownLeg(cs, "abc123", None, None, Vector(TrackPoint(Instant.parse(takeoff), 40.6, -73.8, 0)))
-    val aaLeg = leg("AAL198", "2026-10-12T00:40:00Z") // a day earlier, 1h40 late
-    val ekLeg = leg("UAE5RQ", "2026-10-11T02:45:00Z")
-    val stray = leg("UAE5RQ", "2026-10-11T08:00:00Z") // the onward leg's time of day
-    val matched = RouteScheduleService.matchLegs(flights, Seq(aaLeg, ekLeg, stray), entries)
-    matched shouldBe Map("AA198" -> aaLeg, "EK206" -> ekLeg)
+    RouteScheduleService.callsignsFor(entries, "206") shouldBe Seq("UAE206", "UAE5RQ")
+    RouteScheduleService.callsignsFor(entries, "198") shouldBe Seq("AAL198")
+    RouteScheduleService.callsignsFor(entries, "286") shouldBe Seq.empty
+    Timetable.parseFlightNumber(" dl286 ") shouldBe Some("DL" -> "286")
+    Timetable.parseFlightNumber("DL0286") shouldBe Some("DL" -> "286")
+    Timetable.parseFlightNumber("DAL286") shouldBe None
+  }
+
+  test("reads a flight number's own page for the day, and its other days around today") {
+    val page =
+      """{"data":{"schedule":{"scheduledDepartureUTC":"2026-10-12T20:40:00.000Z","scheduledArrivalUTC":"2026-10-13T04:45:00.000Z"},
+        |"resultHeader":{"carrier":{"name":"Delta Air Lines","fs":"DL"},"flightNumber":"286"},
+        |"departureAirport":{"iata":"JFK","date":"2026-10-12T16:40:00.000","times":{"scheduled":{"time24":"16:40"}}},
+        |"arrivalAirport":{"iata":"MXP","date":"2026-10-13T06:45:00.000","times":{"scheduled":{"time24":"06:45"}}},
+        |"codeshares":[{"fs":"AF","flightNumber":"8833"}],
+        |"additionalFlightInfo":{"equipment":{"name":"Boeing 767-300 (winglets) Passenger"}},
+        |"positional":{"flexTrack":{"callsign":"DAL286"}}}}""".stripMargin
+    val f = Timetable.parseFlightPage(page).get
+    (f.flightNumber, f.origin, f.destination, f.departureLocal, f.arrivalLocal, f.arrivalDayOffset) shouldBe
+      ("DL286", "JFK", "MXP", "16:40", "06:45", 1)
+    f.callsign shouldBe Some("DAL286")
+    f.codeshares shouldBe Seq("AF8833")
+
+    val otherDays =
+      """{"data":[{"flights":[{"departureAirport":{"iata":"JFK"},"arrivalAirport":{"iata":"MXP"},
+        |"departureTime24":"16:40","arrivalTime24":"06:45","sortTime":"2026-10-10T20:40:00.000Z",
+        |"url":"/flight-tracker/DL/286?year=2026&month=10&date=10&flightId=1"}]},{"flights":[]},
+        |{"flights":[{"departureAirport":{"iata":"JFK"},"arrivalAirport":{"iata":"MXP"},
+        |"departureTime24":"16:40","arrivalTime24":"06:45","sortTime":"2026-10-13T20:40:00.000Z",
+        |"url":"/flight-tracker/DL/286?year=2026&month=10&date=13&flightId=2"}]}]}""".stripMargin
+    val moved = Timetable.parseOtherDays(otherDays, java.time.LocalDate.of(2026, 10, 19)).get
+    moved.scheduledOnDay shouldBe false
+    moved.departure shouldBe Instant.parse("2026-10-19T20:40:00Z")
+    moved.operatingDays.map(_.getDayOfMonth) shouldBe Seq(10, 13)
+    Timetable.parseOtherDays(otherDays, java.time.LocalDate.of(2026, 10, 10)).get.scheduledOnDay shouldBe true
   }
 
   private def legThrough(lat: Double, minutes: Double): FlownLeg = {

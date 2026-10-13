@@ -102,6 +102,10 @@ export interface AnalyzeRequest {
   flown?: { hex: string; takeoff: string }
   /** The path to follow; the best available one when absent or unavailable. */
   path?: PathKind
+  /** The IATA flight number, to find its last track when `flown` doesn't name one. */
+  flightNumber?: string
+  /** The chosen date (YYYY-MM-DD at the origin), for the route's timetable. */
+  day?: string
 }
 
 export type PathKind = 'filed' | 'average' | 'flown' | 'greatCircle'
@@ -112,6 +116,8 @@ export interface PathOption {
   label: string
   available: boolean
   note?: string
+  /** Its tracks are still being looked up: analyzing again shortly may find them. */
+  pending?: boolean
 }
 
 /**
@@ -175,6 +181,37 @@ export interface AirportResult {
   iata: string
   icao: string
   location: { lat: number; lon: number }
+}
+
+/** A flight number on a day, from the airline's published timetable (FlightStats). */
+export interface DatedFlight {
+  flightNumber: string
+  airline: string
+  /** IATA codes. */
+  origin: string
+  destination: string
+  /** Scheduled gate departure. */
+  departure: string
+  arrival?: string
+  departureLocal: string
+  arrivalLocal: string
+  arrivalDayOffset: number
+  codeshares: string[]
+  equipment?: string
+  /** The ATC callsign it flew under recently, when known (EK206 flies as UAE5RQ). */
+  callsign?: string
+  /** False when it doesn't fly on the chosen day: the times are those of operatingDays, moved to it. */
+  scheduledOnDay: boolean
+  operatingDays: string[]
+}
+
+/** Where and when an IATA flight number flies on `day` (YYYY-MM-DD at the origin); undefined when unknown. */
+export async function fetchDatedFlight(q: string, day: string): Promise<DatedFlight | undefined> {
+  try {
+    return (await axios.get('/api/flights/dated', { params: { q, date: day } })).data
+  } catch {
+    return undefined
+  }
 }
 
 export async function lookupFlight(q: string): Promise<FlightLookup> {

@@ -43,7 +43,164 @@ final case class TimetableFlight(
  * timetables repeat weekly. This is the website's own page data, not a documented API, so it can change or go away:
  * callers fall back to what ADS-B saw.
  */
+/**
+ * A flight number on a chosen day, from FlightStats' flight pages.
+ *
+ * @param scheduledOnDay  whether it operates on the chosen day; when not, the times are the ones it flies on
+ *                        `operatingDays` (within about three days of today), moved to the chosen day
+ * @param callsign        the ATC callsign it flew under recently, when FlightStats tracked it (EK206 flies as UAE5RQ)
+ */
+final case class DatedFlight(
+  flightNumber: String,
+  airline: String,
+  origin: String,
+  destination: String,
+  departure: Instant,
+  arrival: Option[Instant],
+  departureLocal: String,
+  arrivalLocal: String,
+  arrivalDayOffset: Int,
+  codeshares: Seq[String],
+  equipment: Option[String],
+  callsign: Option[String],
+  scheduledOnDay: Boolean,
+  operatingDays: Seq[LocalDate]
+)
+
 object Timetable extends BackendLogging {
+  private val flights: Cache[String, Option[DatedFlight]] =
+    CacheBuilder.newBuilder().maximumSize(2000).expireAfterWrite(Duration.ofHours(1)).build()
+
+  private val flightNumber = "^([A-Z0-9]{2})\\s*(\\d{1,4})[A-Z]?$".r
+
+  /** "DL286" -> ("DL", "286"); None for anything that isn't an IATA flight number (callsigns like DAL286). */
+  def parseFlightNumber(q: String): Option[(String, String)] =
+    q.trim.toUpperCase match {
+      case flightNumber(carrier, number) if carrier.exists(_.isLetter) => Some(carrier -> number.dropWhile(_ == '0'))
+      case _ => None
+    }
+
+  /**
+   * Where and when flight `q` (an IATA flight number) flies on `day`, the origin's local date: its own page for that
+   * day when it's within reach, else the days around today it operates, the chosen day given the same times.
+   */
+  def dated(q: String, day: LocalDate, today: LocalDate): Option[DatedFlight] =
+    parseFlightNumber(q).flatMap { case (carrier, number) =>
+      Try(flights.get(s"$carrier$number-$day", () => fetchDated(carrier, number, day, today))).toOption.flatten
+    }
+
+  private val api = "https://www.flightstats.com/v2/api-next/flight-tracker"
+
+  private def fetchDated(carrier: String, number: String, day: LocalDate, today: LocalDate): Option[DatedFlight] = {
+    val inReach = !day.isBefore(today.minusDays(windowDays)) && !day.isAfter(today.plusDays(windowDays))
+    val own =
+      if (!inReach) None
+      else
+        Try(Http.getString(
+          s"$api/$carrier/$number/${day.getYear}/${day.getMonthValue}/${day.getDayOfMonth}",
+          attempts = 2
+        ))
+          .toOption
+          .flatMap(parseFlightPage)
+    own.orElse(
+      Try(Http.getString(s"$api/other-days/$carrier/$number", attempts = 2)).toOption.flatMap(body =>
+        parseOtherDays(body, day)
+      )
+    )
+  }
+
+  private def json(body: String) = parse(body).getOrElse(Json.Null).hcursor
+
+  /** A flight page (`api-next/flight-tracker/DL/286/2026/10/12`): its schedule, airports, equipment and callsign. */
+  private[live] def parseFlightPage(body: String): Option[DatedFlight] = {
+    val d = json(body).downField("data")
+    for {
+      sched <- Some(d.downField("schedule"))
+      dep <- sched.get[String]("scheduledDepartureUTC").toOption.flatMap(s => Try(Instant.parse(s)).toOption)
+      from <- d.downField("departureAirport").get[String]("iata").toOption
+      to <- d.downField("arrivalAirport").get[String]("iata").toOption
+      carrier <- d.downField("resultHeader").downField("carrier").get[String]("fs").toOption
+      number <- d.downField("resultHeader").get[String]("flightNumber").toOption
+    } yield {
+      val arr = sched.get[String]("scheduledArrivalUTC").toOption.flatMap(s => Try(Instant.parse(s)).toOption)
+      val localDay = (side: String) =>
+        d.downField(side).get[String]("date").toOption.flatMap(s => Try(LocalDateTime.parse(s).toLocalDate).toOption)
+      val time24 = (side: String) =>
+        d.downField(side).downField("times").downField("scheduled").get[String]("time24").getOrElse("")
+      val offset = (for {
+        a <- localDay("departureAirport")
+        b <- localDay("arrivalAirport")
+      } yield Period.between(a, b).getDays).getOrElse(0)
+      val codeshares = d.downField("codeshares").values.getOrElse(Iterable.empty).toSeq.flatMap { c =>
+        for {
+          fs <- c.hcursor.get[String]("fs").toOption
+          n <- c.hcursor.get[String]("flightNumber").toOption
+        } yield s"$fs$n"
+      }
+      val track = d.downField("positional").downField("flexTrack")
+      DatedFlight(
+        flightNumber = s"$carrier$number",
+        airline = d.downField("resultHeader").downField("carrier").get[String]("name").getOrElse(carrier),
+        origin = from,
+        destination = to,
+        departure = dep,
+        arrival = arr,
+        departureLocal = time24("departureAirport"),
+        arrivalLocal = time24("arrivalAirport"),
+        arrivalDayOffset = offset,
+        codeshares = codeshares,
+        equipment = d.downField("additionalFlightInfo").downField("equipment").get[String]("name").toOption,
+        callsign = track.get[String]("callsign").toOption.map(_.trim.toUpperCase).filter(_.nonEmpty),
+        scheduledOnDay = true,
+        operatingDays = Seq.empty
+      )
+    }
+  }
+
+  /**
+   * The flight's days around today (`api-next/flight-tracker/other-days/DL/286`): when `day` is one of them, that day's
+   * flight; otherwise the nearest day's, its times moved to `day`.
+   */
+  private[live] def parseOtherDays(body: String, day: LocalDate): Option[DatedFlight] = {
+    val rows = json(body).downField("data").values.getOrElse(Iterable.empty).toSeq.flatMap { dayRow =>
+      dayRow.hcursor.downField("flights").values.getOrElse(Iterable.empty).toSeq.flatMap { f =>
+        val c = f.hcursor
+        for {
+          sort <- c.get[String]("sortTime").toOption.flatMap(s => Try(Instant.parse(s)).toOption)
+          from <- c.downField("departureAirport").get[String]("iata").toOption
+          to <- c.downField("arrivalAirport").get[String]("iata").toOption
+          dep24 <- c.get[String]("departureTime24").toOption
+          arr24 <- c.get[String]("arrivalTime24").toOption
+          url <- c.get[String]("url").toOption
+          localDay <- "year=(\\d+)&month=(\\d+)&date=(\\d+)".r.findFirstMatchIn(url).map(m =>
+            LocalDate.of(m.group(1).toInt, m.group(2).toInt, m.group(3).toInt)
+          )
+        } yield (localDay, sort, from, to, dep24, arr24, url)
+      }
+    }
+    val days = rows.map(_._1).distinct.sorted
+    rows.sortBy(r => math.abs(java.time.temporal.ChronoUnit.DAYS.between(day, r._1))).headOption.map {
+      case (localDay, sort, from, to, dep24, arr24, url) =>
+        val carrierNumber = "/flight-tracker/([A-Z0-9]+)/(\\d+)".r.findFirstMatchIn(url)
+        DatedFlight(
+          flightNumber = carrierNumber.map(m => m.group(1) + m.group(2)).getOrElse(""),
+          airline = carrierNumber.map(_.group(1)).getOrElse(""),
+          origin = from,
+          destination = to,
+          departure = sort.plus(java.time.Duration.ofDays(java.time.temporal.ChronoUnit.DAYS.between(localDay, day))),
+          arrival = None,
+          departureLocal = dep24,
+          arrivalLocal = arr24,
+          arrivalDayOffset = if (arr24 < dep24) 1 else 0,
+          codeshares = Seq.empty,
+          equipment = None,
+          callsign = None,
+          scheduledOnDay = localDay == day,
+          operatingDays = days
+        )
+    }
+  }
+
   private val cache: Cache[String, Seq[TimetableFlight]] =
     CacheBuilder.newBuilder().maximumSize(500).expireAfterWrite(Duration.ofHours(6)).build()
 
