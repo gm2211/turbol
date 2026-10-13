@@ -133,9 +133,9 @@ object GfsTurbulence {
   /**
    * Decode a GFS file holding UGRD, VGRD and HGT on [[pressureLevelsHpa]] into EDR layers at [[levelsFt]] (MSL
    * altitude, like GTG), written to `outputDir/<levelFt>.u8` and memory-mapped. Works up the column two pressure
-   * levels at a time, so only a few global fields are on the heap at once (~60 MB). The derived fields reuse the same
-   * few arrays all the way up: allocating them per level made each hour allocate 325 MB, and on prod's tenth of a CPU
-   * every 150 MB of that cost a full GC of 0.5-1 s that stalled visitors.
+   * levels at a time, so only a few global fields are on the heap at once (~60 MB). The fields reuse the same few
+   * arrays all the way up ([[ComplexPacking]] unpacks into them): allocating them per level made each hour allocate
+   * 325 MB, and on prod's tenth of a CPU every 150 MB of that cost a full GC of 0.5-1 s that stalled visitors.
    *
    * With `wafs` (EDR per [[Wafs]] level on the same grid, see [[Wafs.fetch]]), levels WAFS covers blend it in.
    * `throttle` caps its CPU share so the server stays responsive.
@@ -184,32 +184,34 @@ object GfsTurbulence {
         }
       }
       val byKey = records.result()
+      // Two levels and two layers are live at a time; each takes over the arrays of the one it replaces.
+      val spare = scala.collection.mutable.Stack.empty[Array[Float]]
+      def take(): Array[Float] = if (spare.nonEmpty) spare.pop() else new Array[Float](n)
       def field(param: (Int, Int), hPa: Int): Array[Float] = {
         val record = byKey.getOrElse((param, hPa), throw RuntimeException(s"$gribFile has no $param at $hPa hPa"))
         throttle.tick()
-        val values = record.readData(raf)
+        val into = take()
+        val values =
+          if (ComplexPacking.readInto(record, raf, into)) into else { spare.push(into); record.readData(raf) }
         throttle.tick()
         require(values.length == n, s"unexpected grid size ${values.length} in $gribFile")
         values
       }
-      // Two levels and two layers are live at a time; each takes over the arrays of the one it replaces.
-      var spareDeform = new Array[Float](n)
       var spareLayer = Layer(new Array[Float](n), new Array[Float](n))
       def level(hPa: Int): Level = {
         val u = field(uWind, hPa)
         val v = field(vWind, hPa)
-        Level(u, v, field(height, hPa), deformation(u, v, throttle, spareDeform))
+        Level(u, v, field(height, hPa), deformation(u, v, throttle, take()))
       }
 
       val bottomUp = pressureLevelsHpa.sorted(using Ordering[Int].reverse)
       val layerCount = bottomUp.size - 1
       var lo = level(bottomUp.head)
-      spareDeform = new Array[Float](n)
       var previous: Layer = null
       for (k <- 1 until bottomUp.size) {
         val hi = level(bottomUp(k))
-        spareDeform = lo.deform
         val current = layer(lo, hi, throttle, spareLayer)
+        spare.pushAll(Seq(lo.u, lo.v, lo.z, lo.deform))
         spareLayer = if (previous == null) Layer(new Array[Float](n), new Array[Float](n)) else previous
         // Linear in height between layer mids, holding the end values below the first and above the last mid.
         if (previous != null) {
