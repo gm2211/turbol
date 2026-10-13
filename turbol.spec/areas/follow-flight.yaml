@@ -49,7 +49,7 @@ behaviors:
   - id: follow-first-update-from-cache
     description: >-
       The first update for a followed flight starts from the live map's cached traffic when it saw
-      the aircraft in the last 2 minutes (dead-reckoned to now), so it does not wait on adsb.lol;
+      the aircraft in the last 5 minutes (dead-reckoned to now), so it does not wait on adsb.lol;
       later updates ask adsb.lol and fall back to the cache when it fails.
   - id: follow-updates-delivered-promptly
     description: >-

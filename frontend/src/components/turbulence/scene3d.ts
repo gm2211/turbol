@@ -6,10 +6,7 @@ import { baseMapUrl } from '@/components/turbulence/baseMap'
 export const ftToM = 0.3048
 export const blue: [number, number, number] = [16, 50, 79] // --my-blue
 
-export function hexRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
-}
+export { hexRgb } from '@/components/turbulence/color'
 
 /** The light-grey basemap as deck.gl bitmap tiles. */
 export function basemapLayer(): TileLayer {

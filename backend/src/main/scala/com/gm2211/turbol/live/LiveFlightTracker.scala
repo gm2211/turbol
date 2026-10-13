@@ -73,7 +73,9 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
       val age = Duration.between(at, now).toMillis / 1000.0 + a.seenSecondsAgo
       LiveTrafficService.extrapolate(a, age).copy(seenSecondsAgo = age)
     }
-    (reported.toSeq ++ traffic.cached(hex, now = now)).filter(_.seenSecondsAgo <= 120).minByOption(_.seenSecondsAgo)
+    (reported.toSeq ++ traffic.cached(hex, maxAge = deadReckonFor, now = now))
+      .filter(_.seenSecondsAgo <= deadReckonFor.toSeconds)
+      .minByOption(_.seenSecondsAgo)
   }
 
   /**
@@ -91,7 +93,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
         val fallback = recent(key, now)
         val wait = if (fallback.exists(_.seenSecondsAgo <= 25)) briefWait else adsbWait
         Try(Await.result(fetch(key), wait)).toOption.flatten.orElse(fallback)
-      } else traffic.cached(hex, now = now).orElse(LiveTrafficClient.byHex(hex))
+      } else traffic.cached(hex, maxAge = deadReckonFor, now = now).orElse(LiveTrafficClient.byHex(hex))
     latest match {
       case None =>
         LiveFlightUpdate(now, "lost", None, AircraftClass.Medium, None, None, usingRoute = false, None, None)
@@ -138,6 +140,12 @@ object LiveFlightTracker {
   private val horizonMinutes = 60.0
   private val adsbWait = 2.seconds
   private val briefWait = 300.millis
+
+  /**
+   * How old a sighting the tracker dead-reckons from rather than wait on adsb.lol: a whole-country map refreshes its
+   * cells every 3 minutes, and adsb.lol, rate-limited, made a followed flight's first update wait 12 s for a fresh one.
+   */
+  private val deadReckonFor = Duration.ofSeconds(290) // LiveTrafficService.extrapolate stops at 300 s
 
   /** The headline for the next hour: what it's like now, and when the next bumps start and how long they last. */
   def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraft: AircraftResponse): Upcoming = {
