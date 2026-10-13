@@ -50,7 +50,7 @@ export function preloadRoutes(): Plugin {
             `<script>if (${when})` +
             ` ${files}.forEach(function (f) { var l = document.createElement('link');` +
             ` l.rel = f.endsWith('.css') ? 'preload' : 'modulepreload'; if (l.rel === 'preload') l.as = 'style';` +
-            ` l.href = f; document.head.appendChild(l) })</script>`
+            ` l.crossOrigin = ''; l.href = f; document.head.appendChild(l) })</script>`
           )
         })
         const script = scripts.join('\n  ')

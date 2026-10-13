@@ -51,3 +51,8 @@ behaviors:
       The first update for a followed flight starts from the live map's cached traffic when it saw
       the aircraft in the last 2 minutes (dead-reckoned to now), so it does not wait on adsb.lol;
       later updates ask adsb.lol and fall back to the cache when it fails.
+  - id: follow-updates-delivered-promptly
+    description: >-
+      Each update on the followed flight's stream reaches the browser when it is sent, not held
+      by a proxy until the next one: the stream is marked no-transform and each event is followed
+      by a short comment that flushes it.

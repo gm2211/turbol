@@ -18,7 +18,9 @@ class RouteCorridorTest extends BaseTest {
   private val store = new TurbulenceStore
   store.setForecast(
     Range.inclusive(0, 4)
-      .map(h => uniformFrame(FrameKind.Forecast, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.05, 40000 -> 0.25)))
+      .map(h =>
+        uniformFrame(FrameKind.Forecast, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.05, 40000 -> 0.25))
+      )
       .toVector
   )
   private val points = Seq(
@@ -30,7 +32,8 @@ class RouteCorridorTest extends BaseTest {
   private val nl = corridor.levelsFt.length
   private val no = corridor.offsetsKm.length
   private def edr(k: Int, level: Int, offset: Int) =
-    EdrLayer.decode(corridor.edr((k * nl + corridor.levelsFt.indexOf(level)) * no + corridor.offsetsKm.indexOf(offset.toDouble)))
+    EdrLayer.decode(corridor.edr((k * nl + corridor.levelsFt.indexOf(level)) * no +
+      corridor.offsetsKm.indexOf(offset.toDouble)))
 
   test("holds every level and offset at every point") {
     corridor.edr.length shouldBe 3 * 13 * 9
@@ -60,7 +63,9 @@ class SampleColumnTest extends BaseTest {
   private val store = new TurbulenceStore
   store.setForecast(
     Range.inclusive(0, 2)
-      .map(h => uniformFrame(FrameKind.Forecast, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.05, 40000 -> 0.25)))
+      .map(h =>
+        uniformFrame(FrameKind.Forecast, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.05, 40000 -> 0.25))
+      )
       .toVector
   )
   store.setGlobal(
@@ -73,7 +78,10 @@ class SampleColumnTest extends BaseTest {
     val data = store.current
     val altitudes = Range.inclusive(29000, 41000, 1000).map(_.toDouble)
     val places = Seq((39.0, -97.0), (21.5, -100.0), (48.0, -70.0), (50.5, -120.0), (45.6, 8.7), (-10.0, 30.0))
-    for ((lat, lon) <- places; minutes <- Seq(10L, 70L)) {
+    for {
+      (lat, lon) <- places
+      minutes <- Seq(10L, 70L)
+    } {
       val time = now.plusSeconds(minutes * 60)
       val column = store.sampleColumnIn(data, lat, lon, altitudes, time)
       altitudes.indices.foreach { l =>
