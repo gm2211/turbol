@@ -225,9 +225,12 @@ behaviors:
   - id: analysis-load-order
     description: >-
       Opening Analyze on a flight or route starts its first lookups from index.html, the route's
-      flight list loads alongside the first analysis, an analysis waits at most 0.5 s for the
-      flight's live sighting, and the corridor around the route is fetched once per route, not on
-      every refresh while past tracks load. A picked flight's own track is looked up in the
+      flight list loads alongside the first analysis, an analysis waits at most 0.5 s in all for
+      the track lookups and the flight's live sighting, and the corridor around the route is
+      fetched once per route, not on every refresh while past tracks load. The server starts
+      sampling the corridor when it answers the analysis, and answers the page's refreshes of an
+      unchanged analysis (same path, time, aircraft and forecast data) without sampling the route
+      again. A picked flight's own track is looked up in the
       background (the analysis shows at once, marked pending), and the route's flight list stops
       its spinner as soon as the list arrives.
   - id: track-search-low-priority

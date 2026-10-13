@@ -33,8 +33,10 @@ import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant, LocalDate, ZoneOffset}
 import java.util.concurrent.ConcurrentHashMap
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import java.util.concurrent.Executors
+import com.google.common.cache.{Cache, CacheBuilder}
+import scala.concurrent.duration.{DurationInt, DurationLong}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Try
 
 final case class FlightLookup(
@@ -145,7 +147,7 @@ final class FlightsEndpoint(
     case req @ POST -> Root / "corridor" =>
       for {
         request <- req.as[CorridorRequest]
-        corridor <- IO.blocking(RouteCorridor.build(store, request.points))
+        corridor <- IO.fromFuture(IO(corridorFor(request.points.toVector)))
         resp <- Ok(
           CorridorResponse(
             corridor.levelsFt,
@@ -160,9 +162,38 @@ final class FlightsEndpoint(
       for {
         request <- req.as[AnalyzeRequest]
         analysis <- IO.blocking(analyze(request))
+        // The page asks for the corridor as soon as the analysis lands: it is already being sampled by then.
+        _ <- IO(corridorFor(analysis.points.map(p => CorridorPoint(p.lat, p.lon, p.altitudeFt, p.time)).toVector))
         resp <- Ok(analysis.toJson.deepDropNullValues)
       } yield resp
   }
+
+  /**
+   * Corridors by route and forecast data, started when an analysis is answered. Sampling one is among the server's
+   * heaviest requests (seconds on a small instance), so it overlaps with the analysis' trip to the page.
+   */
+  private val corridors: Cache[(Vector[CorridorPoint], SameData), Future[Corridor]] =
+    CacheBuilder.newBuilder().maximumSize(20).expireAfterWrite(Duration.ofMinutes(10)).build()
+  private val corridorPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(2))
+
+  private def corridorFor(points: Vector[CorridorPoint]): Future[Corridor] = {
+    val data = store.current
+    val f = corridors.get(
+      (points.take(RouteCorridor.maxPoints), SameData(data)),
+      () => Future(RouteCorridor.build(store, points))(using corridorPool)
+    )
+    f.failed.foreach(_ => corridors.invalidate((points.take(RouteCorridor.maxPoints), SameData(data))))(using
+      ExecutionContext.parasitic
+    )
+    f
+  }
+
+  /**
+   * Analyses by path, time, aircraft and forecast data. While its past tracks load the page asks again every 3 s for
+   * the same analysis; sampling the route anew each time competed with the page's other requests for the CPU.
+   */
+  private val analyses: Cache[AnyRef, RouteAnalysis] =
+    CacheBuilder.newBuilder().maximumSize(50).expireAfterWrite(Duration.ofMinutes(2)).build()
 
   /** Live ADS-B sightings from recent lookups, so analyzing a flight just looked up doesn't hit adsb.lol again. */
   private val sightings = new ConcurrentHashMap[String, (Instant, Option[LiveAircraft])]()
@@ -213,14 +244,17 @@ final class FlightsEndpoint(
     val liveF = Future(request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false)))(using
       scala.concurrent.ExecutionContext.global
     )
+    // The searches and the sighting share one wait, so the forecast never waits on them for longer than `answerWait`.
+    val deadline = System.nanoTime() + FlightsEndpoint.answerWait.toNanos
+    def left = math.max(0L, deadline - System.nanoTime()).nanos
     val (recent, routePending) =
       Try(schedules.routeLegs(origin, destination, searchDay, FlightsEndpoint.trackWait)).getOrElse((Seq.empty, false))
-    Try(Await.ready(ownSearch, 200.millis))
+    Try(Await.ready(ownSearch, left))
     val own = ownSearch.value.flatMap(_.toOption).flatten
     val ownPending = !ownSearch.isCompleted
     // adsb.lol often takes seconds: the analysis doesn't wait long for it (the sighting is cached, so the page's next
     // refresh, while the track searches finish, picks up the aircraft's type).
-    val live = if (own.isDefined) None else Try(Await.result(liveF, FlightsEndpoint.liveWait)).toOption.flatten
+    val live = if (own.isDefined) None else Try(Await.result(liveF, left)).toOption.flatten
     val aircraft = own
       .map(l => AircraftResponse.fromAdsb(None, l.typeCode))
       .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))
@@ -296,7 +330,7 @@ final class FlightsEndpoint(
         )
       case _ => None
     }
-    val analysis = (path match {
+    def analyzeOn(path: Option[(IndexedSeq[PathPoint], PathInfo)]): RouteAnalysis = path match {
       case Some((points, info)) => RouteAnalyzer.analyzePath(store, points, departure, aircraft).copy(path = Some(info))
       case None =>
         RouteAnalyzer
@@ -311,7 +345,10 @@ final class FlightsEndpoint(
             aircraft
           )
           .copy(path = Some(PathInfo("greatCircle", "Geodesic: the shortest path between the airports")))
-    }).copy(pathOptions = options)
+    }
+    val data = store.current
+    val analysisKey = (origin, destination, departure, request.cruiseAltitudeFt, path, aircraft, SameData(data))
+    val analysis = analyses.get(analysisKey, () => analyzeOn(path)).copy(pathOptions = options)
 
     val typeCode = own.flatMap(_.typeCode).orElse(live.flatMap(_.typeCode))
     val assumed = {
@@ -385,8 +422,11 @@ object FlightsEndpoint {
   /** How long an analysis waits for track lookups before answering without them (they carry on in the background). */
   val trackWait: java.time.Duration = java.time.Duration.ofMillis(300)
 
-  /** How long an analysis waits for the flight's live sighting (its aircraft type) before assuming one. */
-  val liveWait: scala.concurrent.duration.FiniteDuration = 500.millis
+  /**
+   * How long an analysis waits in all for track lookups and the flight's live sighting (its aircraft type) before
+   * answering without them.
+   */
+  val answerWait: scala.concurrent.duration.FiniteDuration = 500.millis
 
   /** Whether a route has `origin` immediately followed by `destination` (one leg of a possibly multi-leg route). */
   def flies(stops: Seq[Stop], origin: Place, destination: Place): Boolean =
@@ -394,4 +434,13 @@ object FlightsEndpoint {
       case Seq(from, to) => from.is(origin) && to.is(destination)
       case _ => false
     }
+}
+
+/** Forecast data compared by identity: it is replaced, never changed, when new data arrives. */
+final class SameData(val data: AnyRef) {
+  override def equals(other: Any): Boolean = other match {
+    case o: SameData => o.data eq data
+    case _ => false
+  }
+  override def hashCode: Int = System.identityHashCode(data)
 }
