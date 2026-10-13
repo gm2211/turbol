@@ -743,19 +743,16 @@ async function analyze() {
       // The timetable for the chosen day first: flight numbers are reused, and the live databases only know the
       // route a callsign flew last (DL286 was once Tokyo to Saipan).
       const q = flightQuery.value.trim().toUpperCase()
-      const [found, live] = await Promise.all([
-        fetchDatedFlight(q, departureLocal.value.slice(0, 10)),
-        lookupFlight(q).catch(() => undefined)
-      ])
+      // The live lookup (about 3 s) only adds the aircraft's position, so it doesn't hold up a timetabled flight.
+      const liveLookup = lookupFlight(q).catch(() => undefined)
+      const found = await fetchDatedFlight(q, departureLocal.value.slice(0, 10))
       const ends = found
         ? await Promise.all([airportByCode(found.origin), airportByCode(found.destination)])
         : undefined
       dated.value = ends?.[0] && ends[1] ? found : undefined
       if (dated.value && ends?.[0] && ends[1]) {
         const d = dated.value
-        const sameRoute =
-          live?.route?.origin.code === d.origin && live.route.destination.code === d.destination
-        lookup.value = {
+        const resolved: FlightLookup = {
           query: q,
           callsign: d.callsign ?? d.flightNumber,
           route: {
@@ -764,12 +761,18 @@ async function analyze() {
             airline: d.airline,
             origin: ends[0],
             destination: ends[1]
-          },
-          live: sameRoute ? live?.live : undefined
+          }
         }
+        lookup.value = resolved
+        void liveLookup.then((live) => {
+          const sameRoute =
+            live?.route?.origin.code === d.origin && live.route.destination.code === d.destination
+          if (sameRoute && live?.live && lookup.value === resolved)
+            lookup.value = { ...resolved, live: live.live }
+        })
         // Analyze from just after the scheduled gate time, as the Route tab does.
         departureLocal.value = toLocalInput(new Date(new Date(d.departure).getTime() + 20 * 60000))
-      } else lookup.value = live ?? { query: q }
+      } else lookup.value = (await liveLookup) ?? { query: q }
       if (!lookup.value.route) {
         error.value = lookup.value.live
           ? `${lookup.value.callsign} is flying, but its route isn't in the public database. Try the Route tab.`

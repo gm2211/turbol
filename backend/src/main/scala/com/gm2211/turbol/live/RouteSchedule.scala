@@ -170,6 +170,8 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
 
   // Track searches: by flight, remembered for a while whatever they found, so repeated asks don't search again.
   private val searchPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+  // Timetable reads for routeLegs, kept apart from searchPool so a waiting analysis never blocks a search.
+  private val lookupPool = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   private val searches: Cache[String, Future[Option[FlownLeg]]] =
     CacheBuilder.newBuilder().maximumSize(2000).expireAfterWrite(Duration.ofHours(1)).build()
 
@@ -239,14 +241,19 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
    * Boolean says whether any were still running.
    */
   def routeLegs(origin: Place, destination: Place, day: LocalDate, wait: Duration): (Seq[FlownLeg], Boolean) = {
-    val timetable =
-      Try(Timetable.route(origin.code, destination.code, day, LocalDate.now(ZoneOffset.UTC))).toOption.flatten
-    val searches =
+    val deadline = System.nanoTime() + wait.toNanos
+    def left = scala.concurrent.duration.Duration.fromNanos(math.max(0L, deadline - System.nanoTime()))
+    // The timetable itself can take seconds on a cold route, so it counts against `wait` too.
+    val searchesF = Future {
+      val timetable =
+        Try(Timetable.route(origin.code, destination.code, day, LocalDate.now(ZoneOffset.UTC))).toOption.flatten
       timetable.toSeq.flatMap(_._1).map(f => lastLegAsync(origin, destination, f.flightNumber, f.departure))
-    Try(Await.ready(Future.sequence(searches), scala.concurrent.duration.Duration.fromNanos(wait.toNanos)))
-    val found = searches.flatMap(_.value.flatMap(_.toOption).flatten)
+    }(using lookupPool)
+    val searches = Try(Await.result(searchesF, left)).toOption
+    searches.foreach(s => Try(Await.ready(Future.sequence(s)(using implicitly, lookupPool), left)))
+    val found = searches.toSeq.flatten.flatMap(_.value.flatMap(_.toOption).flatten)
     val legs = (found ++ cachedLegs(origin, destination).getOrElse(Seq.empty)).distinctBy(l => (l.hex, l.takeoff))
-    (legs, searches.exists(!_.isCompleted))
+    (legs, searches.forall(_.exists(!_.isCompleted)))
   }
 
   private def fromAdsb(
