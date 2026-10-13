@@ -61,3 +61,52 @@ behaviors:
       Medium thresholds are whole hundredths, so no column changes category.
     source:
       text: 3d view loads and is operable within 3 seconds
+  - id: flight-corridor
+    description: >-
+      With an analyzed route on, 3D shows only the air around the flight instead of the frame's
+      blocks: 6,000 ft above and below its altitude in 1,000 ft levels and 60 km either side of
+      its track in 15 km steps, sampled when the flight passes each point and classified for its
+      aircraft, the same way as the route. A switch in the 3D panel goes back to the whole layer.
+    details: >-
+      Light-or-worse cells are drawn as boxes turned to the track; the cells the flight flies
+      through are bright and the rest faint, and the line is colored by the cell it is in, so it
+      always matches the boxes around it. Hovering a cell names its level, time, distance from the
+      plan and category. The 6,000 ft and 60 km extents and 15 km steps are defaults chosen by
+      Claude (one GTG level and about one GTG block per step), not user decisions.
+    source:
+      text: >-
+        when focusing on a single flight we should have a view of turbulence focused on turbulence
+        above and below and around the flight path
+      reference: Giulio, turbol project thread, 2026-10-13
+  - id: flight-what-if
+    description: >-
+      Sliders try the flight up to 6,000 ft higher or lower and up to 60 km left or right of its
+      track; the line moves and recolors through the corridor, the planned path stays faintly
+      visible, and the minutes at Moderate or worse are compared with the plan. A button applies
+      the smoothest nearby option (fewest minutes at Moderate or worse, then at Light, then the
+      smallest change).
+    details: >-
+      A change eases in over the first 300 km after takeoff and out over the last 300 km before
+      landing (Claude's default), so the flight still leaves and reaches its airports and a detour
+      bends away and back. The same sliders are on Analyze, and "Explore in 3D" carries the tried
+      flight over.
+    source:
+      text: >-
+        it would be good to have some ux to make it easier to see intersections as well as
+        experiment with what the turbulence would look like if flight were to go higher or lower or
+        take slight detour.
+      reference: Giulio, turbol project thread, 2026-10-13
+  - id: flight-projections
+    description: >-
+      Next to the flight in 3D and on the Analyze page, two flat views of the corridor share the
+      timeline's cursor: a side view (time along the route against altitude, with the levels above
+      and below) and a top view (time against distance either side of the track, at the flight's
+      level), with the planned and tried flight drawn through them.
+    details: >-
+      Hovering the route in 3D, the timeline or either view moves the same cursor; in 3D a marker
+      shows where the flight is at that minute. On phones the views sit in the 3D settings sheet.
+    source:
+      text: >-
+        tangentially, in the analysis view it would be good to pair 3d views to 2s projections of 3d
+        position of plane wrt to turbulence
+      reference: Giulio, turbol project thread, 2026-10-13
