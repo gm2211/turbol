@@ -29,7 +29,8 @@ class EndpointsModule(servicesModule: ServicesModule, @unused configModule: Conf
     FlightsEndpoint(
       servicesModule.turbulenceStore,
       servicesModule.liveTrafficService,
-      servicesModule.routeScheduleService
+      servicesModule.routeScheduleService,
+      servicesModule.airportsService
     )
   lazy val liveEndpoint: LiveEndpoint = LiveEndpoint(servicesModule.turbulenceStore, servicesModule.liveTrafficService)
   lazy val packEndpoint: PackEndpoint = PackEndpoint(servicesModule.turbulenceStore)

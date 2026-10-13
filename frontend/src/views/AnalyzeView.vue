@@ -746,8 +746,12 @@ async function analyze() {
       // The live lookup (about 3 s) only adds the aircraft's position, so it doesn't hold up a timetabled flight.
       const liveLookup = lookupFlight(q).catch(() => undefined)
       const found = await fetchDatedFlight(q, departureLocal.value.slice(0, 10))
+      // The server resolves both airports with the flight; looked up here only if it couldn't.
       const ends = found
-        ? await Promise.all([airportByCode(found.origin), airportByCode(found.destination)])
+        ? await Promise.all([
+            found.originPlace ?? airportByCode(found.origin),
+            found.destinationPlace ?? airportByCode(found.destination)
+          ])
         : undefined
       dated.value = ends?.[0] && ends[1] ? found : undefined
       if (dated.value && ends?.[0] && ends[1]) {

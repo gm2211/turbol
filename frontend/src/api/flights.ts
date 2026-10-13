@@ -200,6 +200,9 @@ export interface DatedFlight {
   equipment?: string
   /** The ATC callsign it flew under recently, when known (EK206 flies as UAE5RQ). */
   callsign?: string
+  /** Both airports, resolved by the server so the analysis needs no further lookups. */
+  originPlace?: Place
+  destinationPlace?: Place
   /** False when it doesn't fly on the chosen day: the times are those of operatingDays, moved to it. */
   scheduledOnDay: boolean
   operatingDays: string[]
