@@ -54,7 +54,8 @@ behaviors:
     description: >-
       Outside the GTG grid, or where GTG has no value, EDR comes from a global layer covering the
       whole world at GFS's 0.25 degree (about 28 km) resolution, at the same 12 altitude levels as the
-      GTG forecast, every 3 hours from 3 to 30 hours after the GFS cycle, interpolated in time. Its
+      GTG forecast, every 3 hours from 3 to 48 hours after the GFS cycle (WAFS's own limit), interpolated in time,
+      so a long-haul flight leaving tomorrow evening is covered gate to gate. Its
       source is reported as Global.
     source:
       text: can we add at least transatlantic coverage?
@@ -91,7 +92,7 @@ behaviors:
       linearly by distance to the edge, in point queries and map tiles alike, so there is no seam.
   - id: global-layer-refresh
     description: >-
-      A new GFS cycle is fetched within about 10 minutes of its 30-hour forecast appearing on NOMADS,
+      A new GFS cycle is fetched within about 10 minutes of its 48-hour forecast appearing on NOMADS,
       through the NOMADS GRIB filter (only the winds and heights it needs), is published hour by hour
       on a first run, and is kept on disk so a restart loads it before downloading again.
   - id: global-layer-switch

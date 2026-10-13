@@ -89,9 +89,10 @@ behaviors:
       apart they are. North Atlantic tracks move with the jet stream and often fail this. The last
       track is the flight's own most recent leg on the route, shifted to the chosen departure. Gaps in
       ADS-B coverage over oceans are crossed on the great circle. The average and last track load on
-      their own: the analysis starts the route's track searches, waits a bounded time, and marks an
-      option still loading (rather than unavailable) while they run, and the page re-analyzes until
-      they finish. The average was first asked for as
+      their own: the analysis starts the route's track searches and waits at most about two seconds
+      for them, so the forecast shows at once on the best path found so far; options still searching
+      are marked loading (rather than unavailable), and the page quietly asks again every 3 seconds
+      until they finish, switching to the better path unless one was picked. The average was first asked for as
       "average route based on past flight plans when past flight plans are similar enough to one
       another" (Giulio, 2026-10-12).
     source:
@@ -149,6 +150,12 @@ behaviors:
       The result leads with a one-sentence verdict based on the worst en-route category, such as
       "Smooth ride: no significant turbulence expected." or "Some bumps likely, worst around 2h33m
       into the flight."
+    details: >-
+      When the flight is past the global forecast's reach, the verdict says how far forecasts reach
+      and roughly when the flight will be covered ("No forecast yet: forecasts reach Oct 14, 03:00
+      UTC, and this flight is later. Check back after about Oct 13, 18:00 UTC."), and a flight only
+      partly past it gets the same as a note. Prompted by DL286 JFK to MXP on 2026-10-13 showing "No
+      turbulence data for this route yet." when the global layer only reached 30 hours ahead.
   - id: near-ground-excluded
     description: >-
       Points below 2,000 ft are shown but excluded from the worst bump, the verdict and the category

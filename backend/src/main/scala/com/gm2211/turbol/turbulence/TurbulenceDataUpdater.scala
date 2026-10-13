@@ -34,9 +34,10 @@ object TurbulenceDataUpdater {
 
   /**
    * GFS forecast hours fetched for the global layer. A cycle is complete about 5 hours after its init and replaced 6
-   * hours later, so +3 h to +30 h covers from a couple of hours ago to beyond GTG's 18-hour horizon the whole time.
+   * hours later, so +3 h to +48 h covers from a couple of hours ago to at least 37 hours ahead the whole time: a
+   * long-haul flight leaving tomorrow evening is covered gate to gate (WAFS also stops at 48 hours).
    */
-  val globalForecastHours: Range = 3 to 30 by 3
+  val globalForecastHours: Range = 3 to 48 by 3
 
   /**
    * Share of wall-clock time the global layer's decoding may use, and the pause between its forecast hours when a

@@ -77,6 +77,20 @@ class GlobalLayerTest extends BaseTest {
     store.sample(51.5, -0.1, 35000, t0.plus(7, ChronoUnit.HOURS)).source shouldBe EdrSource.NoData
   }
 
+  test("a flight past the global layer's reach says how far it reaches and when it will be covered") {
+    val frames = TurbulenceDataUpdater.globalForecastHours.toVector.map(h =>
+      uniformFrame(FrameKind.Global, t0.plus(h.toLong, ChronoUnit.HOURS), Map(35000 -> 0.1))
+    )
+    val data = TurbulenceData(None, Vector.empty, global = frames)
+    val reach = t0.plus(51, ChronoUnit.HOURS)
+    RouteAnalyzer.beyondGlobal(Seq(t0.plus(50, ChronoUnit.HOURS)), data) shouldBe None
+    // Landing 60 h after the cycle: needs the cycle from 12 h later, served about 6 h after its init.
+    RouteAnalyzer.beyondGlobal(Seq(t0.plus(55, ChronoUnit.HOURS), t0.plus(60, ChronoUnit.HOURS)), data) shouldBe
+      Some(reach -> t0.plus(18, ChronoUnit.HOURS))
+    RouteAnalyzer.beyondGlobal(Seq(t0.plus(60, ChronoUnit.HOURS)), data.copy(loading = Set("global"))) shouldBe None
+    RouteAnalyzer.utc(reach) shouldBe "Oct 14, 03:00 UTC"
+  }
+
   test("3D volume adds coarse global blocks outside GTG only") {
     val gtg = uniformFrame(FrameKind.Nowcast, t0, Map(35000 -> 0.02))
     val global = uniformFrame(FrameKind.Global, t0, Map(35000 -> 0.20))
