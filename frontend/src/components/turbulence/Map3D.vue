@@ -1018,6 +1018,9 @@ onMounted(() => {
   viewState = toDeck(props.view)
   deck = new Deck({
     parent: canvasEl.value,
+    // luma.gl otherwise waits for the window's load event, which a first visit's tiles and images can hold back for
+    // longer than a minute: the 3D view stayed blank until then.
+    deviceProps: { waitForPageLoad: false },
     initialViewState: viewState,
     // touchRotate: two-finger twist rotates and two-finger vertical slide tilts.
     controller: { touchRotate: true },
