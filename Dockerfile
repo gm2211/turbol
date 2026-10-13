@@ -23,8 +23,11 @@ COPY backend/ backend/
 RUN sbt -batch backend/stage
 
 FROM eclipse-temurin:21-jre
-# nginx serves the frontend and passes /api to the JVM (see deployment/render/nginx.conf).
-RUN apt-get update && apt-get install -y --no-install-recommends nginx && rm -rf /var/lib/apt/lists/*
+# nginx serves the frontend and passes /api to the JVM (see deployment/render/nginx.conf); OpenJPEG's decoder unpacks
+# the JPEG2000 GTGN nowcast outside the JVM heap (see Jpeg2000.scala).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends nginx libopenjp2-tools \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/turbol
 COPY --from=backend /src/backend/target/universal/stage/ ./
 COPY --from=frontend /src/frontend/dist/ ./static/

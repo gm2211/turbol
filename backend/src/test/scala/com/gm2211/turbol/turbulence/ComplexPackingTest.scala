@@ -32,4 +32,19 @@ class ComplexPackingTest extends BaseTest {
       }
     }
   }
+
+  test("unpacks a JPEG2000 GTGN level exactly as NetCDF-Java does, with OpenJPEG") {
+    assume(Jpeg2000.available, "opj_decompress isn't installed (apt install libopenjp2-tools)")
+    val path = Paths.get(getClass.getClassLoader.getResource("grib/gtgn-nowcast-level.grib2").toURI)
+    val workDir = java.nio.file.Files.createTempDirectory("j2k")
+    Using.resource(new RandomAccessFile(path.toString, "r")) { raf =>
+      val record = new Grib2RecordScanner(raf).next()
+      val expected: Array[Float] = record.readData(raf)
+      val out = new Array[Float](expected.length)
+      Jpeg2000.readInto(record, raf, out, workDir) shouldBe true
+      bits(out) shouldBe bits(expected)
+      ComplexPacking.readInto(record, raf, out) shouldBe false
+      java.nio.file.Files.list(workDir).count() shouldBe 0L
+    }
+  }
 }
