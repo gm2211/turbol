@@ -209,7 +209,26 @@ export interface DatedFlight {
 }
 
 /** Where and when an IATA flight number flies on `day` (YYYY-MM-DD at the origin); undefined when unknown. */
+/**
+ * A request index.html started before the app's code loaded (opening Analyze on a flight or route), taken once. Its
+ * result is used when it came back; otherwise the caller asks again.
+ */
+async function opening<T>(key: string): Promise<T | undefined> {
+  const early = window.__opening?.[key] as Promise<T | undefined> | undefined
+  if (!early) return undefined
+  delete window.__opening![key]
+  return early
+}
+
+declare global {
+  interface Window {
+    __opening?: Record<string, Promise<unknown>>
+  }
+}
+
 export async function fetchDatedFlight(q: string, day: string): Promise<DatedFlight | undefined> {
+  const early = await opening<DatedFlight>(`dated:${q}:${day}`)
+  if (early) return early
   try {
     return (await axios.get('/api/flights/dated', { params: { q, date: day } })).data
   } catch {
@@ -278,6 +297,8 @@ export async function analyzeFlight(request: AnalyzeRequest): Promise<RouteAnaly
 }
 
 export async function searchAirports(query: string): Promise<AirportResult[]> {
+  const early = await opening<{ airports: AirportResult[] }>(`airports:${query.toUpperCase()}`)
+  if (early) return early.airports
   return (await axios.post('/api/airports/search', { query, limit: 10 })).data.airports
 }
 

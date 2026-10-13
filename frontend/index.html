@@ -79,6 +79,34 @@
           .catch(() => undefined)
       }
     </script>
+    <script>
+      // Opening Analyze on a flight (?q=) or a route (?from=&to=): start its first lookups now, before the app's code
+      // has loaded (fetchDatedFlight and searchAirports in src/api/flights.ts pick them up). Keys match the page's own
+      // requests: the query as typed, upper-cased, and the departure day (?day=, else today here).
+      if (location.pathname.indexOf('/analyze') === 0) {
+        (function () {
+          var p = new URLSearchParams(location.search)
+          var pad = function (n) { return (n < 10 ? '0' : '') + n }
+          var now = new Date()
+          var day = /^\d{4}-\d{2}-\d{2}$/.test(p.get('day') || '') ? p.get('day')
+            : now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+          var json = function (r) { return r.ok ? r.json() : undefined }
+          var none = function () { return undefined }
+          window.__opening = {}
+          var q = (p.get('q') || '').trim().toUpperCase()
+          if (q) window.__opening['dated:' + q + ':' + day] =
+            fetch('/api/flights/dated?q=' + encodeURIComponent(q) + '&date=' + day).then(json).catch(none)
+          else ['from', 'to'].forEach(function (k) {
+            var code = (p.get(k) || '').toUpperCase()
+            if (code) window.__opening['airports:' + code] = fetch('/api/airports/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: code, limit: 10 })
+            }).then(json).catch(none)
+          })
+        })()
+      }
+    </script>
 </head>
 <body>
 <div id="app"></div>

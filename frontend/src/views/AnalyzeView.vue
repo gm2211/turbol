@@ -450,6 +450,7 @@ import {
   type AnalyzeRequest,
   type FlightLookup,
   type Place,
+  type RoutePoint,
   type RouteAnalysis,
   airportByCode,
   type RouteSchedule,
@@ -603,13 +604,25 @@ const referenceThresholds: Thresholds = { light: 0.12, moderate: 0.14, severe: 0
 /** The air around the analyzed flight, for the side and top views (loaded after the result shows). */
 const corridor = ref<Corridor>()
 const whatIf = ref<WhatIf>(noChange)
+/** The route an analysis flies (places and times): a refresh that only fills in the forecast keeps the corridor. */
+const routeKey = (a: RouteAnalysis) => {
+  const p = a.points
+  const at = (q: RoutePoint) => `${q.lat.toFixed(3)},${q.lon.toFixed(3)},${q.altitudeFt},${q.time}`
+  return `${p.length}|${at(p[0]!)}|${at(p[Math.floor(p.length / 2)]!)}|${at(p[p.length - 1]!)}|${a.dataSources.forecastIssued}|${a.dataSources.nowcastValid}|${a.dataSources.globalIssued}`
+}
+let corridorKey: string | undefined
 watch(analysis, async (a) => {
+  // Refreshes while past tracks load come every 3 s with the same route: re-sampling the corridor each time (one of
+  // the server's heaviest requests) slowed everything else on the page.
+  const key = a && a.points.length >= 2 ? routeKey(a) : undefined
+  if (key && key === corridorKey) return
+  corridorKey = key
   corridor.value = undefined
   whatIf.value = noChange
   if (!a || a.points.length < 2) return
   try {
     const c = await fetchCorridor(a.points)
-    if (analysis.value === a) corridor.value = c
+    if (corridorKey === key) corridor.value = c
   } catch (e) {
     // Without it the page just has no side and top views.
     console.warn('corridor load failed', e)
@@ -841,7 +854,7 @@ async function analyze() {
       router.replace({ query: { from: from.code, to: to.code, day } })
       selectedFlight.value = undefined
     }
-    analysis.value = await requestAnalysis({
+    const request = requestAnalysis({
       origin: from!,
       destination: to!,
       departure: new Date(departureLocal.value).toISOString(),
@@ -850,11 +863,18 @@ async function analyze() {
       day: departureLocal.value.slice(0, 10),
       path: pathWanted.value
     })
+    const seq = requestSeq
     analyzedOrigin.value = from
     analyzedDestination.value = to
-    scheduleRetry()
+    // The route's flights load alongside the analysis, not after it: picking one analyzes it again, and that
+    // analysis replaces this one even if this one is still on its way.
     if (mode.value === 'route') void loadSchedule(from!, to!)
     else schedule.value = undefined
+    const result = await request
+    if (seq === requestSeq) {
+      analysis.value = result
+      scheduleRetry()
+    }
   } catch (e) {
     error.value = `Analysis failed: ${e}`
   } finally {

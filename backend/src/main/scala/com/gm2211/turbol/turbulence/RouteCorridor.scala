@@ -52,9 +52,9 @@ object RouteCorridor {
         val d = offsetsKm(o)
         val (lat, lon) =
           if (d == 0) (p.lat, p.lon) else RouteAnalyzer.destination(p.lat, p.lon, track + 90, d)
+        val column = store.sampleColumnIn(data, lat, lon, levelsFt.map(p.altitudeFt + _), p.time)
         levelsFt.indices.foreach { l =>
-          val alt = p.altitudeFt + levelsFt(l)
-          val edr = if (alt < 0) Double.NaN else store.sampleIn(data, lat, lon, alt, p.time).edr
+          val edr = if (p.altitudeFt + levelsFt(l) < 0) Double.NaN else column(l)
           out((k * nl + l) * no + o) = EdrLayer.encode(edr.toFloat)
         }
       }

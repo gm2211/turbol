@@ -216,7 +216,9 @@ final class FlightsEndpoint(
     Try(Await.ready(ownSearch, 200.millis))
     val own = ownSearch.value.flatMap(_.toOption).flatten
     val ownPending = !ownSearch.isCompleted
-    val live = if (own.isDefined) None else Try(Await.result(liveF, 2.seconds)).toOption.flatten
+    // adsb.lol often takes seconds: the analysis doesn't wait long for it (the sighting is cached, so the page's next
+    // refresh, while the track searches finish, picks up the aircraft's type).
+    val live = if (own.isDefined) None else Try(Await.result(liveF, FlightsEndpoint.liveWait)).toOption.flatten
     val aircraft = own
       .map(l => AircraftResponse.fromAdsb(None, l.typeCode))
       .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))
@@ -380,6 +382,9 @@ final class FlightsEndpoint(
 object FlightsEndpoint {
   /** How long an analysis waits for track lookups before answering without them (they carry on in the background). */
   val trackWait: java.time.Duration = java.time.Duration.ofMillis(300)
+
+  /** How long an analysis waits for the flight's live sighting (its aircraft type) before assuming one. */
+  val liveWait: scala.concurrent.duration.FiniteDuration = 500.millis
 
   /** Whether a route has `origin` immediately followed by `destination` (one leg of a possibly multi-leg route). */
   def flies(stops: Seq[Stop], origin: Place, destination: Place): Boolean =

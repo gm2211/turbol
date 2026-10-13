@@ -10,6 +10,7 @@ import io.circe.Encoder
 
 import java.time.{Duration, Instant}
 import java.util.concurrent.atomic.AtomicReference
+import scala.math.rint
 
 /** Where a sampled EDR value came from. Global is the coarse GFS-derived layer outside (or past) GTG. */
 enum EdrSource {
@@ -88,6 +89,29 @@ final class TurbulenceStore(loading: Set[String] = Set.empty) {
       else if (gtg.edr.isNaN) EdrSample(global, EdrSource.Global)
       else EdrSample(weight * gtg.edr + (1 - weight) * global, if (weight >= 0.5) gtg.source else EdrSource.Global)
     }
+  }
+
+  /**
+   * [[sampleIn]] at several altitudes of one place and time, projecting the place onto the grids once rather than once
+   * per altitude (the projection is most of a sample's cost): the route corridor samples 13 levels per place.
+   */
+  def sampleColumnIn(data: TurbulenceData, lat: Double, lon: Double, altitudesFt: Seq[Double], time: Instant): Array[Double] = {
+    val inGtg = lat >= 0 && lat <= 89
+    val (fi, fj) = if (inGtg) LambertGrid.fractionalIndex(lat, lon) else (-1.0, -1.0)
+    val (i, j) = (rint(fi).toInt, rint(fj).toInt)
+    val gtgIndex = if (!inGtg || i < 0 || i >= LambertGrid.nx || j < 0 || j >= LambertGrid.ny) -1 else j * LambertGrid.nx + i
+    val weight = if (gtgIndex < 0) 0.0 else LambertGrid.interiorWeight(fi, fj)
+    val globalIndex = GlobalGrid.nearestIndex(lat, lon)
+    altitudesFt.iterator.map { alt =>
+      val gtg = sampleAt(data, gtgIndex, alt, time)
+      if (weight >= 1.0 && !gtg.edr.isNaN) gtg.edr
+      else {
+        val global = TurbulenceStore.globalAt(data.global, globalIndex, alt, time)
+        if (global.isNaN) gtg.edr
+        else if (gtg.edr.isNaN) global
+        else weight * gtg.edr + (1 - weight) * global
+      }
+    }.toArray
   }
 
   def sampleAt(data: TurbulenceData, flatIndex: Int, altitudeFt: Double, time: Instant): EdrSample = {
