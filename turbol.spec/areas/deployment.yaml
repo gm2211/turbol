@@ -35,3 +35,8 @@ behaviors:
     description: >-
       nginx in the container serves the frontend's files (precompressed) and proxies /api to the
       backend, unbuffered so server-sent events and streamed bodies pass straight through.
+  - id: map-tiles-off-jvm
+    description: >-
+      The backend saves each map tile it serves or prewarms to disk by frame id, with "latest"
+      linking to the current nowcast's frame, and nginx serves saved tiles without the JVM;
+      tiles not saved yet go to the backend.

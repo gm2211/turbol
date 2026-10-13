@@ -7,7 +7,8 @@
 package com.gm2211.turbol.modules
 
 import com.gm2211.turbol.background.airportdata.*
-import com.gm2211.turbol.turbulence.{FrameKind, TurbulenceDataUpdater}
+import com.gm2211.turbol.endpoints.TurbulenceEndpoint
+import com.gm2211.turbol.turbulence.{FrameKind, TileFiles, TurbulenceDataUpdater}
 import com.gm2211.turbol.util.Visitors
 import com.softwaremill.macwire.*
 
@@ -36,7 +37,14 @@ final class BackgroundJobsModule(val storageModule: StorageModule, val servicesM
       val nowcast = store.current.nowcast.toSeq
       val warm = if (frames.forall(_.kind == FrameKind.Global)) nowcast
       else frames.filterNot(f => nowcast.exists(_.id == f.id)) ++ nowcast
-      warm.foreach(f => servicesModule.tileRenderer.prewarm(f, store.current.globalNear(f.validTime)))
+      // Each also saved for nginx to serve (TileFiles); once the nowcast's are all there, nginx's "latest" moves to it.
+      warm.foreach { f =>
+        val data = store.current
+        val id = TurbulenceEndpoint.frameId(f, data)
+        servicesModule.tileRenderer
+          .prewarm(f, data.globalNear(f.validTime), save = (z, x, y, png) => TileFiles.write(id, 35000, z, x, y, png))
+        if (nowcast.exists(_.id == f.id)) TileFiles.pointLatest(id)
+      }
     }
   )
 }

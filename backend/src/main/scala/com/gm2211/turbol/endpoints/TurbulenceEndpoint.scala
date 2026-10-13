@@ -174,18 +174,28 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
         case GET -> Root / "tiles" / id / IntVar(level) / IntVar(z) / IntVar(x) / TileY(y) =>
           frame(id) match {
             case Some(f) if z >= 0 && z <= 12 =>
-              val global = store.current.globalNear(f.validTime)
+              val data = store.current
+              val global = data.globalNear(f.validTime)
+              // Saved for nginx to serve the next time (see TileFiles); "latest" follows the nowcast asked for here.
+              val publicId = frameId(f, data)
+              def save(png: Array[Byte]): IO[Unit] = IO.blocking {
+                TileFiles.write(publicId, level, z, x, y, png)
+                if (id == latestNowcast) TileFiles.pointLatest(publicId)
+              }
               // A frame id names immutable data; "latest" moves every 15 minutes.
               val maxAge = if (id == latestNowcast) 1.minute else 7.days
               // Rendered tiles (most of the opening view is prewarmed) skip the queue for a render slot. A tile whose
               // global layer just changed is served as last drawn, briefly cacheable, while it's redrawn behind it.
               val png = IO(tiles.cached(f, global, level, z, x, y)).flatMap {
-                case Some(png) => IO.pure(png -> maxAge)
+                case Some(png) => save(png).as(png -> maxAge)
                 case None =>
                   IO(tiles.previous(f, level, z, x, y)).flatMap {
                     case Some(png) => IO(redraw(f, global, level, z, x, y)).as(png -> 30.seconds)
                     case None =>
-                      tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y))).map(_ -> maxAge)
+                      tileSlots.permit
+                        .surround(IO.blocking(tiles.render(f, global, level, z, x, y)))
+                        .flatTap(save)
+                        .map(_ -> maxAge)
                   }
               }
               png.flatMap { (png, maxAge) =>
