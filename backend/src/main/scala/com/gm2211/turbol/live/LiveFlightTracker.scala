@@ -8,7 +8,12 @@ package com.gm2211.turbol.live
 
 import com.gm2211.turbol.turbulence.*
 
-import java.time.Instant
+import com.google.common.cache.{Cache, CacheBuilder}
+
+import java.time.{Duration, Instant}
+import java.util.concurrent.{ConcurrentHashMap, Executors}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.math.*
 import scala.util.Try
 
@@ -41,13 +46,46 @@ final case class LiveFlightUpdate(
 final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficService) {
   import LiveFlightTracker.*
 
+  // adsb.lol's last report per airframe, from fetches that outlived the update that started them.
+  private val reports: Cache[String, (Instant, LiveAircraft)] =
+    CacheBuilder.newBuilder().maximumSize(5000).expireAfterWrite(Duration.ofMinutes(5)).build()
+  private val fetching = new ConcurrentHashMap[String, Future[Option[LiveAircraft]]]()
+  private val fetchPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+
+  /** adsb.lol's report for `hex`, one fetch at a time per airframe; a report that comes in late is kept for later. */
+  private def fetch(hex: String): Future[Option[LiveAircraft]] =
+    fetching.computeIfAbsent(
+      hex,
+      _ => {
+        val f = Future {
+          val a = Try(LiveTrafficClient.byHex(hex)).toOption.flatten
+          a.foreach(r => reports.put(hex, (Instant.now(), r)))
+          a
+        }(using fetchPool)
+        f.onComplete(_ => fetching.remove(hex))(using ExecutionContext.parasitic)
+        f
+      }
+    )
+
+  /** The latest of adsb.lol's last report and the map's cached traffic, dead-reckoned to now, if seen in 2 min. */
+  private def recent(hex: String, now: Instant): Option[LiveAircraft] = {
+    val reported = Option(reports.getIfPresent(hex)).map { case (at, a) =>
+      val age = Duration.between(at, now).toMillis / 1000.0 + a.seenSecondsAgo
+      LiveTrafficService.extrapolate(a, age).copy(seenSecondsAgo = age)
+    }
+    (reported.toSeq ++ traffic.cached(hex, now = now)).filter(_.seenSecondsAgo <= 120).minByOption(_.seenSecondsAgo)
+  }
+
   /**
    * `fresh = false` takes the aircraft from the map's cached traffic when it's there (its first update then doesn't
-   * wait on adsb.lol); otherwise, or when adsb.lol fails, adsb.lol's latest report.
+   * wait on adsb.lol); otherwise, or when adsb.lol fails, adsb.lol's latest report. `fresh = true` asks adsb.lol but
+   * waits at most [[adsbWait]] (it often takes seconds, which made updates arrive 10-15 s late), else goes on from the
+   * last report it has.
    */
   def update(hex: String, now: Instant = Instant.now(), fresh: Boolean = true): LiveFlightUpdate = {
+    val key = hex.toLowerCase
     val latest =
-      if (fresh) Try(LiveTrafficClient.byHex(hex)).toOption.flatten.orElse(traffic.cached(hex, now = now))
+      if (fresh) Try(Await.result(fetch(key), adsbWait)).toOption.flatten.orElse(recent(key, now))
       else traffic.cached(hex, now = now).orElse(LiveTrafficClient.byHex(hex))
     latest match {
       case None =>
@@ -93,6 +131,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
 
 object LiveFlightTracker {
   private val horizonMinutes = 60.0
+  private val adsbWait = 2.seconds
 
   /** The headline for the next hour: what it's like now, and when the next bumps start and how long they last. */
   def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraft: AircraftResponse): Upcoming = {
