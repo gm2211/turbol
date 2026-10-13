@@ -69,8 +69,12 @@ object GfsTurbulence {
   private val ny = GlobalGrid.ny
 
   /** Horizontal deformation sqrt(stretching^2 + shearing^2) by central differences, periodic in longitude. */
-  def deformation(u: Array[Float], v: Array[Float], throttle: Throttle = Throttle.off): Array[Float] = {
-    val out = new Array[Float](nx * ny)
+  def deformation(
+    u: Array[Float],
+    v: Array[Float],
+    throttle: Throttle = Throttle.off,
+    out: Array[Float] = new Array[Float](nx * ny)
+  ): Array[Float] = {
     val dLambda = toRadians(GlobalGrid.resolutionDeg)
     val dy = earthRadius * toRadians(-GlobalGrid.resolutionDeg) // rows run north to south
     var j = 0
@@ -102,11 +106,11 @@ object GfsTurbulence {
   final private case class Level(u: Array[Float], v: Array[Float], z: Array[Float], deform: Array[Float])
   final private case class Layer(mid: Array[Float], ti1: Array[Float])
 
-  /** TI1 and mid-height for the layer between two pressure levels. */
-  private def layer(lo: Level, hi: Level, throttle: Throttle): Layer = {
+  /** TI1 and mid-height for the layer between two pressure levels, written into `into`. */
+  private def layer(lo: Level, hi: Level, throttle: Throttle, into: Layer): Layer = {
     val n = nx * ny
-    val mid = new Array[Float](n)
-    val ti1 = new Array[Float](n)
+    val mid = into.mid
+    val ti1 = into.ti1
     var p = 0
     while (p < n) {
       if ((p & 4095) == 0) throttle.tick()
@@ -118,7 +122,7 @@ object GfsTurbulence {
       mid(p) = 0.5f * (lo.z(p) + hi.z(p))
       p += 1
     }
-    Layer(mid, ti1)
+    into
   }
 
   // GRIB2 discipline 0: category 2 parameters 2/3 = UGRD/VGRD, category 3 parameter 5 = HGT; level type 100 = isobaric.
@@ -129,7 +133,9 @@ object GfsTurbulence {
   /**
    * Decode a GFS file holding UGRD, VGRD and HGT on [[pressureLevelsHpa]] into EDR layers at [[levelsFt]] (MSL
    * altitude, like GTG), written to `outputDir/<levelFt>.u8` and memory-mapped. Works up the column two pressure
-   * levels at a time, so only a few global fields are on the heap at once (~60 MB).
+   * levels at a time, so only a few global fields are on the heap at once (~60 MB). The derived fields reuse the same
+   * few arrays all the way up: allocating them per level made each hour allocate 325 MB, and on prod's tenth of a CPU
+   * every 150 MB of that cost a full GC of 0.5-1 s that stalled visitors.
    *
    * With `wafs` (EDR per [[Wafs]] level on the same grid, see [[Wafs.fetch]]), levels WAFS covers blend it in.
    * `throttle` caps its CPU share so the server stays responsive.
@@ -186,19 +192,25 @@ object GfsTurbulence {
         require(values.length == n, s"unexpected grid size ${values.length} in $gribFile")
         values
       }
+      // Two levels and two layers are live at a time; each takes over the arrays of the one it replaces.
+      var spareDeform = new Array[Float](n)
+      var spareLayer = Layer(new Array[Float](n), new Array[Float](n))
       def level(hPa: Int): Level = {
         val u = field(uWind, hPa)
         val v = field(vWind, hPa)
-        Level(u, v, field(height, hPa), deformation(u, v, throttle))
+        Level(u, v, field(height, hPa), deformation(u, v, throttle, spareDeform))
       }
 
       val bottomUp = pressureLevelsHpa.sorted(using Ordering[Int].reverse)
       val layerCount = bottomUp.size - 1
       var lo = level(bottomUp.head)
+      spareDeform = new Array[Float](n)
       var previous: Layer = null
       for (k <- 1 until bottomUp.size) {
         val hi = level(bottomUp(k))
-        val current = layer(lo, hi, throttle)
+        spareDeform = lo.deform
+        val current = layer(lo, hi, throttle, spareLayer)
+        spareLayer = if (previous == null) Layer(new Array[Float](n), new Array[Float](n)) else previous
         // Linear in height between layer mids, holding the end values below the first and above the last mid.
         if (previous != null) {
           val first = k == 2

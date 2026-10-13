@@ -123,17 +123,28 @@ object Wafs {
       min(w - 1, max(0, floor((lon180 + 180) / 360 * w).toInt))
     }
     val out = new Array[Byte](GlobalGrid.nx * GlobalGrid.ny)
+    // Reading a row at a time and remembering the last colour keeps this from allocating per pixel: getRGB(x, y) and
+    // boxing every colour for the lookup made each hour's 8 images allocate 440 MB.
+    val row = new Array[Int](w)
+    var rowY = -1
+    var lastArgb = 0
+    var lastEdr = edrOf.getOrElseUpdate(0, EdrLayer.encode(stepEdr(min(step(0), stepEdr.size - 1)).toFloat))
     var j = 0
     while (j < GlobalGrid.ny) {
       throttle.tick()
       val y = ys(j)
+      if (y >= 0 && y != rowY) { image.getRGB(0, y, w, 1, row, 0, w): Unit; rowY = y }
       var i = 0
       while (i < GlobalGrid.nx) {
         out(j * GlobalGrid.nx + i) =
           if (y < 0) EdrLayer.missing
           else {
-            val argb = image.getRGB(xs(i), y)
-            edrOf.getOrElseUpdate(argb, EdrLayer.encode(stepEdr(min(step(argb), stepEdr.size - 1)).toFloat))
+            val argb = row(xs(i))
+            if (argb != lastArgb) {
+              lastArgb = argb
+              lastEdr = edrOf.getOrElseUpdate(argb, EdrLayer.encode(stepEdr(min(step(argb), stepEdr.size - 1)).toFloat))
+            }
+            lastEdr
           }
         i += 1
       }
