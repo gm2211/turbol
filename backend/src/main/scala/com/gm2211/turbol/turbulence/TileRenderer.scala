@@ -137,7 +137,12 @@ final class TileRenderer {
    * slider has every hour ready. Each tile not yet rendered waits while a visitor is being served: on a tenth of a
    * CPU the two can't run side by side without the visitor waiting seconds.
    */
-  def prewarm(frame: EdrFrame, global: Option[EdrFrame], levelFt: Int = 35000): Unit =
+  def prewarm(
+    frame: EdrFrame,
+    global: Option[EdrFrame],
+    levelFt: Int = 35000,
+    save: (Int, Int, Int, Array[Byte]) => Unit = (_, _, _, _) => ()
+  ): Unit =
     for {
       z <- 4 to 5
       n = 1 << z
@@ -146,7 +151,7 @@ final class TileRenderer {
       if overlapsGrid(z, x, y)
     } {
       if (cached(frame, global, levelFt, z, x, y).isEmpty) Visitors.waitForQuiet()
-      render(frame, global, levelFt, z, x, y): Unit
+      save(z, x, y, render(frame, global, levelFt, z, x, y))
     }
 
   private def worldPx(z: Int): Double = tileSize.toDouble * (1L << z)

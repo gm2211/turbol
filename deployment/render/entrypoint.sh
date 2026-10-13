@@ -8,7 +8,10 @@ public_port=${PORT:-8081}
 backend_port=8082
 dir=$(dirname "$0")
 if command -v nginx > /dev/null 2>&1; then
-  sed -e "s/__PORT__/$public_port/" -e "s/__BACKEND_PORT__/$backend_port/" "$dir/nginx.conf" > /tmp/nginx.conf
+  export TURBOL_TILE_DIR=/tmp/turbol-tiles
+  mkdir -p "$TURBOL_TILE_DIR"
+  sed -e "s/__PORT__/$public_port/" -e "s/__BACKEND_PORT__/$backend_port/" -e "s#__TILE_DIR__#$TURBOL_TILE_DIR#" \
+    "$dir/nginx.conf" > /tmp/nginx.conf
   nginx -c /tmp/nginx.conf
 else
   backend_port=$public_port
