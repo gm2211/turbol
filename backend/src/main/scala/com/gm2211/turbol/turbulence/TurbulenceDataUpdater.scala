@@ -132,6 +132,7 @@ final class TurbulenceDataUpdater(
    * launcher does it before the server starts answering, so the tiles a visitor opens on are already rendered.
    */
   def loadCached(): Unit = if (cacheLoaded.compareAndSet(false, true)) {
+    log.info("JPEG2000 decoding", safe("nativeOpenJpeg", Jpeg2000.available))
     subdirs(nowcastDir)
       .filter(d => Files.exists(d.resolve(completeMarker)))
       .maxByOption(_.getFileName.toString.toLong)

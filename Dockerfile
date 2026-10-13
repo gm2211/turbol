@@ -22,6 +22,10 @@ COPY backend/ backend/
 RUN sbt -batch backend/stage
 
 FROM eclipse-temurin:21-jre
+# OpenJPEG's decoder unpacks the JPEG2000 GTGN nowcast outside the JVM heap (see Jpeg2000.scala).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libopenjp2-tools \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/turbol
 COPY --from=backend /src/backend/target/universal/stage/ ./
 COPY --from=frontend /src/frontend/dist/ ./static/
