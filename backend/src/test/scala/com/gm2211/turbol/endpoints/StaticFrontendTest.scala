@@ -19,6 +19,7 @@ class StaticFrontendTest extends BaseTest {
   Files.writeString(dir.resolve("index.html"), "<!doctype html><title>Turbol</title>")
   Files.writeString(dir.resolve("assets/index-abc123.js"), "console.log('turbol')")
   Files.writeString(dir.resolve("sw.js"), "self.addEventListener('fetch', () => {})")
+  Files.writeString(dir.resolve("robots.txt"), "User-agent: *\nDisallow: /api/\n")
   Files.writeString(dir.resolve("manifest.webmanifest"), """{"name":"Turbol"}""")
   private val app = StaticFrontend.routes(dir.toString).orNotFound
 
@@ -50,5 +51,12 @@ class StaticFrontendTest extends BaseTest {
     contentType(manifest) shouldBe "application/manifest+json"
     cacheControl(manifest) shouldBe List("no-cache")
     get("/api/nothing").status shouldBe Status.NotFound
+  }
+
+  test("robots.txt is served as the file, not the app's index.html") {
+    val robots = get("/robots.txt")
+    robots.status shouldBe Status.Ok
+    contentType(robots) shouldBe "text/plain"
+    robots.as[String].unsafeRunSync() should include("Disallow: /api/")
   }
 }

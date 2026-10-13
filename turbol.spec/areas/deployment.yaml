@@ -4,6 +4,16 @@ prose: >-
   One Docker service plus Postgres. In the container nginx serves the built frontend and passes /api
   to the backend, so the app's files never wait on the JVM.
 behaviors:
+  - id: egress-budget
+    description: >-
+      Browsers fetch each map tile and 3D volume once: tiles and volumes named by a frame id are served
+      with a one-year immutable cache header (tiles also with an ETag, answered 304 when it matches),
+      while "latest" and "opening" stay cached for a minute. robots.txt keeps crawlers off /api. A
+      forgotten tab costs the server nothing (pause-when-hidden-or-idle), and an open one on the live
+      map should stay far under the free plan's egress, of which 6 GB went in 2.5 days before this.
+    source:
+      text: ship the core bandwidth fixes
+      reference: user decision, turbol project chat, 2026-10-13 (Render egress of ~6 GB in 2.5 days)
   - id: run-locally
     description: '`./run.sh` starts Postgres, the backend and the frontend for local use.'
   - id: render-free-plan

@@ -119,17 +119,23 @@ behaviors:
       adsb.im routeset (adsbdb as fallback) lists origin then destination as consecutive stops.
   - id: smooth-forecast-scrub
     description: >-
-      Moving the forecast time slider swaps between preloaded hours without waiting for tiles, and a
-      play button steps through the hours. The other hours' tiles for the area in view are fetched
-      into the browser cache while the map is still, nearest hours first, and an hour is swapped in
-      only once its tiles are drawn, so the map never flashes empty. Hours are preloaded only on a good
-      connection (no Data Saver, 4G-class, about 2 Mbps or more where the browser reports it); cached
-      hours drop out as they pass or a newer nowcast or forecast cycle replaces them.
+      Moving the forecast time slider swaps between hours without the map flashing empty, and a play
+      button steps through the hours. Until the slider is first touched or Play pressed, the map loads
+      only the tiles of the hour in view, however it is panned or zoomed. After that, the other hours'
+      tiles for the area in view are fetched into the browser cache while the map is still, nearest
+      hours first, and an hour is swapped in only once its tiles are drawn. That preloading runs only
+      on a good connection (no Data Saver, 4G-class, about 2 Mbps or more where the browser reports
+      it); cached hours drop out as they pass or a newer nowcast or forecast cycle replaces them. Only
+      the hour in view is a layer on the map, and in 3D the 2D map carries no tile layers at all.
     source:
       text: >-
         sliding through future times should be smoother / maybe we could async preload and cache
         future data (with invalidation as time moves on and we need to update from GTG to GTGN to
         what's current) and maybe we only do this when we detect a good and fast internet connection
+    details: >-
+      Changed 2026-10-13, user decision "ship the core bandwidth fixes" (project chat, 2026-10-13):
+      the other hours used to be preloaded after every pan, which with an open tab cost most of the
+      app's egress. Preloading now waits for the first sign the user wants to scrub.
   - id: live-aircraft-with-turbulence
     description: >-
       Airborne aircraft in view are shown with the turbulence category they are flying through right
@@ -144,9 +150,23 @@ behaviors:
   - id: wide-views-fill-in
     description: >-
       Panning or zooming out fills in traffic for the new area without waiting for every region to
-      refresh: the map polls every few seconds until the view is complete. Aircraft from older data
-      are dead-reckoned so they line up with fresher ones. A view too wide to fetch whole keeps the
-      regions around its centre.
+      refresh: the map polls until the view is complete, no faster than every 10 s, then every 30 s,
+      and for no more than a minute (after that, or once complete, every 15 s). A pan is fetched a
+      second after the map stops. The server sends only the aircraft inside the view, each once, with
+      positions rounded to 4 decimals and EDR to 2. Aircraft from older data are dead-reckoned so they
+      line up with fresher ones. A view too wide to fetch whole keeps the regions around its centre.
+    details: >-
+      Changed 2026-10-13, user decision "ship the core bandwidth fixes" (project chat, 2026-10-13):
+      polling every 3 s with overlapping, duplicated cells was the largest single source of egress.
+  - id: pause-when-hidden-or-idle
+    description: >-
+      While the tab is hidden, or has had no pointer, key, touch or wheel input for about 10 minutes,
+      the live map stops polling traffic, tracked flights and turbulence status, stops Play, and
+      closes any followed-flight stream. When the page is visible and used again, everything resumes
+      and refreshes at once.
+    source:
+      text: ship the core bandwidth fixes
+      reference: user decision, turbol project chat, 2026-10-13 (Render egress of ~6 GB in 2.5 days)
   - id: coarse-layer-visible
     description: >-
       The map draws GTG's edge as a dashed line. The legend explains it (US: GTG 3 km, outside:
