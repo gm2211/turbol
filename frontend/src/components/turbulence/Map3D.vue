@@ -8,7 +8,8 @@
         <div class="route-label">{{ route.label }}</div>
         <div v-if="route.path" class="muted route-path">{{ route.path }}</div>
         <div v-if="!mobile" class="muted route-path">
-          Line colored by the forecast where and when the flight passes · hover it for details
+          Line colored by the blocks it flies through{{ frameTimeLabel }} · hover it for the forecast when the
+          flight passes
         </div>
       </div>
       <v-btn
@@ -133,6 +134,7 @@ import { planeFill, planePath, ringColor } from '@/components/turbulence/planeIc
 import { decodeVolume } from '@/components/turbulence/volumeCodec'
 import { VolumeProfiles, levelNear } from '@/components/turbulence/volumeProfile'
 import { useMobile } from '@/util/useMobile'
+import { BlockIndex, type RouteStep, routeSteps } from '@/components/turbulence/routeBlocks'
 import type { Route3D, RoutePoint } from '@/api/flights'
 // Inlined into this chunk: a separate worker file was one more round trip before anything could draw.
 import VolumeWorker from '@/components/turbulence/volumeWorker?worker&inline'
@@ -377,34 +379,68 @@ function buildLayers(): Layer[] {
   return layers
 }
 
-interface RouteSegment {
-  path: [number, number, number][]
-  point: RoutePoint
+/** A step of the route and the category of the block it flies through (-1: none, smooth air). */
+interface RouteSegment extends RouteStep {
+  block: number
 }
 
-const routeRgb = (p: RoutePoint): [number, number, number] => hexRgb(categoryColors[p.category])
+/** The drawn blocks by place, for coloring the route; rebuilt as blocks stream in. */
+const blockIndex = computed(() => {
+  void storeVersion.value
+  return props.route && storeLength ? new BlockIndex(store, storeLength) : undefined
+})
 
 /**
- * The analyzed route as a line at its altitudes, each stretch in the color of the turbulence forecast there when the
- * flight passes, over a faint curtain down to the ground so its height reads at any angle.
+ * The route in steps of at most 3 km (a sixth of a GTG block), each with the category of the block it's in, so the
+ * line changes color where it enters or leaves a block. Until blocks load, each step takes its route point's forecast.
+ */
+const routeSegments = computed<RouteSegment[]>(() => {
+  const points = props.route?.points ?? []
+  if (points.length < 2) return []
+  const index = blockIndex.value
+  return routeSteps(points, 3).map((s) => ({
+    ...s,
+    block: index
+      ? index.categoryAt((s.from[1] + s.to[1]) / 2, (s.from[0] + s.to[0]) / 2, (s.from[2] + s.to[2]) / 2)
+      : columnCategories.indexOf(points[s.point]!.category as (typeof columnCategories)[number])
+  }))
+})
+
+const blockRgb = (block: number): [number, number, number] =>
+  hexRgb(categoryColors[columnCategories[block] ?? 'Smooth'])
+
+/** " at 21:00", the drawn forecast hour, local. */
+const frameTimeLabel = computed(() =>
+  props.frame
+    ? ` at ${new Date(props.frame.validTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : ''
+)
+
+/**
+ * The analyzed route as a line at its altitudes, each stretch in the color of the block it flies through (so what
+ * the line says is what the blocks around it show), over a faint curtain down to the ground so its height reads at
+ * any angle. Its tooltip gives the forecast when the flight passes, which can differ (see BlockIndex).
  */
 function routeLayers(): Layer[] {
   const points = props.route?.points ?? []
   if (points.length < 2) return []
   const at = (p: RoutePoint): [number, number, number] => [p.lon, p.lat, z(p.altitudeFt, p.lat)]
-  const segments: RouteSegment[] = points
-    .slice(1)
-    .map((p, i) => ({ path: [at(points[i]!), at(p)], point: points[i]! }))
-  const every = Math.max(1, Math.round(points.length / 120))
-  const curtain = points.filter((_, i) => i % every === 0)
-  const triggers = [exaggeration.value, props.route]
+  const lift = ([lon, lat, ft]: [number, number, number]): [number, number, number] => [
+    lon,
+    lat,
+    z(ft, lat)
+  ]
+  const segments = routeSegments.value
+  const every = Math.max(1, Math.round(segments.length / 120))
+  const curtain = segments.filter((_, i) => i % every === 0)
+  const triggers = [exaggeration.value, segments]
   return [
-    new LineLayer<RoutePoint>({
+    new LineLayer<RouteSegment>({
       id: 'route-curtain',
       data: curtain,
-      getSourcePosition: (p) => [p.lon, p.lat, 0],
-      getTargetPosition: at,
-      getColor: (p) => [...routeRgb(p), 70],
+      getSourcePosition: (s) => [s.from[0], s.from[1], 0],
+      getTargetPosition: (s) => lift(s.from),
+      getColor: (s) => [...blockRgb(s.block), 70],
       getWidth: 1,
       widthUnits: 'pixels',
       updateTriggers: { getTargetPosition: triggers, getColor: triggers }
@@ -412,8 +448,8 @@ function routeLayers(): Layer[] {
     new PathLayer<RouteSegment>({
       id: 'route',
       data: segments,
-      getPath: (s) => s.path,
-      getColor: (s) => [...routeRgb(s.point), 255],
+      getPath: (s) => [lift(s.from), lift(s.to)],
+      getColor: (s) => [...blockRgb(s.block), 255],
       getWidth: 6,
       widthUnits: 'pixels',
       capRounded: true,
@@ -439,15 +475,21 @@ function routeLayers(): Layer[] {
   ]
 }
 
-function routeTooltip(p: RoutePoint) {
+function routeTooltip(s: RouteSegment) {
+  const p = props.route!.points[s.point]!
   const time = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const h = Math.floor(p.minutesFromStart / 60)
   const m = Math.round(p.minutesFromStart % 60)
   const edr = p.edr != null ? ` (EDR ${p.edr.toFixed(2)})` : ''
+  const shown = columnCategories[s.block] ?? 'Smooth'
+  const blocks = blockIndex.value
+    ? `<br/>Blocks${frameTimeLabel.value}: <b style="color:${categoryColors[shown]}">${categoryLabels[shown]}</b>`
+    : ''
   return {
     html:
       `<b>${flightLevel(p.altitudeFt)}</b> · ${time} (${h}h${String(m).padStart(2, '0')} after takeoff)<br/>` +
-      `<b style="color:${categoryColors[p.category]}">${categoryLabels[p.category]}</b>${edr} · ${p.source}`,
+      `When it passes: <b style="color:${categoryColors[p.category]}">${categoryLabels[p.category]}</b>${edr} · ` +
+      `${p.source}${blocks}`,
     style: tooltipStyle
   }
 }
@@ -458,7 +500,7 @@ function render() {
 
 function tooltip(info: PickingInfo) {
   if (info.layer?.id === 'route' && info.object)
-    return routeTooltip((info.object as RouteSegment).point)
+    return routeTooltip(info.object as RouteSegment)
   if (info.layer?.id === 'aircraft') {
     const a = info.object as AircraftView
     const edr = a.edr != null ? ` (EDR ${a.edr.toFixed(2)})` : ''

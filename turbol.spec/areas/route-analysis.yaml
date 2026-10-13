@@ -109,13 +109,17 @@ behaviors:
   - id: route-3d-exploration
     description: >-
       An analysis result has an "Explore in 3D" button that opens the live map's 3D view with the
-      analyzed route drawn at its altitudes, each stretch colored by the forecast category where and
-      when the flight passes, over a faint curtain to the ground. The view is fitted to the route, set
-      to its cruise level band and to the forecast hour nearest its roughest point, and the turbulence
-      blocks, level rail, time slider and camera can all be changed from there.
+      analyzed route drawn at its altitudes, each stretch colored by the turbulence block it flies
+      through (smooth where it crosses none), over a faint curtain to the ground. The view is fitted
+      to the route, set to its cruise level band and to the forecast hour nearest its roughest point,
+      and the turbulence blocks, level rail, time slider and camera can all be changed from there.
     details: >-
-      Hovering the route shows the flight level, time and minutes after takeoff, category, EDR and
-      data source at that point. A banner names the route, its departure and the path it follows,
+      Hovering the route shows the flight level, time and minutes after takeoff, and the forecast
+      when the flight passes (category as felt by its aircraft, EDR and data source), next to the
+      category of the blocks drawn there. The line used to be colored by that forecast, which is
+      sampled at each point's own time, for the analyzed aircraft and on the full-resolution grid,
+      while the blocks show one forecast hour for a medium aircraft in coarsened blocks: on JFK to
+      MXP (DL286, 2026-10-13) 31-37% of the line disagreed with the blocks around it. A banner names the route, its departure and the path it follows,
       and its close button hides the route. The route is handed over in local storage with
       `/map?view=3d&route3d=1`, so a reload keeps it.
     source:
@@ -124,6 +128,13 @@ behaviors:
         route (or average route based on past flight plans when past flight plans are similar enough
         to one another) or geodesic if neither available
       reference: Giulio, turbol project thread, 2026-10-12, on prod's Analyze page for JFK to MXP
+  - id: route-3d-line-matches-blocks
+    description: >-
+      In 3D, the route line's color always matches the turbulence blocks it visibly passes through.
+    source:
+      text: >-
+        uhm.. trajectory shows orange but it does not intersect orange blocks in 3d view
+      reference: Giulio, turbol project thread, 2026-10-13, screenshot of DAL286 JFK to MXP in 3D
   - id: route-map-legend
     description: >-
       The analysis map has a legend explaining the ribbon colours (forecast category), what the line is
