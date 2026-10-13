@@ -161,7 +161,8 @@ final class FlightsEndpoint(
     val distanceKm = RouteAnalyzer.greatCircleKm(origin.lat, origin.lon, destination.lat, destination.lon)
     // The flight's last track on this route: the leg named by a pick from /flights/scheduled, else looked up by flight
     // number (up to two weeks back). The route's past flights for the average are looked up alongside; both get up to
-    // `trackWait` and keep searching in the background past it.
+    // `trackWait` (so the forecast shows at once on the best path found so far) and keep searching in the background,
+    // marked pending, for the page to ask again.
     val searchDay = request.day.getOrElse(LocalDate.ofInstant(departure, ZoneOffset.UTC))
     val ownSearch = request.flown match {
       case Some(flown) =>
@@ -178,7 +179,7 @@ final class FlightsEndpoint(
     }
     val (recent, routePending) =
       Try(schedules.routeLegs(origin, destination, searchDay, FlightsEndpoint.trackWait)).getOrElse((Seq.empty, false))
-    Try(Await.ready(ownSearch, 5.seconds))
+    Try(Await.ready(ownSearch, 500.millis))
     val own = ownSearch.value.flatMap(_.toOption).flatten
     val ownPending = !ownSearch.isCompleted
     val live =
@@ -345,7 +346,7 @@ final class FlightsEndpoint(
 
 object FlightsEndpoint {
   /** How long an analysis waits for track lookups before answering without them (they carry on in the background). */
-  val trackWait: java.time.Duration = java.time.Duration.ofSeconds(40)
+  val trackWait: java.time.Duration = java.time.Duration.ofMillis(1500)
 
   /** Whether a route has `origin` immediately followed by `destination` (one leg of a possibly multi-leg route). */
   def flies(stops: Seq[Stop], origin: Place, destination: Place): Boolean =

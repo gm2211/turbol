@@ -6,7 +6,7 @@
 
 package com.gm2211.turbol.turbulence
 
-import java.time.{Duration, Instant}
+import java.time.{Duration, Instant, ZoneOffset}
 import scala.annotation.unused
 import scala.math.*
 
@@ -94,6 +94,27 @@ final case class DataSources(
  * altitude and time against the GTGN nowcast and GTG forecast (a port of data-pipeline/route_forecast.py).
  */
 object RouteAnalyzer {
+
+  private val utcFormat = java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+  private[turbulence] def utc(t: Instant): String = utcFormat.format(t)
+
+  /**
+   * When some of `times` (en-route points without data) are past the global layer's reach: how far it reaches, and
+   * roughly when a GFS cycle reaching the last of them will be served (cycles are 6-hourly, complete about 5 hours after
+   * their init, and take about an hour to fetch). None while the global layer is still loading or empty.
+   */
+  private[turbulence] def beyondGlobal(times: Seq[Instant], data: TurbulenceData): Option[(Instant, Instant)] =
+    if (data.loading("global")) None
+    else
+      data.global.lastOption.map(_.validTime.plusSeconds((TurbulenceStore.globalSlackHours * 3600).toLong)).flatMap {
+        until =>
+          times.filter(_.isAfter(until)).maxOption.map { last =>
+            val lead = TurbulenceDataUpdater.globalForecastHours.last + TurbulenceStore.globalSlackHours.toInt
+            val needed = last.minusSeconds(lead * 3600L).getEpochSecond
+            val init = Math.floorDiv(needed + 6 * 3600 - 1, 6 * 3600L) * 6 * 3600
+            until -> Instant.ofEpochSecond(init + 6 * 3600)
+          }
+      }
   private val earthRadiusKm = 6371.0
   val cruiseSpeedKmh = 830.0
   private val climbRateFtPerKm = 35000.0 / 150.0 // 150 km to reach FL350, as in the prototype
@@ -387,9 +408,21 @@ object RouteAnalyzer {
     }
     if (Duration.between(Instant.now(), start).toHours > 18)
       notes += "This departure is beyond the 18-hour GTG forecast horizon. Check back closer to the day."
+    // Past the global layer's last frame nothing has data yet: say how far it reaches and when the flight will be in it.
+    val beyond = RouteAnalyzer.beyondGlobal(enRoute.filter(_.edr.isEmpty).map(_.time), data)
+    beyond.foreach { case (until, ready) =>
+      if (withData.nonEmpty)
+        notes +=
+          s"The forecast only reaches ${RouteAnalyzer.utc(until)}; the rest of the flight fills in after about " +
+            s"${RouteAnalyzer.utc(ready)}."
+    }
 
     val verdict =
-      if (withData.isEmpty) "No turbulence data for this route yet."
+      if (withData.isEmpty)
+        beyond.fold("No turbulence data for this route yet.") { case (until, ready) =>
+          s"No forecast yet: forecasts reach ${RouteAnalyzer.utc(until)}, and this flight is later. Check back after " +
+            s"about ${RouteAnalyzer.utc(ready)}."
+        }
       else {
         val at = worst.map(p => fmtMinutes(p.minutesFromStart)).getOrElse("")
         worstCategory match {

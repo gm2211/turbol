@@ -425,6 +425,7 @@ import RouteMap from '@/components/analysis/RouteMap.vue'
 import TimelineBar from '@/components/analysis/TimelineBar.vue'
 import TurbulenceProfile from '@/components/analysis/TurbulenceProfile.vue'
 import {
+  type AnalyzeRequest,
   type FlightLookup,
   type Place,
   type RouteAnalysis,
@@ -792,7 +793,7 @@ async function analyze() {
       router.replace({ query: { from: from.code, to: to.code, day } })
       selectedFlight.value = undefined
     }
-    analysis.value = await analyzeFlight({
+    analysis.value = await requestAnalysis({
       origin: from!,
       destination: to!,
       departure: new Date(departureLocal.value).toISOString(),
@@ -868,7 +869,7 @@ async function pickFlight(f: ScheduledFlight | undefined) {
   loading.value = true
   error.value = undefined
   try {
-    const result = await analyzeFlight(
+    const result = await requestAnalysis(
       f
         ? {
             origin: from,
@@ -897,22 +898,44 @@ async function pickFlight(f: ScheduledFlight | undefined) {
   }
 }
 
-/** Right after a server update the forecast fills in for a few minutes: analyze again once it has. */
+/** The last analysis asked for, so a refresh can ask again without touching the page's inputs. */
+let lastRequest: AnalyzeRequest | undefined
+let requestSeq = 0
+function requestAnalysis(request: AnalyzeRequest): Promise<RouteAnalysis> {
+  lastRequest = request
+  requestSeq++
+  pendingRetries = 0
+  return analyzeFlight(request)
+}
+
+/**
+ * The forecast shows at once; past tracks (two weeks of history on a cold server) and, right after a server update,
+ * the forecast itself fill in afterwards. Ask again quietly until they have: every 3 s for tracks (about 90 s at most),
+ * every minute for data.
+ */
 function scheduleRetry() {
   window.clearTimeout(retryTimer)
   const dataLoading = !!analysis.value?.dataSources.loading?.length
-  // Tracks still being looked up (two weeks of history on a cold server): ask again shortly, a few times.
   const tracksPending = !!analysis.value?.pathOptions?.some((o) => o.pending)
   pendingRetries = tracksPending ? pendingRetries + 1 : 0
-  const retryTracks = tracksPending && pendingRetries <= 6
+  const retryTracks = tracksPending && pendingRetries <= 30
   if (!dataLoading && !retryTracks) return
-  retryTimer = window.setTimeout(
-    () => {
-      if (mode.value === 'route' && analyzedOrigin.value) void pickFlight(selectedFlight.value)
-      else void analyze()
-    },
-    retryTracks ? 15000 : 60000
-  )
+  retryTimer = window.setTimeout(() => void refresh(), retryTracks ? 3000 : 60000)
+}
+
+async function refresh() {
+  const request = lastRequest
+  const seq = requestSeq
+  if (!request) return
+  try {
+    const result = await analyzeFlight({ ...request, path: pathWanted.value })
+    // Dropped if the person has asked for something else meanwhile.
+    if (seq !== requestSeq) return
+    analysis.value = result
+    scheduleRetry()
+  } catch {
+    if (seq === requestSeq) scheduleRetry()
+  }
 }
 let pendingRetries = 0
 
