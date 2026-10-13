@@ -196,10 +196,12 @@ final class FlightsEndpoint(
     val searchDay = request.day.getOrElse(LocalDate.ofInstant(departure, ZoneOffset.UTC))
     val ownSearch = request.flown match {
       case Some(flown) =>
-        Future.successful(for {
-          callsign <- request.callsign
-          leg <- Try(schedules.leg(callsign, flown.hex, flown.takeoff, origin, destination)).toOption.flatten
-        } yield leg)
+        request.callsign match {
+          case Some(callsign) =>
+            Try(schedules.legAsync(callsign, flown.hex, flown.takeoff, origin, destination))
+              .getOrElse(Future.successful(None))
+          case None => Future.successful(None)
+        }
       case None =>
         request.flightNumber.orElse(request.callsign.filter(Timetable.parseFlightNumber(_).isDefined)) match {
           case Some(number) =>

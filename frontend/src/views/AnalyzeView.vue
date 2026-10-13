@@ -902,6 +902,8 @@ async function loadSchedule(from: Place, to: Place) {
     const result = await fetchSchedule(from, to, start, end, departureLocal.value.slice(0, 10))
     if (key !== scheduleKey) return
     schedule.value = result
+    // The list shows now; the picked flight's analysis has its own spinner.
+    scheduleLoading.value = false
     await pickDefault()
   } catch {
     if (key === scheduleKey)

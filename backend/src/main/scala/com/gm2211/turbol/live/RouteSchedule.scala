@@ -310,11 +310,30 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
     RouteSchedule(flights, candidates, slotsScanned, note, "adsb")
   }
 
-  /** The leg flown on airframe `hex` that took off at `flownTakeoff`, for the analysis. */
-  def leg(callsign: String, hex: String, flownTakeoff: Instant, origin: Place, destination: Place): Option[FlownLeg] =
-    flownLegs(origin, destination)._1
-      .find(l => l.hex.equalsIgnoreCase(hex) && l.takeoff == flownTakeoff)
-      .orElse(FlightHistory.findLeg(callsign, hex, flownTakeoff.plusSeconds(600), origin, destination))
+  /**
+   * The leg flown on airframe `hex` that took off at `flownTakeoff`, for the analysis: from the schedule search's legs
+   * when it already loaded them, else from the airframe's trace, fetched at lowest priority on the search pool (it can
+   * take seconds, so the analysis doesn't wait on it). Started once per leg and shared.
+   */
+  def legAsync(
+    callsign: String,
+    hex: String,
+    flownTakeoff: Instant,
+    origin: Place,
+    destination: Place
+  ): Future[Option[FlownLeg]] =
+    cachedLegs(origin, destination)
+      .flatMap(_.find(l => l.hex.equalsIgnoreCase(hex) && l.takeoff == flownTakeoff)) match {
+      case Some(leg) => Future.successful(Some(leg))
+      case None =>
+        searches.get(
+          s"leg-${hex.toLowerCase}-${flownTakeoff.getEpochSecond}-${origin.code}-${destination.code}",
+          () =>
+            Future(
+              FlightHistory.findLeg(callsign, hex, flownTakeoff.plusSeconds(600), origin, destination)
+            )(using searchPool)
+        )
+    }
 
   /** The route's legs from the last two days if a schedule search already loaded them (never scans history itself). */
   def cachedLegs(origin: Place, destination: Place): Option[Seq[FlownLeg]] =
