@@ -4,7 +4,8 @@ import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { appShell } from './build/appShell.ts'
-import { preload3d } from './build/preload3d.ts'
+import { preloadRoutes } from './build/preloadRoutes.ts'
+import { mdiSubset } from './build/mdiSubset.ts'
 
 /**
  * luma.gl loads its WebGL device with a dynamic import, which the build turns into a tiny file of its own: one more
@@ -26,7 +27,14 @@ export default defineConfig({
   plugins: [
     vue(),
     staticWebglDevice,
-    preload3d(),
+    preloadRoutes(),
+    mdiSubset({
+      srcDirs: [fileURLToPath(new URL('./src', import.meta.url))],
+      extraFiles: [
+        fileURLToPath(new URL('./index.html', import.meta.url)),
+        fileURLToPath(new URL('./node_modules/vuetify/lib/iconsets/mdi.js', import.meta.url))
+      ]
+    }),
     vuetify({ autoImport: true }),
     // Keeps the app on the phone so it opens with no connection (see src/sw.ts).
     appShell({

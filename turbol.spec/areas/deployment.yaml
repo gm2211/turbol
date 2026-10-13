@@ -27,6 +27,10 @@ behaviors:
       loads.
     source:
       text: every view's initial load is < 1second, full load < 6 seconds
+    details: >-
+      Cold-load measures: nginx serves the app's files (static-files-off-jvm); index.html starts
+      fetching a lazily loaded page's code (Analyze, 3D) with the app's own; the build keeps only
+      the icons the app uses and inlines their font (the full set was 418 KB of CSS and a 403 KB font).
   - id: static-files-off-jvm
     description: >-
       nginx in the container serves the frontend's files (precompressed) and proxies /api to the
