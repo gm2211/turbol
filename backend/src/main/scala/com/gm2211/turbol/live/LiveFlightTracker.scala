@@ -79,14 +79,19 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
   /**
    * `fresh = false` takes the aircraft from the map's cached traffic when it's there (its first update then doesn't
    * wait on adsb.lol); otherwise, or when adsb.lol fails, adsb.lol's latest report. `fresh = true` asks adsb.lol but
-   * waits at most [[adsbWait]] (it often takes seconds, which made updates arrive 10-15 s late), else goes on from the
+   * waits at most [[adsbWait]] ([[briefWait]] with a recent report in hand; it often takes seconds, which made updates arrive 10-15 s late), else goes on from the
    * last report it has.
    */
   def update(hex: String, now: Instant = Instant.now(), fresh: Boolean = true): LiveFlightUpdate = {
     val key = hex.toLowerCase
     val latest =
-      if (fresh) Try(Await.result(fetch(key), adsbWait)).toOption.flatten.orElse(recent(key, now))
-      else traffic.cached(hex, now = now).orElse(LiveTrafficClient.byHex(hex))
+      if (fresh) {
+        // With a report from the last update or two in hand, adsb.lol only gets a moment; the fetch carries on and
+        // its answer serves the next update.
+        val fallback = recent(key, now)
+        val wait = if (fallback.exists(_.seenSecondsAgo <= 25)) briefWait else adsbWait
+        Try(Await.result(fetch(key), wait)).toOption.flatten.orElse(fallback)
+      } else traffic.cached(hex, now = now).orElse(LiveTrafficClient.byHex(hex))
     latest match {
       case None =>
         LiveFlightUpdate(now, "lost", None, AircraftClass.Medium, None, None, usingRoute = false, None, None)
@@ -132,6 +137,7 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
 object LiveFlightTracker {
   private val horizonMinutes = 60.0
   private val adsbWait = 2.seconds
+  private val briefWait = 300.millis
 
   /** The headline for the next hour: what it's like now, and when the next bumps start and how long they last. */
   def upcoming(ahead: RouteAnalysis, edrNow: Option[Double], aircraft: AircraftResponse): Upcoming = {

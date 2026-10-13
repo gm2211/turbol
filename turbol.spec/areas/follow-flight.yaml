@@ -55,5 +55,6 @@ behaviors:
     description: >-
       Each update on the followed flight's stream reaches the browser when it is sent, not held
       by a proxy until the next one: the stream is marked no-transform and each event is followed
-      by a short comment that flushes it. Each update waits at most 2 s for adsb.lol, else goes on
+      by a short comment that flushes it. Each update waits at most 2 s for adsb.lol (0.3 s when it has a report from the
+      last 25 s), else goes on
       from the latest report it has (adsb.lol's last, or the map's traffic, dead-reckoned to now).
