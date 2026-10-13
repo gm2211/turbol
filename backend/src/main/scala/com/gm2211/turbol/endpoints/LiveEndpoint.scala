@@ -124,11 +124,13 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
           s"""{"aircraft":[$aircraft],"complete":${traffic0.complete},"serverTime":${Instant.now().toEpochMilli}}"""
         }.flatMap(json => Ok(json).map(_.withContentType(`Content-Type`(MediaType.application.json))))
 
-      // Server-sent events: one update about the followed flight every 10 s, until the client disconnects.
+      // Server-sent events: one update about the followed flight every 10 s, until the client disconnects. The first
+      // starts from the map's cached traffic, so following a plane picked on the map shows its strip at once.
       case GET -> Root / "flights" / hex / "stream" =>
         val updates = Stream
           .fixedRateStartImmediately[IO](updateEvery)
-          .evalMap(_ => IO.blocking(tracker.update(hex)).attempt)
+          .zipWithIndex
+          .evalMap { case (_, i) => IO.blocking(tracker.update(hex, fresh = i > 0)).attempt }
           .map {
             case Right(update) => ServerSentEvent(data = Some(update.toJson.deepDropNullValues.noSpaces))
             case Left(e) =>
