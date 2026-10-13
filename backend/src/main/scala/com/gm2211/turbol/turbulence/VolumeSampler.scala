@@ -130,12 +130,18 @@ final case class Volume(
     def set(levels: Vector[Int], km: Double, vox: Array[Int]) = {
       val n = vox.length / 4
       require(n < VolumeSampler.indexBits, s"$n voxels")
-      val keys = Array.tabulate(n) { i =>
+      // Plain loops throughout: Array.tabulate, map and foreach box every element, ~80 MB per volume.
+      val keys = new Array[Long](n)
+      var i = 0
+      while (i < n) {
         val point = (vox(i * 4 + 1) + 18000).toLong * 18001 + (vox(i * 4) + 9000)
-        (point * 256 + vox(i * 4 + 2)) * VolumeSampler.indexBits + i
+        keys(i) = (point * 256 + vox(i * 4 + 2)) * VolumeSampler.indexBits + i
+        i += 1
       }
       java.util.Arrays.sort(keys)
-      val order = keys.map(k => (k % VolumeSampler.indexBits).toInt)
+      val order = new Array[Int](n)
+      i = 0
+      while (i < n) { order(i) = (keys(i) % VolumeSampler.indexBits).toInt; i += 1 }
       var points = 0
       var k = 0
       while (k < n) {
@@ -157,23 +163,35 @@ final case class Volume(
     sets.foreach { s =>
       val n = s.order.length
       // The first voxel of each point.
-      val starts = (0 until n).filter(k => k == 0 || !samePoint(s.vox, s.order(k - 1), s.order(k))).toArray
-      for (field <- Seq(0, 1)) {
+      val starts = new Array[Int](s.points)
+      var k = 0
+      var p = 0
+      while (k < n) {
+        if (k == 0 || !samePoint(s.vox, s.order(k - 1), s.order(k))) { starts(p) = k; p += 1 }
+        k += 1
+      }
+      var field = 0
+      while (field < 2) {
         var prev = 0
-        starts.foreach { k =>
-          val v = s.vox(s.order(k) * 4 + field)
+        p = 0
+        while (p < starts.length) {
+          val v = s.vox(s.order(starts(p)) * 4 + field)
           buf.putShort((v - prev).toShort)
           prev = v
+          p += 1
         }
+        field += 1
       }
-      starts.indices.foreach { p =>
+      p = 0
+      while (p < starts.length) {
         val end = if (p + 1 < starts.length) starts(p + 1) else n
         val count = end - starts(p)
         require(count < 256, s"$count levels at one point")
         buf.put(count.toByte)
+        p += 1
       }
       var prevLevel = 0
-      var k = 0
+      k = 0
       while (k < n) {
         if (k == 0 || !samePoint(s.vox, s.order(k - 1), s.order(k))) prevLevel = 0
         val level = s.vox(s.order(k) * 4 + 2)
@@ -290,10 +308,14 @@ final class VolumeSampler {
     }
     val categories = thresholdBytes.length
     val out = Array.newBuilder[Int]
+    // Reused level after level: a fresh set per level allocated ~100 MB per volume.
+    val valid = new Array[Int](blocks)
+    val count = new Array[Int](blocks * categories) // points at category c or worse
+    val sum = new Array[Int](blocks * categories)
     frame.levels.values.zipWithIndex.foreach { case (layer, levelIndex) =>
-      val valid = new Array[Int](blocks)
-      val count = new Array[Int](blocks * categories) // points at category c or worse
-      val sum = new Array[Int](blocks * categories)
+      java.util.Arrays.fill(valid, 0)
+      java.util.Arrays.fill(count, 0)
+      java.util.Arrays.fill(sum, 0)
       var j = 0
       while (j < ny) {
         val row = j * nx
@@ -324,7 +346,10 @@ final class VolumeSampler {
           if (c >= 0) {
             val (lat, lon) = centres(b)
             val edr = math.round(sum(b * categories + c).toDouble / count(b * categories + c)).toInt
-            out ++= Seq(math.round(lat * 100).toInt, math.round(lon * 100).toInt, levelIndex, edr)
+            out += math.round(lat * 100).toInt
+            out += math.round(lon * 100).toInt
+            out += levelIndex
+            out += edr
           }
         }
         b += 1
