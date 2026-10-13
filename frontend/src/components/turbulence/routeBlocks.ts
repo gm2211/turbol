@@ -50,7 +50,8 @@ export class BlockIndex {
         for (const i of list) {
           if (altitudeFt < s.bottomFt[i]! || altitudeFt >= s.topFt[i]!) continue
           const half = halfWidthKm(s.sizeKm[i]!) / kmPerDegree
-          if (Math.abs(s.lat[i]! - lat) > half || Math.abs(s.lon[i]! - lon) * cosLat > half) continue
+          if (Math.abs(s.lat[i]! - lat) > half || Math.abs(s.lon[i]! - lon) * cosLat > half)
+            continue
           worst = Math.max(worst, s.category[i]!)
         }
       }

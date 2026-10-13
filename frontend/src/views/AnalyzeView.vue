@@ -410,6 +410,21 @@
           :hover-minute="hoverMinute"
           @hover="hoverMinute = $event"
         />
+        <template v-if="corridor">
+          <div class="eyebrow mt-3 mb-1">
+            Around the flight · try it higher, lower or on a detour
+          </div>
+          <CorridorProjections
+            :points="analysis.points"
+            :corridor="corridor"
+            :factor="response.factor"
+            :thresholds="allThresholds?.Medium ?? referenceThresholds"
+            :what-if="whatIf"
+            :hover-minute="hoverMinute"
+            @hover="hoverMinute = $event"
+            @update:what-if="whatIf = $event"
+          />
+        </template>
       </v-card>
     </template>
   </div>
@@ -424,6 +439,13 @@ import DownloadedFlights from '@/components/fly/DownloadedFlights.vue'
 import RouteMap from '@/components/analysis/RouteMap.vue'
 import TimelineBar from '@/components/analysis/TimelineBar.vue'
 import TurbulenceProfile from '@/components/analysis/TurbulenceProfile.vue'
+import CorridorProjections from '@/components/turbulence/CorridorProjections.vue'
+import {
+  type Corridor,
+  type WhatIf,
+  fetchCorridor,
+  noChange
+} from '@/components/turbulence/corridor'
 import {
   type AnalyzeRequest,
   type FlightLookup,
@@ -577,6 +599,22 @@ const calmWindows = computed(() => {
 })
 /** The minute being read on the timeline (hover or drag), mirrored on the map. */
 const hoverMinute = ref<number>()
+const referenceThresholds: Thresholds = { light: 0.12, moderate: 0.14, severe: 0.44, extreme: 0.79 }
+/** The air around the analyzed flight, for the side and top views (loaded after the result shows). */
+const corridor = ref<Corridor>()
+const whatIf = ref<WhatIf>(noChange)
+watch(analysis, async (a) => {
+  corridor.value = undefined
+  whatIf.value = noChange
+  if (!a || a.points.length < 2) return
+  try {
+    const c = await fetchCorridor(a.points)
+    if (analysis.value === a) corridor.value = c
+  } catch (e) {
+    // Without it the page just has no side and top views.
+    console.warn('corridor load failed', e)
+  }
+})
 const hoverPoint = computed(() =>
   hoverMinute.value === undefined || !analysis.value
     ? undefined
@@ -724,7 +762,10 @@ function explore3d() {
       .join(' · '),
     path: a.path?.description,
     start: a.start,
-    points: a.points
+    points: a.points,
+    aircraftFactor: response.value.factor,
+    aircraftLabel: aircraftLabel.value,
+    whatIf: whatIf.value
   })
   router.push('/map?view=3d&route3d=1')
 }

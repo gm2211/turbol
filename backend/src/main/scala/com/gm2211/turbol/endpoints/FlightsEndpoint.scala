@@ -80,6 +80,12 @@ final case class ScheduleRequest(
 
 final case class RouteSearchRequest(origin: Place, destination: Place)
 
+/** The analyzed route's points, to sample the turbulence around (see RouteCorridor). */
+final case class CorridorRequest(points: List[CorridorPoint])
+
+/** [[Corridor]] for the page: EDR bytes in base64, ~5x smaller than a JSON array of them. */
+final case class CorridorResponse(levelsFt: Vector[Int], offsetsKm: Vector[Double], points: Int, edr: String)
+
 /** An aircraft in the air now flying origin -> destination. */
 final case class RouteFlight(callsign: String, minutesToGo: Option[Int], aircraft: AircraftView)
 final case class RouteSearch(flights: List[RouteFlight], checked: Int)
@@ -134,6 +140,20 @@ final class FlightsEndpoint(
         result <-
           IO.blocking(schedules.schedule(request.origin, request.destination, request.from, request.until, request.day))
         resp <- Ok(result.toJson.deepDropNullValues)
+      } yield resp
+
+    case req @ POST -> Root / "corridor" =>
+      for {
+        request <- req.as[CorridorRequest]
+        corridor <- IO.blocking(RouteCorridor.build(store, request.points))
+        resp <- Ok(
+          CorridorResponse(
+            corridor.levelsFt,
+            corridor.offsetsKm,
+            corridor.edr.length / (corridor.levelsFt.length * corridor.offsetsKm.length),
+            java.util.Base64.getEncoder.encodeToString(corridor.edr)
+          ).toJson
+        )
       } yield resp
 
     case req @ POST -> Root / "analyze" =>

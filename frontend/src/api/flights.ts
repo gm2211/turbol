@@ -305,6 +305,12 @@ export interface Route3D {
   path?: string
   start: string
   points: RoutePoint[]
+  /** How strongly the analyzed aircraft feels turbulence (1: a medium aircraft), for the corridor around it. */
+  aircraftFactor?: number
+  /** e.g. "heavy jet (B763)", naming whose turbulence the corridor shows. */
+  aircraftLabel?: string
+  /** A higher, lower or detoured flight being tried on Analyze, carried into 3D. */
+  whatIf?: { shiftFt: number; offsetKm: number }
 }
 
 const route3dKey = 'turbol.route3d'
