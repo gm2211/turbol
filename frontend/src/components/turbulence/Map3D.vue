@@ -800,7 +800,42 @@ const corridorEdrOf = (d: CorridorCell) => {
 }
 
 function render() {
-  deck?.setProps({ layers: buildLayers() })
+  const layers = buildLayers()
+  deck?.setProps({ layers })
+  warmPicking(layers)
+}
+
+/**
+ * The first pick through a layer sets up its picking buffers and shaders, which held up a frame (33 ms on the Mac with
+ * every flight drawn) when the pointer first crossed the 3D map. So whenever a pickable layer gets data, pick
+ * once while the page is idle, before anyone points at it.
+ */
+let warmedFor = ''
+let warmJob: number | undefined
+function warmPicking(layers: Layer[]) {
+  const key = layers
+    .filter((l) => l.props.pickable && (l.props.data as { length?: number } | null)?.length)
+    .map((l) => l.id)
+    .join()
+  if (!key || key === warmedFor) return
+  warmedFor = key
+  const warm = () => {
+    warmJob = undefined
+    const canvas = deck?.getCanvas()
+    if (!canvas) return
+    deck!.pickObject({
+      x: canvas.clientWidth / 2,
+      y: canvas.clientHeight / 2,
+      radius: 4,
+      unproject3D: true
+    })
+  }
+  if (warmJob !== undefined) return
+  // Safari has no requestIdleCallback.
+  warmJob =
+    typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(warm, { timeout: 2000 })
+      : window.setTimeout(warm, 500)
 }
 
 function tooltip(info: PickingInfo) {
@@ -1016,6 +1051,7 @@ let overAircraft = false
 
 onMounted(() => {
   viewState = toDeck(props.view)
+  const layers = buildLayers()
   deck = new Deck({
     parent: canvasEl.value,
     // luma.gl otherwise waits for the window's load event, which a first visit's tiles and images can hold back for
@@ -1024,7 +1060,7 @@ onMounted(() => {
     initialViewState: viewState,
     // touchRotate: two-finger twist rotates and two-finger vertical slide tilts.
     controller: { touchRotate: true },
-    layers: buildLayers(),
+    layers,
     getTooltip: tooltip,
     // Voxels are pickable only for their tooltip; keep the crosshair over them and show the pointer on aircraft.
     onHover: (info: PickingInfo) => {
@@ -1041,6 +1077,7 @@ onMounted(() => {
     },
     onAfterRender: () => frames++
   })
+  warmPicking(layers)
   canvasEl.value!.addEventListener('pointerdown', onPointerDown)
   canvasEl.value!.addEventListener('click', onCanvasClick)
   fpsTimer = window.setInterval(() => {
@@ -1055,6 +1092,7 @@ onBeforeUnmount(() => {
   worker?.terminate()
   window.clearInterval(fpsTimer)
   window.clearTimeout(moveTimer)
+  if (warmJob !== undefined) (window.cancelIdleCallback ?? window.clearTimeout)(warmJob)
   deck?.finalize()
   deck = undefined
 })
