@@ -93,7 +93,14 @@ final class LiveFlightTracker(store: TurbulenceStore, traffic: LiveTrafficServic
         val fallback = recent(key, now)
         val wait = if (fallback.exists(_.seenSecondsAgo <= 25)) briefWait else adsbWait
         Try(Await.result(fetch(key), wait)).toOption.flatten.orElse(fallback)
-      } else traffic.cached(hex, maxAge = deadReckonFor, now = now).orElse(LiveTrafficClient.byHex(hex))
+      } else
+        // The first update: the map's sighting, else adsb.lol for a moment (rate-limited, it can back off for 15 s or
+        // more), else an older sighting, marked with its age, until the next update has adsb.lol's answer.
+        traffic
+          .cached(hex, maxAge = deadReckonFor, now = now)
+          .orElse(Try(Await.result(fetch(key), firstWait)).toOption.flatten)
+          .orElse(traffic.cached(hex, maxAge = oldSighting, now = now))
+          .orElse(Try(Await.result(fetch(key), 1.minute)).toOption.flatten)
     latest match {
       case None =>
         LiveFlightUpdate(now, "lost", None, AircraftClass.Medium, None, None, usingRoute = false, None, None)
@@ -140,6 +147,8 @@ object LiveFlightTracker {
   private val horizonMinutes = 60.0
   private val adsbWait = 2.seconds
   private val briefWait = 300.millis
+  private val firstWait = 3.seconds
+  private val oldSighting = Duration.ofMinutes(15)
 
   /**
    * How old a sighting the tracker dead-reckons from rather than wait on adsb.lol: a whole-country map refreshes its
