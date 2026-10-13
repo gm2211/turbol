@@ -33,7 +33,14 @@ behaviors:
       aircraft nears the edge, and switches the map altitude once to the level nearest the aircraft.
   - id: follow-updates-every-ten-seconds
     description: >-
-      Following an aircraft streams an update about it every 10 seconds until following stops.
+      Following an aircraft streams an update about it every 10 seconds until following stops. The
+      stream is closed while the tab is hidden or idle (no input for about 10 minutes) and reopened
+      when the page is used again, its first update coming at once. The path ahead is sent with the
+      first update and again only when the analysis changes (and every couple of minutes regardless);
+      the other updates carry the aircraft and summary, and the map keeps the last path. Numbers on
+      the path are rounded to what the map can show.
+    details: >-
+      Changed 2026-10-13, user decision "ship the core bandwidth fixes" (project chat, 2026-10-13).
   - id: next-hour-headline
     description: >-
       Each update leads with a headline about the next hour, such as "Smooth now. Light bumps expected

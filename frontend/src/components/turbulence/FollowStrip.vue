@@ -187,6 +187,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { formatDuration } from '@/api/flights'
 import { type LiveFlightUpdate, followFlight } from '@/api/follow'
+import { usePageActive } from '@/util/usePageActive'
 import { downloads, packStatus } from '@/fly/downloads'
 import { flightFromLive, sameFlight } from '@/fly/live'
 import {
@@ -291,20 +292,29 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
   return 12742 * Math.asin(Math.sqrt(h))
 }
 
+// The stream is closed while the tab is hidden or idle, and reopened (its first update comes at once) when it's back.
+const pageActive = usePageActive()
+function connect() {
+  stop?.()
+  stop = pageActive.value
+    ? followFlight(props.hex, (u) => {
+        update.value = u
+        lastUpdate.value = Date.now()
+        emit('update', u)
+      })
+    : undefined
+}
+
 watch(
   () => props.hex,
-  (hex) => {
-    stop?.()
+  () => {
     update.value = undefined
     lastUpdate.value = 0
-    stop = followFlight(hex, (u) => {
-      update.value = u
-      lastUpdate.value = Date.now()
-      emit('update', u)
-    })
+    connect()
   },
   { immediate: true }
 )
+watch(pageActive, connect)
 
 onBeforeUnmount(() => {
   stop?.()

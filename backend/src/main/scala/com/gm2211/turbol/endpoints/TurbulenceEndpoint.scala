@@ -12,9 +12,9 @@ import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.{BackendSerialization, MoreExecutors}
 import io.circe.generic.auto.*
 import org.http4s.circe.*
-import org.http4s.headers.{`Cache-Control`, `Content-Encoding`, `Content-Type`}
+import org.http4s.headers.{`Cache-Control`, `Content-Encoding`, `Content-Type`, `If-None-Match`, ETag}
 import org.http4s.server.middleware.GZip
-import org.http4s.{CacheDirective, ContentCoding, Header, HttpRoutes, MediaType}
+import org.http4s.{CacheDirective, ContentCoding, Header, HttpRoutes, MediaType, Request, Response, Status}
 import org.typelevel.ci.CIString
 
 import java.time.Instant
@@ -81,6 +81,18 @@ object TurbulenceEndpoint {
    */
   def frameId(frame: EdrFrame, data: TurbulenceData): String =
     data.globalNear(frame.validTime).fold(frame.id)(g => s"${frame.id}_g${g.issued.getEpochSecond}")
+
+  /** Frame ids name immutable data, so what is served under one never needs to be asked for again. */
+  val immutableCache: `Cache-Control` =
+    `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(365.days), CacheDirective("immutable"))
+
+  /** A tile's ETag: its frame (which includes the GFS cycle drawn under it), level and position name its pixels. */
+  def tileETag(publicFrameId: String, level: Int, z: Int, x: Int, y: Int): ETag =
+    ETag(ETag.EntityTag(s"$publicFrameId-$level-$z-$x-$y"))
+
+  /** Whether the request already holds `etag` (or asked for any version, `If-None-Match: *`). */
+  def hasETag[F[_]](req: Request[F], etag: ETag): Boolean =
+    req.headers.get[`If-None-Match`].exists(_.tags.forall(_.exists(_.tag == etag.tag.tag)))
 
   private val gtgOutline: Seq[Seq[Double]] =
     LambertGrid.outline().map { case (lat, lon) => Seq(math.rint(lat * 100) / 100, math.rint(lon * 100) / 100) }
@@ -154,6 +166,15 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
     else (data.nowcast.toSeq ++ data.forecast).find(f => f.id == id.takeWhile(_ != '_'))
   }
 
+  /**
+   * A volume asked for by its frame's current public id never changes; "opening" moves with every new frame, and a
+   * bare or stale id is still drawn with the current global layer.
+   */
+  private def volumeCacheControl(id: String, f: EdrFrame): `Cache-Control` =
+    if (id == openingFrame) `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.minute))
+    else if (id == frameId(f, store.current)) immutableCache
+    else `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour))
+
   // The 3D volume is a few MB of JSON that compresses ~3x; PNG tiles are already compressed.
   override val routes: HttpRoutes[IO] =
     GZip(
@@ -171,19 +192,23 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
           )
           Ok(status.toJson.deepDropNullValues)
 
-        case GET -> Root / "tiles" / id / IntVar(level) / IntVar(z) / IntVar(x) / TileY(y) =>
+        case req @ GET -> Root / "tiles" / id / IntVar(level) / IntVar(z) / IntVar(x) / TileY(y) =>
           frame(id) match {
             case Some(f) if z >= 0 && z <= 12 =>
               val data = store.current
               val global = data.globalNear(f.validTime)
               // Saved for nginx to serve the next time (see TileFiles); "latest" follows the nowcast asked for here.
               val publicId = frameId(f, data)
+              // Only a request naming the frame's current public id gets an immutable tile: a bare or stale id is
+              // still drawn with today's global layer, which can change under it.
+              val etag = Option.when(id == publicId)(tileETag(publicId, level, z, x, y))
               def save(png: Array[Byte]): IO[Unit] = IO.blocking {
                 TileFiles.write(publicId, level, z, x, y, png)
                 if (id == latestNowcast) TileFiles.pointLatest(publicId)
               }
               // A frame id names immutable data; "latest" moves every 15 minutes.
-              val maxAge = if (id == latestNowcast) 1.minute else 7.days
+              val tileMaxAge = 7.days
+              val maxAge = if (id == latestNowcast) 1.minute else tileMaxAge
               // Rendered tiles (most of the opening view is prewarmed) skip the queue for a render slot. A tile whose
               // global layer just changed is served as last drawn, briefly cacheable, while it's redrawn behind it.
               val png = IO(tiles.cached(f, global, level, z, x, y)).flatMap {
@@ -198,11 +223,21 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
                         .map(_ -> maxAge)
                   }
               }
-              png.flatMap { (png, maxAge) =>
-                Ok(png).map(
-                  _.withContentType(`Content-Type`(MediaType.image.png))
-                    .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))
-                )
+              etag match {
+                case Some(tag) if hasETag(req, tag) =>
+                  IO.pure(Response[IO](Status.NotModified).putHeaders(tag, immutableCache))
+                case _ =>
+                  png.flatMap { (png, maxAge) =>
+                    Ok(png).map { res =>
+                      val typed = res.withContentType(`Content-Type`(MediaType.image.png))
+                      etag match {
+                        // Only a tile served from its own cache entry is final: one served as last drawn is not.
+                        case Some(tag) if maxAge == tileMaxAge => typed.putHeaders(tag, immutableCache)
+                        case _ =>
+                          typed.putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))
+                      }
+                    }
+                  }
               }
             case _ => NotFound("frame or level not loaded")
           }
@@ -243,7 +278,7 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
                   .through(fs2.text.utf8.encode)
                 Ok(body).map(
                   _.withContentType(`Content-Type`(MediaType.application.json))
-                    .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(1.hour)))
+                    .putHeaders(volumeCacheControl(id, f))
                 )
               }
             case None => NotFound("frame not loaded")
@@ -256,14 +291,12 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
             case Some(f) =>
               val s = step.getOrElse(VolumeSampler.defaultStep).max(VolumeSampler.minStep).min(24)
               val global = store.current.globalNear(f.validTime)
-              // A frame id names immutable data; "opening" moves with every new frame.
-              val maxAge = if (id == openingFrame) 1.minute else 1.hour
               IO.blocking(volumes.volumeGzip(f, global, s, if (format == "bin") 1 else 2)).flatMap { gz =>
                 Ok(gz).map(
                   _.withContentType(`Content-Type`(MediaType.application.`octet-stream`))
                     .putHeaders(
                       `Content-Encoding`(ContentCoding.gzip),
-                      `Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)),
+                      volumeCacheControl(id, f),
                       Header.Raw(CIString(frameIdHeader), frameId(f, store.current))
                     )
                 )

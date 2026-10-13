@@ -240,6 +240,8 @@
         />
         <v-slider
           v-model="frameIndex"
+          @start="engageScrub"
+          @update:model-value="engageScrub"
           :min="0"
           :max="Math.max(frames.length - 1, 0)"
           :step="1"
@@ -342,6 +344,8 @@ import type { LiveFlightUpdate } from '@/api/follow'
 import { baseMapAttribution, baseMapUrl } from '@/components/turbulence/baseMap'
 import { fineForOneOffs, goodConnection, onConnectionChange } from '@/util/network'
 import { useMobile } from '@/util/useMobile'
+import { usePageActive } from '@/util/usePageActive'
+import { createTrafficPoller } from '@/util/trafficPoll'
 import { listenKeyPan } from '@/util/keyPan'
 import { smoothWheelZoom } from '@/util/smoothWheelZoom'
 import type { MapView } from '@/components/turbulence/Map3D.vue'
@@ -425,6 +429,8 @@ let trafficTimer: number | undefined
 let trackedTimer: number | undefined
 let statusTimer: number | undefined
 let trafficRequest = 0
+const trafficPoller = createTrafficPoller()
+const pageActive = usePageActive()
 
 /**
  * The nowcast is requested as "latest" so tiles load in parallel with the status instead of after it. Its id only
@@ -459,8 +465,32 @@ const turbulenceMaxNativeZoom = 9
 let turbulenceLayer: L.TileLayer | undefined
 let turbulenceLayersOnMap: { url: string; layer: L.TileLayer }[] = []
 
+/**
+ * The other hours' tiles load only once the time slider has been touched or Play pressed: until then the map fetches
+ * just the hour in view, however much it is panned. Most visits never scrub, and 17 hours of tiles per view was the
+ * bulk of the page's traffic.
+ */
+let scrubEngaged = false
+function engageScrub() {
+  if (scrubEngaged) return
+  scrubEngaged = true
+  schedulePreload()
+}
+
+/** Takes the turbulence tiles off the map, so they stop being fetched (3D draws its own). */
+function removeTurbulenceLayers() {
+  for (const old of turbulenceLayersOnMap) map?.removeLayer(old.layer)
+  turbulenceLayersOnMap = []
+  turbulenceLayer = undefined
+}
+
 function updateTurbulenceLayers() {
   if (!map) return
+  // The 2D map keeps following the 3D camera, underneath: it must not fetch tiles nobody can see.
+  if (mode.value === '3d') {
+    stopPreload()
+    return removeTurbulenceLayers()
+  }
   const url = frameTileUrl(selectedFrame.value)
   const current = turbulenceLayersOnMap.find((l) => l.url === url)?.layer
   if (current && current === turbulenceLayer) return schedulePreload()
@@ -493,7 +523,7 @@ let preloadTimer: number | undefined
 function schedulePreload() {
   const generation = ++preloadGeneration
   window.clearTimeout(preloadTimer)
-  if (!goodConnection()) return
+  if (!scrubEngaged || mode.value === '3d' || !goodConnection()) return
   preloadTimer = window.setTimeout(() => preloadOtherHours(generation), 300)
 }
 
@@ -544,6 +574,7 @@ const playing = ref(false)
 let playTimer: number | undefined
 function togglePlay() {
   playing.value = !playing.value
+  if (playing.value) engageScrub()
   window.clearInterval(playTimer)
   if (playing.value) {
     playTimer = window.setInterval(() => {
@@ -624,12 +655,13 @@ function pickSample(all: AircraftView[]): AircraftView[] {
 }
 
 /**
- * Polls every 15 s (every 3 s while the server is still filling in the area). Each poll is applied by
+ * Polls every 15 s; while the server is still filling in the area, every 10 s, then every 30 s, and for no more than
+ * a minute (see `createTrafficPoller`). No polling while the page is hidden or idle. Each poll is applied by
  * `applyTraffic`, which spreads the marker work over animation frames so the page never freezes.
  */
 async function refreshTraffic() {
   window.clearTimeout(trafficTimer)
-  if (!map || trafficMode.value === 'off') return
+  if (!map || trafficMode.value === 'off' || !pageActive.value) return
   const request = ++trafficRequest
   let complete = true
   try {
@@ -644,8 +676,8 @@ async function refreshTraffic() {
   } catch (e) {
     console.warn('traffic refresh failed', e)
   }
-  if (request === trafficRequest) {
-    trafficTimer = window.setTimeout(refreshTraffic, complete ? 15000 : 3000)
+  if (request === trafficRequest && pageActive.value) {
+    trafficTimer = window.setTimeout(refreshTraffic, trafficPoller.next(complete, Date.now()))
   }
 }
 
@@ -726,6 +758,7 @@ function clearTraffic() {
 }
 
 function searchThisArea() {
+  trafficPoller.reset()
   searchedBounds = viewBounds()
   sample = undefined
   areaMoved.value = false
@@ -733,6 +766,7 @@ function searchThisArea() {
 }
 
 watch(trafficMode, (m) => {
+  trafficPoller.reset()
   window.clearTimeout(trafficTimer)
   trafficRequest++
   clearTraffic()
@@ -762,6 +796,11 @@ function drawTracked() {
       .addTo(trackedPlanes)
     trackedMarkers.set(a.hex, marker)
   }
+}
+
+function startTracked() {
+  window.clearInterval(trackedTimer)
+  trackedTimer = window.setInterval(refreshTracked, 15000)
 }
 
 async function refreshTracked() {
@@ -1009,9 +1048,32 @@ async function refreshStatus() {
     // Every 2 minutes, or every 10 seconds while the server is still loading data after a restart, so turbulence
     // appears as soon as it has some.
     window.clearTimeout(statusTimer)
-    if (map) statusTimer = window.setTimeout(refreshStatus, status.value?.nowcast ? 120000 : 10000)
+    if (map && pageActive.value) {
+      statusTimer = window.setTimeout(refreshStatus, status.value?.nowcast ? 120000 : 10000)
+    }
   }
 }
+
+// Nobody is looking (tab hidden, or no input for 10 minutes): stop asking the server for anything, and stop Play.
+// Coming back refreshes everything at once.
+watch(pageActive, (active) => {
+  if (!active) {
+    window.clearTimeout(trafficTimer)
+    window.clearInterval(trackedTimer)
+    window.clearTimeout(statusTimer)
+    window.clearInterval(playTimer)
+    playing.value = false
+    return
+  }
+  if (!map) return
+  refreshStatus()
+  if (trafficMode.value !== 'off') {
+    trafficPoller.reset()
+    refreshTraffic()
+  }
+  if (tracked.value.length) refreshTracked()
+  startTracked()
+})
 
 watch([frames, frameIndex, levelFt], updateTurbulenceLayers)
 
@@ -1050,6 +1112,8 @@ interface Map3DHandle {
   flatten(): Promise<MapView>
 }
 const mode = ref<'2d' | '3d'>('2d')
+// Entering 3D takes the 2D tiles off the map; coming back puts the hour in view back.
+watch(mode, updateTurbulenceLayers)
 const Map3D = shallowRef<Component>()
 const map3d = ref<Map3DHandle>()
 const loading3d = ref(false)
@@ -1294,10 +1358,11 @@ onMounted(() => {
     schedulePreload()
     // Held W/A/S/D move the map every frame: fetch once they're let go.
     if (keyPanning) return
-    // A moment after the map stops, so pan after pan doesn't fetch (and redraw thousands of planes) after each one.
+    // A second after the map stops, so pan after pan doesn't fetch (and redraw thousands of planes) after each one.
     if (trafficMode.value === 'all') {
       window.clearTimeout(trafficTimer)
-      trafficTimer = window.setTimeout(refreshTraffic, 400)
+      trafficPoller.reset()
+      trafficTimer = window.setTimeout(refreshTraffic, 1000)
     } else if (trafficMode.value === 'sample') areaMoved.value = true
   })
   refreshStatus()
@@ -1317,7 +1382,7 @@ onMounted(() => {
   })
   const followFromUrl = String(route.query.follow ?? '').trim()
   if (followFromUrl) follow(followFromUrl)
-  trackedTimer = window.setInterval(refreshTracked, 15000)
+  startTracked()
   // Fetch the 3D code once the 2D map is up and the browser is idle, so opening 3D doesn't wait on it.
   const warm3d = () => {
     if (fineForOneOffs()) loadMap3D().catch(() => undefined)
