@@ -9,7 +9,7 @@ package com.gm2211.turbol.endpoints
 import cats.effect.std.Semaphore
 import cats.effect.{IO, SyncIO}
 import com.gm2211.turbol.turbulence.*
-import com.gm2211.turbol.util.BackendSerialization
+import com.gm2211.turbol.util.{BackendSerialization, MoreExecutors}
 import io.circe.generic.auto.*
 import org.http4s.circe.*
 import org.http4s.headers.{`Cache-Control`, `Content-Encoding`, `Content-Type`}
@@ -134,6 +134,18 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
   override val basePath: String = "/turbulence"
   // Waiting requests queue as fibers here rather than as blocked threads.
   private val tileSlots: Semaphore[IO] = Semaphore.in[SyncIO, IO](tileRenders.toLong).unsafeRunSync()
+  // Tiles served as last drawn are redrawn here, one at a time and at the lowest CPU priority, each once.
+  private val redrawing = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+  private val redrawer = MoreExecutors.background("tile-redraw", threads = 1).executionContext
+  private def redraw(frame: EdrFrame, global: Option[EdrFrame], level: Int, z: Int, x: Int, y: Int): Unit = {
+    val key = s"${frame.id}/${global.fold("-")(_.id)}/$level/$z/$x/$y"
+    if (redrawing.add(key))
+      redrawer.execute { () =>
+        try tiles.render(frame, global, level, z, x, y): Unit
+        finally redrawing.remove(key): Unit
+      }
+  }
+
   // A stale global suffix (the GFS cycle moved on since the client fetched the status) still finds its GTG frame.
   private def frame(id: String): Option[EdrFrame] = {
     val data = store.current
@@ -165,12 +177,18 @@ final class TurbulenceEndpoint(store: TurbulenceStore, tiles: TileRenderer, volu
               val global = store.current.globalNear(f.validTime)
               // A frame id names immutable data; "latest" moves every 15 minutes.
               val maxAge = if (id == latestNowcast) 1.minute else 7.days
-              // Rendered tiles (most of the opening view is prewarmed) skip the queue for a render slot.
+              // Rendered tiles (most of the opening view is prewarmed) skip the queue for a render slot. A tile whose
+              // global layer just changed is served as last drawn, briefly cacheable, while it's redrawn behind it.
               val png = IO(tiles.cached(f, global, level, z, x, y)).flatMap {
-                case Some(png) => IO.pure(png)
-                case None => tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y)))
+                case Some(png) => IO.pure(png -> maxAge)
+                case None =>
+                  IO(tiles.previous(f, level, z, x, y)).flatMap {
+                    case Some(png) => IO(redraw(f, global, level, z, x, y)).as(png -> 30.seconds)
+                    case None =>
+                      tileSlots.permit.surround(IO.blocking(tiles.render(f, global, level, z, x, y))).map(_ -> maxAge)
+                  }
               }
-              png.flatMap { png =>
+              png.flatMap { (png, maxAge) =>
                 Ok(png).map(
                   _.withContentType(`Content-Type`(MediaType.image.png))
                     .putHeaders(`Cache-Control`(CacheDirective.public, CacheDirective.`max-age`(maxAge)))

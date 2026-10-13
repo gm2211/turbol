@@ -79,16 +79,19 @@ object MoreExecutors extends BackendLogging {
    * Like [[io]], but its threads run at the lowest CPU priority (nice 19). The production instance has a tenth of a
    * CPU: at equal priority, decoding turbulence data left a visitor's page and tiles waiting 10 s or more for a turn,
    * since one GRIB level takes seconds of CPU and can't be paused midway. At nice 19 the request threads get the CPU
-   * whenever they want it, and background work gets the rest.
+   * whenever they want it, and background work gets the rest. `threads` > 0 caps the pool at that many threads.
    */
-  def background(namePrefix: String): Scheduler = {
+  def background(namePrefix: String, threads: Int = 0): Scheduler = {
     val threadFactory = ThreadFactoryBuilder(namePrefix, daemonic = true)
     val lowPriority: ThreadFactory = (r: Runnable) =>
       threadFactory.newThread { () =>
         lowerCurrentThreadPriority()
         r.run()
       }
-    Executors.newCachedThreadPool(lowPriority).toExecutionContext.toScheduler
+    val pool =
+      if (threads > 0) Executors.newFixedThreadPool(threads, lowPriority)
+      else Executors.newCachedThreadPool(lowPriority)
+    pool.toExecutionContext.toScheduler
   }
 
   private def lowerCurrentThreadPriority(): Unit =

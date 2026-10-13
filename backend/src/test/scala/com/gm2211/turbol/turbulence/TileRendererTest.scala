@@ -97,4 +97,14 @@ class TileRendererTest extends BaseTest {
     info(f"prewarm: $ms%.0f ms")
     ms should be < 2000.0
   }
+
+  test("a tile whose global layer changed is still there, as last drawn, until it's redrawn") {
+    val global = EdrFrame(FrameKind.Global, Instant.EPOCH, Instant.EPOCH, SortedMap(35000 -> layer))
+    val (z, x, y) = (5, 7, 12)
+    val png = renderer.render(frame, None, 35000, z, x, y)
+    renderer.cached(frame, Some(global), 35000, z, x, y) shouldBe None
+    renderer.previous(frame, 35000, z, x, y) shouldBe Some(png)
+    val redrawn = renderer.render(frame, Some(global), 35000, z, x, y)
+    renderer.previous(frame, 35000, z, x, y) shouldBe Some(redrawn)
+  }
 }
