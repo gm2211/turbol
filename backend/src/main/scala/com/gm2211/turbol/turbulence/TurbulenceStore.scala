@@ -95,11 +95,18 @@ final class TurbulenceStore(loading: Set[String] = Set.empty) {
    * [[sampleIn]] at several altitudes of one place and time, projecting the place onto the grids once rather than once
    * per altitude (the projection is most of a sample's cost): the route corridor samples 13 levels per place.
    */
-  def sampleColumnIn(data: TurbulenceData, lat: Double, lon: Double, altitudesFt: Seq[Double], time: Instant): Array[Double] = {
+  def sampleColumnIn(
+    data: TurbulenceData,
+    lat: Double,
+    lon: Double,
+    altitudesFt: Seq[Double],
+    time: Instant
+  ): Array[Double] = {
     val inGtg = lat >= 0 && lat <= 89
     val (fi, fj) = if (inGtg) LambertGrid.fractionalIndex(lat, lon) else (-1.0, -1.0)
     val (i, j) = (rint(fi).toInt, rint(fj).toInt)
-    val gtgIndex = if (!inGtg || i < 0 || i >= LambertGrid.nx || j < 0 || j >= LambertGrid.ny) -1 else j * LambertGrid.nx + i
+    val gtgIndex =
+      if (!inGtg || i < 0 || i >= LambertGrid.nx || j < 0 || j >= LambertGrid.ny) -1 else j * LambertGrid.nx + i
     val weight = if (gtgIndex < 0) 0.0 else LambertGrid.interiorWeight(fi, fj)
     val globalIndex = GlobalGrid.nearestIndex(lat, lon)
     altitudesFt.iterator.map { alt =>

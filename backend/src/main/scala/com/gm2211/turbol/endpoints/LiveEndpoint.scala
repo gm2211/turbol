@@ -23,9 +23,9 @@ import io.circe.generic.auto.*
 import io.circe.generic.semiauto.deriveEncoder
 import fs2.Stream
 import org.http4s.circe.*
-import org.http4s.headers.`Content-Type`
+import org.http4s.headers.{`Cache-Control`, `Content-Type`}
 import org.http4s.server.middleware.GZip
-import org.http4s.{HttpRoutes, MediaType, ServerSentEvent}
+import org.http4s.{CacheDirective, HttpRoutes, MediaType, ServerSentEvent}
 
 import java.time.Instant
 import scala.concurrent.duration.*
@@ -103,6 +103,8 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
         ).toJson.deepDropNullValues.noSpaces).mkString(",")
     )
   private val updateEvery = 10.seconds
+  private val flushAfter = 300.millis
+  private val flush = ServerSentEvent(comment = Some("flush"))
 
   private object South extends QueryParamDecoderMatcher[Double]("south")
   private object West extends QueryParamDecoderMatcher[Double]("west")
@@ -126,6 +128,9 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
 
       // Server-sent events: one update about the followed flight every 10 s, until the client disconnects. The first
       // starts from the map's cached traffic, so following a plane picked on the map shows its strip at once.
+      // A proxy in front of the app held each event until the next write, so every update arrived 10-20 s late:
+      // no-transform asks proxies not to compress (and so buffer) it, and a comment just after each event pushes the
+      // event out if one still does.
       case GET -> Root / "flights" / hex / "stream" =>
         val updates = Stream
           .fixedRateStartImmediately[IO](updateEvery)
@@ -136,7 +141,13 @@ final class LiveEndpoint(store: TurbulenceStore, traffic: LiveTrafficService) ex
             case Left(e) =>
               ServerSentEvent(data = Some(s"""{"status":"error","message":"${e.getClass.getSimpleName}"}"""))
           }
-        Ok(updates)
+          .flatMap(event => Stream.emit(event) ++ Stream.sleep_[IO](flushAfter) ++ Stream.emit(flush))
+        Ok(updates).map(
+          _.putHeaders(
+            `Cache-Control`(CacheDirective.`no-cache`(), CacheDirective.`no-transform`),
+            "X-Accel-Buffering" -> "no"
+          )
+        )
 
       case GET -> Root / "flights" / hex =>
         IO.blocking(tracker.update(hex)).flatMap(update => Ok(update.toJson.deepDropNullValues))
