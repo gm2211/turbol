@@ -32,11 +32,14 @@ COPY deployment/render/entrypoint.sh ./
 # - PretenureSizeThreshold=1m with a small young generation (-Xmn24m): decoding allocates multi-MB grid arrays;
 #   copying them in young GCs paused up to 300 ms of CPU. Locally, over 3 GTG + 3 GFS decodes with these settings:
 #   longest pause 45 ms, 448 ms in all (prod's previous settings: 326 ms longest, 1201 ms in all).
+# - MetaspaceSize=48m, SweeperThreshold=50: with the defaults, loading classes and compiling code each forced a full GC
+#   (one "Metadata GC Threshold", three "CodeCache GC Threshold" in prod's first 5 minutes, 300-500 ms each, two of
+#   them after the server went live). Code-cache unloading now waits for half of the 48 MB code cache.
 ENV TURBOL_STATIC_DIR=/opt/turbol/static \
     TURBOL_DATA_DIR=/opt/turbol/var/data/turbulence \
     TURBOL_MIN_VOLUME_STEP=6 \
     MALLOC_ARENA_MAX=2 \
     TURBOL_GLOBAL_LAYER=on \
-    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -Xms192m -Xmn24m -XX:+UseSerialGC -XX:PretenureSizeThreshold=1m -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
+    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MetaspaceSize=48m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:SweeperThreshold=50 -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -Xms192m -Xmn24m -XX:+UseSerialGC -XX:PretenureSizeThreshold=1m -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
 EXPOSE 8081
 CMD ["./entrypoint.sh"]
