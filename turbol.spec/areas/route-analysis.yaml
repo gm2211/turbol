@@ -222,3 +222,13 @@ behaviors:
       After a server update the GTG forecast and the global layer fill in hour by hour for a few
       minutes. Until each is in, gaps are blamed on loading rather than on missing coverage, and the
       page analyzes again a minute later.
+  - id: analysis-load-order
+    description: >-
+      Opening Analyze on a flight or route starts its first lookups from index.html, the route's
+      flight list loads alongside the first analysis, an analysis waits at most 0.5 s for the
+      flight's live sighting, and the corridor around the route is fetched once per route, not on
+      every refresh while past tracks load.
+  - id: track-search-low-priority
+    description: >-
+      Past-track searches (adsb.lol heatmap slots and traces) run at the lowest CPU priority, so
+      they never hold up the page's own requests.

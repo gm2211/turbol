@@ -52,3 +52,34 @@ class RouteCorridorTest extends BaseTest {
     edr(1, 2000, -60) shouldBe edr(1, 2000, 0)
   }
 }
+
+class SampleColumnTest extends BaseTest {
+  import TurbulenceTestData.*
+
+  private val now = Instant.now().truncatedTo(ChronoUnit.HOURS)
+  private val store = new TurbulenceStore
+  store.setForecast(
+    Range.inclusive(0, 2)
+      .map(h => uniformFrame(FrameKind.Forecast, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.05, 40000 -> 0.25)))
+      .toVector
+  )
+  store.setGlobal(
+    Range.inclusive(0, 3, 3)
+      .map(h => uniformFrame(FrameKind.Global, now.plus(h.toLong, ChronoUnit.HOURS), Map(30000 -> 0.4, 40000 -> 0.1)))
+      .toVector
+  )
+
+  test("a column matches sampling each altitude on its own, inside GTG, across its blended edge and outside it") {
+    val data = store.current
+    val altitudes = Range.inclusive(29000, 41000, 1000).map(_.toDouble)
+    val places = Seq((39.0, -97.0), (21.5, -100.0), (48.0, -70.0), (50.5, -120.0), (45.6, 8.7), (-10.0, 30.0))
+    for ((lat, lon) <- places; minutes <- Seq(10L, 70L)) {
+      val time = now.plusSeconds(minutes * 60)
+      val column = store.sampleColumnIn(data, lat, lon, altitudes, time)
+      altitudes.indices.foreach { l =>
+        val single = store.sampleIn(data, lat, lon, altitudes(l), time).edr
+        if (single.isNaN) column(l).isNaN shouldBe true else column(l) shouldBe single +- 1e-12
+      }
+    }
+  }
+}

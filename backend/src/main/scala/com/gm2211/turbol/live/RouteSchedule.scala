@@ -8,6 +8,7 @@ package com.gm2211.turbol.live
 
 import com.gm2211.logging.BackendLogging
 import com.gm2211.turbol.turbulence.{AircraftClass, PathPoint, RouteAnalyzer}
+import com.gm2211.turbol.util.MoreExecutors
 import com.google.common.cache.{Cache, CacheBuilder}
 
 import java.time.temporal.ChronoUnit
@@ -70,7 +71,10 @@ final case class RouteSchedule(
  */
 final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDirectory = RouteDirectory())
     extends BackendLogging {
-  private given ExecutionContext = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(3))
+  // Track searches download and decode adsb.lol's heatmap slots and traces (MBs each): seconds of CPU on the instance's
+  // tenth of a CPU. At normal priority they starved the page's own requests (an analysis took 3-5 s, tiles stalled),
+  // so they run at the lowest priority, on what the requests leave.
+  private given ExecutionContext = MoreExecutors.background("history", threads = 3).executionContext
   private val flown: Cache[String, Seq[FlownLeg]] =
     CacheBuilder.newBuilder().maximumSize(500).expireAfterWrite(Duration.ofMinutes(30)).build()
 
@@ -169,7 +173,7 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
   }
 
   // Track searches: by flight, remembered for a while whatever they found, so repeated asks don't search again.
-  private val searchPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+  private val searchPool = MoreExecutors.background("track-search", threads = 4).executionContext
   // Timetable reads for routeLegs, kept apart from searchPool so a waiting analysis never blocks a search.
   private val lookupPool = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
   private val searches: Cache[String, Future[Option[FlownLeg]]] =
