@@ -240,7 +240,21 @@ export function parseRouteQuery(q: string): [string, string] | undefined {
 }
 
 /** The airport with this IATA or ICAO code (else the best search hit), as a route endpoint. */
-export async function airportByCode(code: string): Promise<Place | undefined> {
+const airportsByCode = new Map<string, Promise<Place | undefined>>()
+
+/** An airport by IATA or ICAO code; remembered for the page's life, since every analysis asks for the same few. */
+export function airportByCode(code: string): Promise<Place | undefined> {
+  const key = code.toUpperCase()
+  let found = airportsByCode.get(key)
+  if (!found) {
+    found = findAirport(key)
+    airportsByCode.set(key, found)
+    found.then((p) => p ?? airportsByCode.delete(key)).catch(() => airportsByCode.delete(key))
+  }
+  return found
+}
+
+async function findAirport(code: string): Promise<Place | undefined> {
   const airports = await searchAirports(code)
   const a =
     airports.find((x) => x.iata === code.toUpperCase() || x.icao === code.toUpperCase()) ??

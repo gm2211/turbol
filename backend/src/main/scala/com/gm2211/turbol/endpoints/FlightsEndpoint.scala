@@ -177,13 +177,16 @@ final class FlightsEndpoint(
           case None => Future.successful(None)
         }
     }
+    // The live sighting (adsb.lol) is fetched alongside the track lookups rather than after them.
+    val liveF = Future(request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false)))(using
+      scala.concurrent.ExecutionContext.global
+    )
     val (recent, routePending) =
       Try(schedules.routeLegs(origin, destination, searchDay, FlightsEndpoint.trackWait)).getOrElse((Seq.empty, false))
     Try(Await.ready(ownSearch, 500.millis))
     val own = ownSearch.value.flatMap(_.toOption).flatten
     val ownPending = !ownSearch.isCompleted
-    val live =
-      if (own.isDefined) None else request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
+    val live = if (own.isDefined) None else Try(Await.result(liveF, 2.seconds)).toOption.flatten
     val aircraft = own
       .map(l => AircraftResponse.fromAdsb(None, l.typeCode))
       .orElse(live.map(a => AircraftResponse.fromAdsb(a.category, a.typeCode)))

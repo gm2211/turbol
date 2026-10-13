@@ -14,6 +14,9 @@ import io.circe.parser.parse
 
 import java.time.*
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.Executors
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Try
 
 /**
@@ -224,12 +227,16 @@ object Timetable extends BackendLogging {
     }
   }
 
+  private val pagePool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(8))
+
   private def fetch(from: String, to: String, day: LocalDate): Seq[TimetableFlight] = {
-    val pages = Seq(0, 6, 12, 18).map { hour =>
+    // The four six-hour pages at once: one after another they took about 3 s on a cold route.
+    val requests = Seq(0, 6, 12, 18).map { hour =>
       val url = s"https://www.flightstats.com/v2/flight-tracker/route/$from/$to" +
         s"?year=${day.getYear}&month=${day.getMonthValue}&date=${day.getDayOfMonth}&hour=$hour"
-      parsePage(Http.getString(url, attempts = 2))
+      Future(parsePage(Http.getString(url, attempts = 2)))(using pagePool)
     }
+    val pages = Await.result(Future.sequence(requests)(using implicitly, pagePool), 60.seconds)
     // Each page also lists late flights from the previous evening still under way: keep this day's departures.
     pages.flatten.filter(_._1 == day).map(_._2).distinctBy(f => (f.flightNumber, f.departure))
   }
