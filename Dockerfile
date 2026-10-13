@@ -5,7 +5,8 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build-only
+RUN npm run build-only \
+  && find dist -type f -regex '.*\.\(js\|css\|html\|svg\|json\|webmanifest\|ico\|txt\)' -exec gzip -9 -k {} +
 
 FROM eclipse-temurin:21-jdk AS backend
 WORKDIR /src
@@ -22,14 +23,15 @@ COPY backend/ backend/
 RUN sbt -batch backend/stage
 
 FROM eclipse-temurin:21-jre
-# OpenJPEG's decoder unpacks the JPEG2000 GTGN nowcast outside the JVM heap (see Jpeg2000.scala).
+# nginx serves the frontend and passes /api to the JVM (see deployment/render/nginx.conf); OpenJPEG's decoder unpacks
+# the JPEG2000 GTGN nowcast outside the JVM heap (see Jpeg2000.scala).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libopenjp2-tools \
+  && apt-get install -y --no-install-recommends nginx libopenjp2-tools \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/turbol
 COPY --from=backend /src/backend/target/universal/stage/ ./
 COPY --from=frontend /src/frontend/dist/ ./static/
-COPY deployment/render/entrypoint.sh ./
+COPY deployment/render/entrypoint.sh deployment/render/nginx.conf ./
 # GC on a tenth of a CPU, where every pause stops all requests for 10x its CPU time:
 # - -Xms192m: starting at 7 MB, the heap grew (and shrank back) through full GCs. Prod's log after a deploy showed 56
 #   full GCs in 5 minutes, 300-800 ms each, 24.6 s in all, while visitors waited.

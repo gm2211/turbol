@@ -14,6 +14,7 @@ import java.time.{Duration, Instant}
 import java.util.concurrent.{ConcurrentHashMap, Executors}
 import scala.concurrent.duration.DurationLong
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 /** One lattice cell's aircraft as last fetched from adsb.lol. */
@@ -38,6 +39,24 @@ final class LiveTrafficService extends BackendLogging {
 
   def route(callsign: String): Option[FlightRoute] =
     routeCache.get(callsign.toUpperCase, () => LiveTrafficClient.route(callsign))
+
+  /**
+   * The aircraft as the cached cells last saw it, dead-reckoned to now, if one saw it within `maxAge`. Following a
+   * flight picked on the map starts from this instead of asking adsb.lol, which took 2-18 s to answer one hex.
+   */
+  def cached(hex: String, maxAge: Duration = cachedMaxAge, now: Instant = Instant.now()): Option[LiveAircraft] =
+    cells
+      .values()
+      .iterator()
+      .asScala
+      .flatMap { case (at, aircraft) =>
+        aircraft.iterator.filter(_.hex.equalsIgnoreCase(hex)).map(a =>
+          (a, Duration.between(at, now).toMillis / 1000.0 + a.seenSecondsAgo)
+        )
+      }
+      .filter(_._2 <= maxAge.toSeconds)
+      .minByOption(_._2)
+      .map { case (a, age) => extrapolate(a, age).copy(seenSecondsAgo = age) }
 
   private val alongPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
 
@@ -116,6 +135,7 @@ object LiveTrafficService {
   private val cellDeg = 5.0
   val cellRadiusNm = 250 // adsb.lol's maximum
   val maxFetchesPerRequest = 20
+  private val cachedMaxAge = Duration.ofSeconds(120)
   private val alongStepKm = 400.0
   private val alongMaxAge = Duration.ofSeconds(180)
   private val alongTimeout = Duration.ofSeconds(15)

@@ -8,8 +8,15 @@
         <div class="route-label">{{ route.label }}</div>
         <div v-if="route.path" class="muted route-path">{{ route.path }}</div>
         <div v-if="!mobile" class="muted route-path">
-          Line colored by the blocks it flies through{{ frameTimeLabel }} · hover it for the forecast when the
-          flight passes
+          <template v-if="corridorShown">
+            The air around the flight as it passes, felt by
+            {{ route.aircraftLabel ?? 'its aircraft' }} · bright blocks are the ones it flies
+            through
+          </template>
+          <template v-else>
+            Line colored by the blocks it flies through{{ frameTimeLabel }} · hover it for the
+            forecast when the flight passes
+          </template>
         </div>
       </div>
       <v-btn
@@ -30,6 +37,20 @@
         color="var(--my-accent)"
         height="3"
         class="mt-1"
+      />
+    </div>
+
+    <div v-if="corridorShown && !mobile" class="projections glass-panel">
+      <CorridorProjections
+        :points="route!.points"
+        :corridor="corridor!"
+        :factor="factor"
+        :thresholds="mediumThresholds"
+        :what-if="whatIf"
+        :hover-minute="hoverMinute"
+        dark
+        @hover="hoverMinute = $event"
+        @update:what-if="whatIf = $event"
       />
     </div>
 
@@ -65,10 +86,38 @@
           />
         </div>
         <div class="muted" v-if="loadState">{{ loadState }}</div>
+        <div class="muted" v-else-if="corridorShown">
+          {{ corridorCells.length.toLocaleString() }} rough blocks around the flight
+        </div>
         <div class="muted" v-else-if="storeVersion">
           {{ visible.count.toLocaleString() }} turbulence columns shown
         </div>
         <div class="muted">Pick the levels on the flight-level rail</div>
+        <v-switch
+          v-if="route"
+          v-model="aroundFlight"
+          :label="
+            corridorFailed ? 'Around the flight (unavailable)' : 'Only the air around the flight'
+          "
+          :disabled="corridorFailed"
+          density="compact"
+          hide-details
+          theme="dark"
+          color="var(--my-accent)"
+        />
+        <CorridorProjections
+          v-if="corridorShown && mobile"
+          class="my-1"
+          :points="route!.points"
+          :corridor="corridor!"
+          :factor="factor"
+          :thresholds="mediumThresholds"
+          :what-if="whatIf"
+          :hover-minute="hoverMinute"
+          dark
+          @hover="hoverMinute = $event"
+          @update:what-if="whatIf = $event"
+        />
         <v-switch
           v-model="showLight"
           label="Show light turbulence"
@@ -101,7 +150,7 @@
 
 <script setup lang="ts">
 import { deckCursor } from '@/components/turbulence/mapCursor'
-import { computed, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from 'vue'
 import {
   Deck,
   type Layer,
@@ -135,6 +184,18 @@ import { decodeVolume } from '@/components/turbulence/volumeCodec'
 import { VolumeProfiles, levelNear } from '@/components/turbulence/volumeProfile'
 import { useMobile } from '@/util/useMobile'
 import { BlockIndex, type RouteStep, routeSteps } from '@/components/turbulence/routeBlocks'
+import CorridorProjections from '@/components/turbulence/CorridorProjections.vue'
+import {
+  type Corridor,
+  type WhatIf,
+  type WhatIfPoint,
+  corridorCategory,
+  fetchCorridor,
+  noChange,
+  whatIfPath
+} from '@/components/turbulence/corridor'
+import { pointAt } from '@/api/flights'
+import { destination as destinationOf } from '@/fly/geo'
 import type { Route3D, RoutePoint } from '@/api/flights'
 // Inlined into this chunk: a separate worker file was one more round trip before anything could draw.
 import VolumeWorker from '@/components/turbulence/volumeWorker?worker&inline'
@@ -278,6 +339,10 @@ const stalkRgba: [number, number, number, number] = [...hexRgb(planeFill), 120]
 function buildLayers(): Layer[] {
   const layers: Layer[] = [basemapLayer()]
   const c = props.status?.coverage
+  if (corridorShown.value) {
+    layers.push(...corridorLayers(), ...routeLayers())
+    return [...layers, ...aircraftLayers()]
+  }
   if (c) {
     // GTG's 3 km edge at the map's level; outside it the blocks are the coarse global layer's.
     const outline = props.status?.gtgOutline
@@ -331,9 +396,13 @@ function buildLayers(): Layer[] {
     )
   }
   layers.push(...routeLayers())
+  return [...layers, ...aircraftLayers()]
+}
+
+function aircraftLayers(): Layer[] {
   const flying = props.aircraft.filter((a) => a.altitudeFt !== undefined)
   const ringed = flying.filter((a) => ringColor(a.category))
-  layers.push(
+  return [
     // A stalk from the ground to each plane shows its altitude.
     new LineLayer<AircraftView>({
       id: 'aircraft-stalks',
@@ -375,8 +444,212 @@ function buildLayers(): Layer[] {
       parameters: { depthCompare: 'always' },
       updateTriggers: { getPosition: exaggeration.value }
     })
+  ]
+}
+
+/**
+ * The turbulence around the route (see corridor.ts): levels above and below and either side of the track, sampled
+ * when the flight passes and classified for its aircraft, the same way as the route itself. Shown instead of the
+ * frame's blocks while a route is on, so the line and the blocks around it always agree.
+ */
+const corridor = shallowRef<Corridor>()
+const corridorFailed = ref(false)
+const aroundFlight = ref(true)
+const whatIf = ref<WhatIf>(props.route?.whatIf ?? noChange)
+/** Minutes after takeoff being read, shared by the 3D route and the side and top views. */
+const hoverMinute = ref<number>()
+const corridorShown = computed(
+  () =>
+    aroundFlight.value &&
+    !!props.route &&
+    !!corridor.value &&
+    corridor.value.points >= props.route.points.length
+)
+const factor = computed(() => props.route?.aircraftFactor ?? 1)
+const mediumThresholds = computed(
+  () =>
+    props.status?.thresholds.Medium ?? { light: 0.12, moderate: 0.14, severe: 0.44, extreme: 0.79 }
+)
+const whatIfPoints = computed<WhatIfPoint[]>(() =>
+  corridor.value && props.route ? whatIfPath(corridor.value, props.route.points, whatIf.value) : []
+)
+
+let corridorFor: Route3D | undefined
+async function loadCorridor() {
+  const r = props.route
+  if (r === corridorFor) return
+  corridorFor = r
+  corridor.value = undefined
+  corridorFailed.value = false
+  whatIf.value = r?.whatIf ?? noChange
+  if (!r || r.points.length < 2) return
+  try {
+    const c = await fetchCorridor(r.points)
+    if (corridorFor === r) corridor.value = c
+  } catch (e) {
+    console.warn('corridor load failed', e)
+    if (corridorFor === r) corridorFailed.value = true
+  }
+}
+
+/** Category index of the corridor cell the (what-if) flight is in at point k, as felt by its aircraft. */
+const cellCategory = (k: number, l: number, o: number) =>
+  corridorCategory(corridor.value!, k, l, o, factor.value, mediumThresholds.value)
+
+/**
+ * The what-if flight as half-steps: each point's cell reaches halfway to its neighbours, so the first half of a
+ * step takes the color of the cell it starts in and the second half the one it ends in.
+ */
+function corridorSegments(): RouteSegment[] {
+  const p = whatIfPoints.value
+  const out: RouteSegment[] = []
+  for (let k = 0; k + 1 < p.length; k++) {
+    const a: [number, number, number] = [p[k]!.lon, p[k]!.lat, p[k]!.altitudeFt]
+    const b: [number, number, number] = [p[k + 1]!.lon, p[k + 1]!.lat, p[k + 1]!.altitudeFt]
+    const mid: [number, number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]
+    out.push({ from: a, to: mid, point: k, block: cellCategory(k, p[k]!.level, p[k]!.offset) })
+    out.push({
+      from: mid,
+      to: b,
+      point: k + 1,
+      block: cellCategory(k + 1, p[k + 1]!.level, p[k + 1]!.offset)
+    })
+  }
+  return out
+}
+
+interface CorridorCell {
+  position: [number, number, number]
+  /** Half-sizes in metres: along the track, across it, and up (in feet, lifted at draw time). */
+  along: number
+  across: number
+  /** Yaw in degrees, counter-clockwise from east, as deck.gl turns meshes. */
+  yaw: number
+  category: number
+  /** The (what-if) flight flies through it. */
+  onPath: boolean
+  k: number
+  level: number
+  offset: number
+}
+
+/**
+ * Every Light-or-worse corridor cell as a box: as long as the stretch between the midpoints to its neighbours, one
+ * offset step wide and one level tall, turned to the track. Smooth air isn't drawn, as in the frame's blocks.
+ */
+const corridorCells = computed<CorridorCell[]>(() => {
+  const c = corridor.value
+  const points = props.route?.points ?? []
+  if (!c || !corridorShown.value) return []
+  const path = whatIfPoints.value
+  const nl = c.levelsFt.length
+  const no = c.offsetsKm.length
+  const acrossM = (c.offsetsKm[1]! - c.offsetsKm[0]!) * 500 * 0.92
+  // Where each offset column is at each point.
+  const where = whatIfPath(c, points, noChange).map((wp, k) =>
+    c.offsetsKm.map((km) =>
+      km === 0
+        ? [points[k]!.lat, points[k]!.lon]
+        : (destinationOf(points[k]!.lat, points[k]!.lon, wp.trackDeg + 90, km) as [number, number])
+    )
   )
+  const cells: CorridorCell[] = []
+  for (let k = 0; k < points.length; k++) {
+    const prev = points[Math.max(k - 1, 0)]!
+    const next = points[Math.min(k + 1, points.length - 1)]!
+    const alongM = ((next.distanceKm - prev.distanceKm) / 2) * 500 * 0.96
+    const track = path[k]!.trackDeg
+    for (let l = 0; l < nl; l++) {
+      const ft = points[k]!.altitudeFt + c.levelsFt[l]!
+      if (ft < 0) continue
+      for (let o = 0; o < no; o++) {
+        const category = cellCategory(k, l, o)
+        if (category < 1) continue
+        const [lat, lon] = where[k]![o]!
+        cells.push({
+          position: [lon!, lat!, ft],
+          along: alongM,
+          across: acrossM,
+          yaw: 90 - track,
+          category,
+          onPath: path[k]!.level === l && path[k]!.offset === o,
+          k,
+          level: l,
+          offset: o
+        })
+      }
+    }
+  }
+  return cells
+})
+
+function corridorLayers(): Layer[] {
+  const colors = columnCategories.map((c) => hexRgb(categoryColors[c]))
+  const half = (corridor.value!.levelsFt[1]! - corridor.value!.levelsFt[0]!) / 2
+  const triggers = [exaggeration.value, corridorCells.value]
+  const layers: Layer[] = [
+    new SimpleMeshLayer<CorridorCell>({
+      id: 'corridor',
+      data: corridorCells.value,
+      mesh: cube,
+      getPosition: (d) => [d.position[0], d.position[1], z(d.position[2], d.position[1])],
+      // The flight's own cells a little larger, so they show through the faint ones around them.
+      getScale: (d) => {
+        const grow = d.onPath ? 1.1 : 1
+        return [d.along * grow, d.across * grow, z(half * grow, d.position[1])]
+      },
+      getOrientation: (d) => [0, d.yaw, 0],
+      // The cells the flight flies through stand out; the rest of the corridor is context.
+      getColor: (d) => [...colors[d.category]!, d.onPath ? 255 : 34],
+      material: { ambient: 0.6, diffuse: 0.5, shininess: 8, specularColor: [40, 40, 40] },
+      pickable: true,
+      updateTriggers: { getPosition: triggers, getScale: triggers, getColor: triggers }
+    })
+  ]
+  if (whatIf.value.shiftFt || whatIf.value.offsetKm) {
+    // The planned flight, faint, under the one being tried.
+    const pts = props.route!.points
+    layers.push(
+      new PathLayer<RoutePoint[]>({
+        id: 'route-planned',
+        data: [pts],
+        getPath: (d) =>
+          d.map((p): [number, number, number] => [p.lon, p.lat, z(p.altitudeFt, p.lat)]),
+        getColor: [16, 50, 79, 140],
+        getWidth: 2,
+        widthUnits: 'pixels',
+        parameters: { depthCompare: 'always' },
+        updateTriggers: { getPath: triggers }
+      })
+    )
+  }
+  const at = hoverMinute.value === undefined ? undefined : hoverPosition(hoverMinute.value)
+  if (at)
+    layers.push(
+      new ScatterplotLayer<[number, number, number]>({
+        id: 'route-cursor',
+        data: [at],
+        getPosition: (d) => [d[0], d[1], z(d[2], d[1])],
+        getRadius: 9,
+        radiusUnits: 'pixels',
+        stroked: true,
+        lineWidthUnits: 'pixels',
+        getLineWidth: 3,
+        getLineColor: [255, 255, 255, 255],
+        getFillColor: [16, 50, 79, 255],
+        parameters: { depthCompare: 'always' },
+        updateTriggers: { getPosition: [at, exaggeration.value] }
+      })
+    )
   return layers
+}
+
+/** Where the (what-if) flight is `minute` minutes after takeoff. */
+function hoverPosition(minute: number): [number, number, number] | undefined {
+  const points = props.route?.points ?? []
+  const p = pointAt(points, minute)
+  const wp = p && whatIfPoints.value[points.indexOf(p)]
+  return wp && [wp.lon, wp.lat, wp.altitudeFt]
 }
 
 /** A step of the route and the category of the block it flies through (-1: none, smooth air). */
@@ -397,11 +670,16 @@ const blockIndex = computed(() => {
 const routeSegments = computed<RouteSegment[]>(() => {
   const points = props.route?.points ?? []
   if (points.length < 2) return []
+  if (corridorShown.value) return corridorSegments()
   const index = blockIndex.value
   return routeSteps(points, 3).map((s) => ({
     ...s,
     block: index
-      ? index.categoryAt((s.from[1] + s.to[1]) / 2, (s.from[0] + s.to[0]) / 2, (s.from[2] + s.to[2]) / 2)
+      ? index.categoryAt(
+          (s.from[1] + s.to[1]) / 2,
+          (s.from[0] + s.to[0]) / 2,
+          (s.from[2] + s.to[2]) / 2
+        )
       : columnCategories.indexOf(points[s.point]!.category as (typeof columnCategories)[number])
   }))
 })
@@ -494,13 +772,41 @@ function routeTooltip(s: RouteSegment) {
   }
 }
 
+function corridorTooltip(d: CorridorCell) {
+  const c = corridor.value!
+  const p = props.route!.points[d.k]!
+  const time = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const shift = c.levelsFt[d.level]!
+  const km = c.offsetsKm[d.offset]!
+  const where = [
+    shift ? `${Math.abs(shift).toLocaleString()} ft ${shift > 0 ? 'above' : 'below'} the plan` : '',
+    km ? `${Math.abs(km)} km ${km < 0 ? 'left' : 'right'} of the track` : ''
+  ]
+    .filter(Boolean)
+    .join(', ')
+  const cat = columnCategories[d.category]!
+  return {
+    html:
+      `<b>${flightLevel(p.altitudeFt + shift)}</b> · ${time}${where ? ` · ${where}` : ' · on the planned path'}<br/>` +
+      `<b style="color:${categoryColors[cat]}">${categoryLabels[cat]}</b> ` +
+      `(EDR ${(corridorEdrOf(d) * factor.value).toFixed(2)} felt)` +
+      (d.onPath ? '<br/>The flight flies through this' : ''),
+    style: tooltipStyle
+  }
+}
+const corridorEdrOf = (d: CorridorCell) => {
+  const c = corridor.value!
+  return c.edr[(d.k * c.levelsFt.length + d.level) * c.offsetsKm.length + d.offset]! / 200
+}
+
 function render() {
   deck?.setProps({ layers: buildLayers() })
 }
 
 function tooltip(info: PickingInfo) {
-  if (info.layer?.id === 'route' && info.object)
-    return routeTooltip(info.object as RouteSegment)
+  if (info.layer?.id === 'route' && info.object) return routeTooltip(info.object as RouteSegment)
+  if (info.layer?.id === 'corridor' && info.object)
+    return corridorTooltip(info.object as CorridorCell)
   if (info.layer?.id === 'aircraft') {
     const a = info.object as AircraftView
     const edr = a.edr != null ? ` (EDR ${a.edr.toFixed(2)})` : ''
@@ -697,10 +1003,14 @@ watch(
     () => props.status,
     () => props.levelFt,
     () => props.route,
-    exaggeration
+    exaggeration,
+    corridorShown,
+    whatIfPoints,
+    hoverMinute
   ],
   render
 )
+watch(() => props.route, loadCorridor)
 
 let overAircraft = false
 
@@ -716,6 +1026,9 @@ onMounted(() => {
     // Voxels are pickable only for their tooltip; keep the crosshair over them and show the pointer on aircraft.
     onHover: (info: PickingInfo) => {
       overAircraft = info.layer?.id === 'aircraft'
+      if (info.layer?.id === 'route' && info.object)
+        hoverMinute.value =
+          props.route?.points[(info.object as RouteSegment).point]?.minutesFromStart
     },
     getCursor: ({ isDragging }: { isDragging: boolean }) => deckCursor(isDragging, overAircraft),
     onViewStateChange: ({ viewState: v }) => {
@@ -732,6 +1045,7 @@ onMounted(() => {
     frames = 0
   }, 1000)
   loadVolume()
+  loadCorridor()
 })
 
 onBeforeUnmount(() => {
@@ -828,6 +1142,17 @@ onBeforeUnmount(() => {
 /* Room between the switch and its label: the switch's thumb pokes past its own box. */
 .controls3d :deep(.v-switch .v-label) {
   padding-left: 16px;
+}
+.projections {
+  /* Along the bottom, between the left column and the 2D/3D switch. */
+  position: absolute;
+  z-index: 1000;
+  left: 296px;
+  right: 120px;
+  bottom: 12px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 8px 12px;
 }
 .loading {
   position: absolute;

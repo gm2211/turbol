@@ -46,3 +46,8 @@ behaviors:
     description: >-
       Where neither GTG nor the global layer has data, the headline says there is no turbulence data
       here rather than calling the flight smooth.
+  - id: follow-first-update-from-cache
+    description: >-
+      The first update for a followed flight starts from the live map's cached traffic when it saw
+      the aircraft in the last 2 minutes (dead-reckoned to now), so it does not wait on adsb.lol;
+      later updates ask adsb.lol and fall back to the cache when it fails.

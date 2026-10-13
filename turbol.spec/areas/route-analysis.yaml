@@ -130,7 +130,9 @@ behaviors:
       reference: Giulio, turbol project thread, 2026-10-12, on prod's Analyze page for JFK to MXP
   - id: route-3d-line-matches-blocks
     description: >-
-      In 3D, the route line's color always matches the turbulence blocks it visibly passes through.
+      In 3D, the route line's color always matches the turbulence blocks it visibly passes through:
+      the corridor's cells around the flight (view-3d/flight-corridor), or the frame's blocks when
+      the whole layer is shown.
     source:
       text: >-
         uhm.. trajectory shows orange but it does not intersect orange blocks in 3d view
