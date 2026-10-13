@@ -22,7 +22,8 @@ import com.gm2211.turbol.live.{
 }
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
-import io.circe.Encoder
+import com.gm2211.turbol.services.AirportsService
+import io.circe.{Encoder, Json}
 import io.circe.generic.auto.*
 import io.circe.generic.semiauto.deriveEncoder
 import org.http4s.HttpRoutes
@@ -87,7 +88,8 @@ final case class RouteSearch(flights: List[RouteFlight], checked: Int)
 final class FlightsEndpoint(
   store: TurbulenceStore,
   traffic: LiveTrafficService,
-  schedules: RouteScheduleService
+  schedules: RouteScheduleService,
+  airports: AirportsService
 ) extends Endpoint
     with BackendSerialization {
   private object Query extends QueryParamDecoderMatcher[String]("q")
@@ -107,7 +109,15 @@ final class FlightsEndpoint(
       IO.blocking(
         Try(LocalDate.parse(date)).toOption.flatMap(d => Timetable.dated(q, d, LocalDate.now(ZoneOffset.UTC)))
       ).flatMap {
-        case Some(flight) => Ok(flight.toJson.deepDropNullValues)
+        // With both airports resolved, so the page can analyze without two more round trips.
+        case Some(flight) =>
+          IO.blocking {
+            val places = Json.obj(
+              "originPlace" -> AirportsEndpoint.place(airports, flight.origin).toJson,
+              "destinationPlace" -> AirportsEndpoint.place(airports, flight.destination).toJson
+            )
+            flight.toJson.deepMerge(places).deepDropNullValues
+          }.flatMap(Ok(_))
         case None => NotFound()
       }
 
@@ -183,7 +193,7 @@ final class FlightsEndpoint(
     )
     val (recent, routePending) =
       Try(schedules.routeLegs(origin, destination, searchDay, FlightsEndpoint.trackWait)).getOrElse((Seq.empty, false))
-    Try(Await.ready(ownSearch, 500.millis))
+    Try(Await.ready(ownSearch, 200.millis))
     val own = ownSearch.value.flatMap(_.toOption).flatten
     val ownPending = !ownSearch.isCompleted
     val live = if (own.isDefined) None else Try(Await.result(liveF, 2.seconds)).toOption.flatten
@@ -349,7 +359,7 @@ final class FlightsEndpoint(
 
 object FlightsEndpoint {
   /** How long an analysis waits for track lookups before answering without them (they carry on in the background). */
-  val trackWait: java.time.Duration = java.time.Duration.ofMillis(1500)
+  val trackWait: java.time.Duration = java.time.Duration.ofMillis(300)
 
   /** Whether a route has `origin` immediately followed by `destination` (one leg of a possibly multi-leg route). */
   def flies(stops: Seq[Stop], origin: Place, destination: Place): Boolean =
