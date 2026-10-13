@@ -8,6 +8,7 @@ package com.gm2211.turbol.endpoints
 
 import cats.effect.IO
 import com.gm2211.turbol.live.{
+  DatedFlight,
   FlightRoute,
   LiveAircraft,
   LiveTrafficClient,
@@ -16,7 +17,8 @@ import com.gm2211.turbol.live.{
   RouteSchedule,
   RouteScheduleService,
   ScheduledFlight,
-  Stop
+  Stop,
+  Timetable
 }
 import com.gm2211.turbol.turbulence.*
 import com.gm2211.turbol.util.BackendSerialization
@@ -30,6 +32,8 @@ import org.http4s.circe.CirceSensitiveDataEntityDecoder.circeEntityDecoder
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, Instant, LocalDate, ZoneOffset}
 import java.util.concurrent.ConcurrentHashMap
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.util.Try
 
 final case class FlightLookup(
@@ -53,7 +57,11 @@ final case class AnalyzeRequest(
   callsign: Option[String] = None,
   flown: Option[FlownRef] = None,
   /** The path asked for ("filed", "average", "flown", "greatCircle"); the best available one when absent or unavailable. */
-  path: Option[String] = None
+  path: Option[String] = None,
+  /** The flight's IATA number ("DL286"), to find its last track when `flown` doesn't name one. */
+  flightNumber: Option[String] = None,
+  /** The chosen date (the origin's local day), for the route's timetable. */
+  day: Option[LocalDate] = None
 )
 
 /** Names a flown leg: the airframe and the time it took off. */
@@ -83,15 +91,25 @@ final class FlightsEndpoint(
 ) extends Endpoint
     with BackendSerialization {
   private object Query extends QueryParamDecoderMatcher[String]("q")
+  private object DateParam extends QueryParamDecoderMatcher[String]("date")
   private given Encoder[RouteFlight] = deriveEncoder
   private given Encoder[RouteSearch] = deriveEncoder
   private given Encoder[ScheduledFlight] = deriveEncoder
   private given Encoder[RouteSchedule] = deriveEncoder
+  private given Encoder[DatedFlight] = deriveEncoder
 
   override val basePath: String = "/flights"
   override val routes: HttpRoutes[IO] = HttpRoutes.of[IO] {
     case GET -> Root / "lookup" :? Query(q) =>
       IO.blocking(lookup(q)).flatMap(result => Ok(result.toJson.deepDropNullValues))
+
+    case GET -> Root / "dated" :? Query(q) +& DateParam(date) =>
+      IO.blocking(
+        Try(LocalDate.parse(date)).toOption.flatMap(d => Timetable.dated(q, d, LocalDate.now(ZoneOffset.UTC)))
+      ).flatMap {
+        case Some(flight) => Ok(flight.toJson.deepDropNullValues)
+        case None => NotFound()
+      }
 
     case req @ POST -> Root / "route" =>
       for {
@@ -141,12 +159,28 @@ final class FlightsEndpoint(
     val (origin, destination) = (request.origin, request.destination)
     val departure = request.departure.getOrElse(Instant.now())
     val distanceKm = RouteAnalyzer.greatCircleKm(origin.lat, origin.lon, destination.lat, destination.lon)
-    // The picked flight's own leg from the last day, when it was picked from /flights/scheduled.
-    val own = for {
-      flown <- request.flown
-      callsign <- request.callsign
-      leg <- Try(schedules.leg(callsign, flown.hex, flown.takeoff, origin, destination)).toOption.flatten
-    } yield leg
+    // The flight's last track on this route: the leg named by a pick from /flights/scheduled, else looked up by flight
+    // number (up to two weeks back). The route's past flights for the average are looked up alongside; both get up to
+    // `trackWait` and keep searching in the background past it.
+    val searchDay = request.day.getOrElse(LocalDate.ofInstant(departure, ZoneOffset.UTC))
+    val ownSearch = request.flown match {
+      case Some(flown) =>
+        Future.successful(for {
+          callsign <- request.callsign
+          leg <- Try(schedules.leg(callsign, flown.hex, flown.takeoff, origin, destination)).toOption.flatten
+        } yield leg)
+      case None =>
+        request.flightNumber.orElse(request.callsign.filter(Timetable.parseFlightNumber(_).isDefined)) match {
+          case Some(number) =>
+            schedules.lastLegAsync(origin, destination, number, departure, request.callsign.filterNot(_ == number))
+          case None => Future.successful(None)
+        }
+    }
+    val (recent, routePending) =
+      Try(schedules.routeLegs(origin, destination, searchDay, FlightsEndpoint.trackWait)).getOrElse((Seq.empty, false))
+    Try(Await.ready(ownSearch, 5.seconds))
+    val own = ownSearch.value.flatMap(_.toOption).flatten
+    val ownPending = !ownSearch.isCompleted
     val live =
       if (own.isDefined) None else request.callsign.filter(_.nonEmpty).flatMap(liveAircraft(_, fresh = false))
     val aircraft = own
@@ -156,10 +190,10 @@ final class FlightsEndpoint(
 
     // The paths, best first. The person can pick any available one; otherwise the best available is followed.
     val day = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneOffset.UTC)
-    val recent = Try(schedules.cachedLegs(origin, destination)).toOption.flatten
-    val mean = recent.flatMap(RouteScheduleService.meanPath(_))
+    val mean = RouteScheduleService.meanPath(recent)
     val average = mean.filter(_.spreadKm <= RouteScheduleService.similarKm)
     val km = (d: Double) => f"${math.rint(d / 10) * 10}%,.0f"
+    val lookback = s"${schedules.lookbackDays} days"
     val options = Seq(
       PathOption(
         "filed",
@@ -173,16 +207,16 @@ final class FlightsEndpoint(
             "average",
             s"Average of ${a.legs} past flights",
             available = true,
-            Some(s"Every track from the last two days stays within ${km(a.spreadKm)} km of it")
+            Some(s"Their tracks from the last $lookback all stay within ${km(a.spreadKm)} km of it")
           )
         case None =>
-          val why = (recent, mean) match {
-            case (None, _) => "The route's recent flights aren't loaded yet"
-            case (_, Some(m)) =>
+          val why = mean match {
+            case Some(m) =>
               s"Past flights' tracks are too spread to average (up to ${km(m.spreadKm)} km apart; the limit is ${km(RouteScheduleService.similarKm)} km)"
-            case _ => "Fewer than two flights on this route in the last two days"
+            case None if routePending => "Still looking up the route's past flights"
+            case None => s"Fewer than two of the route's flights tracked in the last $lookback"
           }
-          PathOption("average", "Average of past flights", available = false, Some(why))
+          PathOption("average", "Average of past flights", available = false, Some(why), pending = routePending)
       },
       own match {
         case Some(l) => PathOption(
@@ -192,13 +226,15 @@ final class FlightsEndpoint(
             Some(s"Flown on ${day.format(l.takeoff)} (UTC)")
           )
         case None =>
-          PathOption(
-            "flown",
-            "This flight's last track",
-            available = false,
-            Some(if (request.flown.isDefined) "Its recent track couldn't be loaded"
-            else "Pick a flight that flew in the last two days")
-          )
+          val why =
+            if (ownPending) "Still looking for its last flight"
+            else if (request.flown.isDefined) "Its recent track couldn't be loaded"
+            else if (
+              request.flightNumber.isDefined || request.callsign.exists(Timetable.parseFlightNumber(_).isDefined)
+            )
+              s"Not seen flying this route in the last $lookback"
+            else "Pick a flight to follow its last track"
+          PathOption("flown", "This flight's last track", available = false, Some(why), pending = ownPending)
       },
       PathOption("greatCircle", "Geodesic", available = true, Some("The shortest path between the airports"))
     )
@@ -308,6 +344,9 @@ final class FlightsEndpoint(
 }
 
 object FlightsEndpoint {
+  /** How long an analysis waits for track lookups before answering without them (they carry on in the background). */
+  val trackWait: java.time.Duration = java.time.Duration.ofSeconds(40)
+
   /** Whether a route has `origin` immediately followed by `destination` (one leg of a possibly multi-leg route). */
   def flies(stops: Seq[Stop], origin: Place, destination: Place): Boolean =
     stops.sliding(2).exists {

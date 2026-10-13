@@ -115,8 +115,9 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
   }
 
   /**
-   * Flights departing on `day` (the origin's local date) for the timetable, or taking off between `from` and `until`
-   * (the person's local day) for the ADS-B fallback.
+   * Flights departing on `day` (the origin's local date) from the timetable, or, when it can't be read, flights taking
+   * off between `from` and `until` (the person's local day) from two days of ADS-B. With a timetable this answers at
+   * once: each flight's last track is looked up in the background (lastLeg) and shows once found.
    */
   def schedule(
     origin: Place,
@@ -125,23 +126,20 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
     until: Instant,
     day: Option[LocalDate] = None
   ): RouteSchedule = {
-    val (legs, candidates, slotsScanned) = flownLegs(origin, destination)
     val wanted = day.getOrElse(LocalDate.ofInstant(from.plusSeconds(12 * 3600), ZoneOffset.UTC))
     val timetable =
       Try(Timetable.route(origin.code, destination.code, wanted, LocalDate.now(ZoneOffset.UTC))).toOption.flatten
     timetable.filter(_._1.nonEmpty) match {
       case Some((flights, readDay)) =>
-        val entries = (for {
-          f <- icao(origin)
-          t <- icao(destination)
-        } yield Try(directory.entries(f, t)).getOrElse(Seq.empty)).getOrElse(Seq.empty)
-        val matched = RouteScheduleService.matchLegs(flights, legs, entries)
         val shift = Duration.ofDays(ChronoUnit.DAYS.between(readDay, wanted))
         val list = flights.map { f =>
-          val leg = matched.get(f.flightNumber)
           val departure = f.departure.plus(shift)
+          // Started now so it's ready when the flight is picked; shown here only if already found.
+          val search = lastLegAsync(origin, destination, f.flightNumber, departure)
+          val leg = search.value.flatMap(_.toOption).flatten
           val takeoff = departure.plus(RouteScheduleService.taxiOut)
-          val airborne = leg.map(l => Duration.between(l.takeoff, l.landing))
+          val airborne = leg
+            .map(l => Duration.between(l.takeoff, l.landing))
             .getOrElse(Duration.between(f.departure, f.arrival).minus(RouteScheduleService.taxiOut).minusMinutes(10))
           ScheduledFlight(
             callsign = leg.map(_.callsign).getOrElse(f.flightNumber),
@@ -163,16 +161,92 @@ final class RouteScheduleService(traffic: LiveTrafficService, directory: RouteDi
             source = "timetable"
           )
         }.sortBy(_.departure).toList
-        RouteSchedule(
-          list,
-          candidates,
-          slotsScanned,
-          None,
-          "timetable",
-          Option.when(readDay != wanted)(readDay)
-        )
-      case None => fromAdsb(origin, destination, from, until, legs, candidates, slotsScanned, timetable.isDefined)
+        RouteSchedule(list, flights.size, 0, None, "timetable", Option.when(readDay != wanted)(readDay))
+      case None =>
+        val (legs, candidates, slotsScanned) = flownLegs(origin, destination)
+        fromAdsb(origin, destination, from, until, legs, candidates, slotsScanned, timetable.isDefined)
     }
+  }
+
+  // Track searches: by flight, remembered for a while whatever they found, so repeated asks don't search again.
+  private val searchPool = ExecutionContext.fromExecutor(Executors.newFixedThreadPool(4))
+  private val searches: Cache[String, Future[Option[FlownLeg]]] =
+    CacheBuilder.newBuilder().maximumSize(2000).expireAfterWrite(Duration.ofHours(1)).build()
+
+  /** How far back a flight's last track is looked for: many long-haul flights run a few days a week. */
+  val lookbackDays = 14
+
+  /**
+   * The most recent leg flight `flightNumber` (IATA, "DL286") flew from origin to destination in the last
+   * [[lookbackDays]] days, found in one heatmap slot per day (the half hour after its gate time, when it's taxiing or
+   * climbing near the origin, in ADS-B coverage), newest first, three days at a time. Its callsigns come from the route
+   * directory: the numbered one (DAL286) and the airline's non-numeric ones on this pair (UAE5RQ), plus `callsign` if
+   * known. Started once per flight and shared.
+   */
+  def lastLegAsync(
+    origin: Place,
+    destination: Place,
+    flightNumber: String,
+    departure: Instant,
+    callsign: Option[String] = None
+  ): Future[Option[FlownLeg]] = {
+    val key = s"${icao(origin).getOrElse(origin.code)}-${icao(destination).getOrElse(destination.code)}-$flightNumber"
+    searches.get(
+      key,
+      () =>
+        Future {
+          val entries = (for {
+            f <- icao(origin)
+            t <- icao(destination)
+          } yield Try(directory.entries(f, t)).getOrElse(Seq.empty)).getOrElse(Seq.empty)
+          val callsigns = Timetable
+            .parseFlightNumber(flightNumber)
+            .map(fn => RouteScheduleService.callsignsFor(entries, fn._2))
+            .getOrElse(Seq.empty) ++ callsign.toSeq
+          if (callsigns.isEmpty) None
+          else searchLastLeg(origin, destination, callsigns.distinct, departure)
+        }(using searchPool)
+    )
+  }
+
+  private def searchLastLeg(
+    origin: Place,
+    destination: Place,
+    callsigns: Seq[String],
+    departure: Instant
+  ): Option[FlownLeg] = {
+    val slots = RouteScheduleService.dailySlots(departure, Instant.now(), lookbackDays)
+    slots.grouped(3).iterator.map { batch =>
+      val found = Await.result(
+        Future.traverse(batch) { t =>
+          Future {
+            Try(FlightHistory.slot(t)).toOption.flatMap { index =>
+              callsigns.iterator.flatMap(cs => index.hex(cs).map(cs -> _)).flatMap { case (cs, hex) =>
+                Try(FlightHistory.findLeg(cs, hex, t.plusSeconds(900), origin, destination)).toOption.flatten
+              }.nextOption()
+            }
+          }
+        },
+        3.minutes
+      )
+      found.flatten.maxByOption(_.takeoff)
+    }.collectFirst { case Some(leg) => leg }
+  }
+
+  /**
+   * The route's past flights for the average: each timetabled flight's last track (the day's timetable, or the nearest
+   * one in reach), plus any legs a two-day scan already found. Waits up to `wait` for searches still running; the
+   * Boolean says whether any were still running.
+   */
+  def routeLegs(origin: Place, destination: Place, day: LocalDate, wait: Duration): (Seq[FlownLeg], Boolean) = {
+    val timetable =
+      Try(Timetable.route(origin.code, destination.code, day, LocalDate.now(ZoneOffset.UTC))).toOption.flatten
+    val searches =
+      timetable.toSeq.flatMap(_._1).map(f => lastLegAsync(origin, destination, f.flightNumber, f.departure))
+    Try(Await.ready(Future.sequence(searches), scala.concurrent.duration.Duration.fromNanos(wait.toNanos)))
+    val found = searches.flatMap(_.value.flatMap(_.toOption).flatten)
+    val legs = (found ++ cachedLegs(origin, destination).getOrElse(Seq.empty)).distinctBy(l => (l.hex, l.takeoff))
+    (legs, searches.exists(!_.isCompleted))
   }
 
   private def fromAdsb(
@@ -250,36 +324,32 @@ object RouteScheduleService {
   /** Gate to wheels-up, roughly: the analysis of a timetabled flight starts this long after its departure time. */
   val taxiOut: Duration = Duration.ofMinutes(20)
 
-  /** Signed minutes from `a`'s time of day (UTC) to `b`'s, in (-720, 720]. */
-  private def timeOfDayMinutes(a: Instant, b: Instant): Long = {
-    val m = Math.floorMod(b.getEpochSecond - a.getEpochSecond, 86400L) / 60
-    if (m > 720) m - 1440 else m
+  /** Tracks count as one route, worth averaging, when none strays further than this from their mean. */
+  val similarKm = 200.0
+
+  /**
+   * The callsigns flight `number` can show up under on a route: the directory's callsign with that number (DAL286),
+   * then its airline's callsigns on the pair that aren't plain numbers (Emirates flies EK206 as UAE5RQ).
+   */
+  def callsignsFor(entries: Seq[RouteEntry], number: String): Seq[String] = {
+    val numbered = entries.filter(_.number == number)
+    val airlines = numbered.map(_.airline).toSet
+    numbered.map(_.callsign) ++
+      entries.filter(e => airlines(e.airline) && !e.number.forall(_.isDigit)).map(_.callsign)
   }
 
   /**
-   * The newest flown leg for each timetabled flight. A leg belongs to a flight when its callsign's directory number
-   * is the flight's number and it took off between 30 minutes before and three hours after the gate time; or, for
-   * callsigns that aren't the flight number (Emirates flies EK206 as UAE5RQ), when the same airline's leg took off
-   * within 15 minutes before to three hours after it. The airline's ICAO code is learned from its numbered callsigns.
+   * One heatmap slot a day for the last `days` days, newest first: the half hour starting 30 minutes after the gate
+   * time of day, skipping any not yet complete and uploaded.
    */
-  def matchLegs(flights: Seq[TimetableFlight], legs: Seq[FlownLeg], entries: Seq[RouteEntry]): Map[String, FlownLeg] = {
-    val entryOf = entries.map(e => e.callsign -> e).toMap
-    val airlines: Map[String, Set[String]] = flights.flatMap { f =>
-      entries.filter(_.number == f.number).map(e => f.carrierIata -> e.airline)
-    }.groupMap(_._1)(_._2).view.mapValues(_.toSet).toMap
-    val numbers = flights.map(_.number).toSet
-    flights.flatMap { f =>
-      val own =
-        legs.filter(l => entryOf.get(l.callsign).exists(e => airlines.getOrElse(f.carrierIata, Set.empty)(e.airline)))
-      val gap = (l: FlownLeg) => timeOfDayMinutes(f.departure, l.takeoff)
-      val numbered = own.filter(l => entryOf(l.callsign).number == f.number && gap(l) >= -30 && gap(l) <= 180)
-      val timed = own.filter(l => !numbers(entryOf(l.callsign).number) && gap(l) >= -15 && gap(l) <= 180)
-      numbered.maxByOption(_.takeoff).orElse(timed.maxByOption(_.takeoff)).map(f.flightNumber -> _)
-    }.toMap
+  def dailySlots(departure: Instant, now: Instant, days: Int): Seq[Instant] = {
+    val secondOfDay = Math.floorMod(departure.getEpochSecond + 1800, 86400L)
+    val today = Math.floorDiv(now.getEpochSecond, 86400L) * 86400L
+    (0 to days)
+      .map(k => Instant.ofEpochSecond((today - k * 86400L + secondOfDay) / 1800 * 1800))
+      .filter(_.isBefore(now.minusSeconds(3600)))
+      .take(days)
   }
-
-  /** Tracks count as one route, worth averaging, when none strays further than this from their mean. */
-  val similarKm = 200.0
 
   /** Minutes after takeoff, position and altitude along a leg. */
   def pathOf(leg: FlownLeg): Vector[PathPoint] =
