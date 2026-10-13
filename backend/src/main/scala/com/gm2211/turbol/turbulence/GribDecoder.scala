@@ -16,8 +16,8 @@ import scala.collection.immutable.SortedMap
 import scala.util.Using
 
 /**
- * Decodes GTG/GTGN GRIB2 files (JPEG2000-packed, read with NetCDF-Java) into one-byte-per-point layer files that are
- * then memory-mapped, so the heap only holds small buffers.
+ * Decodes GTG/GTGN GRIB2 files (read with NetCDF-Java, unpacked with [[ComplexPacking]]) into one-byte-per-point layer
+ * files that are then memory-mapped, so the heap only holds small buffers.
  */
 object GribDecoder {
   // GRIB2 discipline 0 / category 19 / parameter 30 = EDPARM, the blended EDR field in both GTGN and GTG.
@@ -37,6 +37,7 @@ object GribDecoder {
     val written = Using.resource(new RandomAccessFile(gribFile.toString, "r")) { raf =>
       val scanner = new Grib2RecordScanner(raf)
       val levels = Vector.newBuilder[Int]
+      val unpacked = new Array[Float](LambertGrid.nx * LambertGrid.ny)
       while (scanner.hasNext) {
         val record = scanner.next()
         val pds = record.getPDS
@@ -47,7 +48,7 @@ object GribDecoder {
         if (isEdr && (keepLevelsFt.isEmpty || keepLevelsFt.contains(levelFt))) {
           // Unpacking a level takes the whole CPU for a while: let a visitor's page and tiles go first.
           Visitors.waitForQuiet()
-          val values: Array[Float] = record.readData(raf)
+          val values = if (ComplexPacking.readInto(record, raf, unpacked)) unpacked else record.readData(raf)
           require(
             values.length == LambertGrid.nx * LambertGrid.ny,
             s"unexpected grid size ${values.length} in $gribFile"
