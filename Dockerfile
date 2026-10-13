@@ -26,14 +26,17 @@ WORKDIR /opt/turbol
 COPY --from=backend /src/backend/target/universal/stage/ ./
 COPY --from=frontend /src/frontend/dist/ ./static/
 COPY deployment/render/entrypoint.sh ./
-# PretenureSizeThreshold: decoding allocates arrays of several MB per grid level; copying them in every young GC
-# stopped the whole server for up to 300 ms of CPU (seconds on a tenth of a CPU). Allocated straight into the old
-# generation, a GFS + GTG decode's total pause time fell from 1.3 s to 0.36 s and the longest from 300 ms to 40 ms.
+# GC on a tenth of a CPU, where every pause stops all requests for 10x its CPU time:
+# - -Xms192m: starting at 7 MB, the heap grew (and shrank back) through full GCs. Prod's log after a deploy showed 56
+#   full GCs in 5 minutes, 300-800 ms each, 24.6 s in all, while visitors waited.
+# - PretenureSizeThreshold=1m with a small young generation (-Xmn24m): decoding allocates multi-MB grid arrays;
+#   copying them in young GCs paused up to 300 ms of CPU. Locally, over 3 GTG + 3 GFS decodes with these settings:
+#   longest pause 45 ms, 448 ms in all (prod's previous settings: 326 ms longest, 1201 ms in all).
 ENV TURBOL_STATIC_DIR=/opt/turbol/static \
     TURBOL_DATA_DIR=/opt/turbol/var/data/turbulence \
     TURBOL_MIN_VOLUME_STEP=6 \
     MALLOC_ARENA_MAX=2 \
     TURBOL_GLOBAL_LAYER=on \
-    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -XX:+UseSerialGC -XX:PretenureSizeThreshold=1m -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
+    JAVA_OPTS="-XX:MaxRAMPercentage=45 -XX:MaxHeapFreeRatio=30 -XX:MinHeapFreeRatio=10 -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -Djdk.nio.maxCachedBufferSize=262144 -Xms192m -Xmn24m -XX:+UseSerialGC -XX:PretenureSizeThreshold=1m -XX:+ExitOnOutOfMemoryError -Xlog:gc:stdout:time,uptime"
 EXPOSE 8081
 CMD ["./entrypoint.sh"]

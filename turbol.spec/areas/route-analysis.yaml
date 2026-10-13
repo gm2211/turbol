@@ -157,6 +157,28 @@ behaviors:
     description: >-
       The result shows a timeline of category segments, minutes and percentage per category, the
       worst point's time and location, and a map and altitude profile coloured by category.
+  - id: verdict-pass-tabs
+    description: >-
+      The forecast verdict is a boarding pass: a stub with the worst category's code (MOD) and when it
+      comes (5h54, or the flight time when smooth) like FROM and TO, the verdict sentence, a
+      perforation, then tabs (Summary, Bumps, Calm) so the panel never scrolls.
+    details: >-
+      Summary holds a translucent route-at-a-glance bar with the worst bump ringed and the timeline's
+      cursor mirrored, the basic flight data (distance, flight time, cruise, aircraft, ride when the
+      type is known) and the offline and 3D actions. Bumps holds the category breakdown and each
+      bumpy stretch in flight order (worst category, start and end, local clock time, length). Calm
+      lists smooth windows of 20 minutes or more outside the first 20 and last 30 minutes, longest
+      first, with the coverage notes and data sources as a footnote. Clicking a stretch or window
+      puts the timeline and map cursor on it. All panes share one cell so the pass keeps the tallest
+      pane's height and the map doesn't jump between tabs.
+    source:
+      text: >-
+        I like boarding pass but 1. not sure why we have a barcode in summary 2. basic flight data
+        should be in summary 3. route at a glance looks a little too in your face, maybe add a bit
+        of transparency? / also the "data" bit is kinda useless? can we show better data?
+      reference: >-
+        Giulio, turbol project thread, 2026-10-12, picking design 3 of five tabbed verdict panel
+        alternatives ("tabs no scroll, also too flat -give me 5 alternative designs")
   - id: timeline-readout
     description: >-
       Hovering over or dragging along the turbulence timeline (category bar or EDR and altitude chart)

@@ -178,92 +178,205 @@
           </button>
         </div>
       </v-card>
-      <v-card class="panel verdict-card px-4 py-3">
-        <div class="eyebrow">Forecast verdict</div>
-        <div class="verdict-head">
-          <v-chip :color="categoryColors[analysis.summary.worstCategory]" variant="flat" label>
-            Worst: {{ categoryLabels[analysis.summary.worstCategory] }}
-          </v-chip>
-          <v-btn
-            v-if="downloaded"
-            size="small"
-            :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
-            variant="flat"
-            :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
-            :to="{ path: '/analyze', query: { flight: downloaded.id } }"
-          >
-            {{ downloadedStatus?.ready ? 'Open downloaded flight' : downloadedStatus?.text }}
-          </v-btn>
-          <v-btn
-            v-else
-            size="small"
-            color="#10324f"
-            variant="flat"
-            prepend-icon="mdi-download"
-            :loading="downloading"
-            @click="downloadForOffline"
-          >
-            Download for offline
-          </v-btn>
-          <v-btn
-            size="small"
-            color="#10324f"
-            variant="flat"
-            prepend-icon="mdi-cube-outline"
-            @click="explore3d"
-          >
-            Explore in 3D
-          </v-btn>
-        </div>
-        <div class="verdict mt-2 mb-1">{{ analysis.summary.verdict }}</div>
-        <div v-if="pathLabel" class="muted small mb-3">
-          Along: <b>{{ pathLabel }}</b>
-        </div>
-        <div class="stats">
-          <div>
-            <span>Distance</span>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km
+      <!-- The verdict is a second boarding pass: worst category → when, torn from tabs that never scroll. -->
+      <div class="verdict-card vpass">
+        <div class="vp-stub">
+          <div class="eyebrow">Forecast verdict</div>
+          <div class="vp-ends">
+            <div>
+              <div class="vp-code" :style="{ color: worstColor }">{{ worstCode }}</div>
+              <div class="vp-sub">Worst: {{ categoryLabels[analysis.summary.worstCategory] }}</div>
+            </div>
+            <div class="vp-arc"><v-icon icon="mdi-airplane" /></div>
+            <div class="vp-right">
+              <div class="vp-code">{{ worstAt.code }}</div>
+              <div class="vp-sub">{{ worstAt.label }}</div>
+            </div>
           </div>
-          <div><span>Flight time</span>{{ formatDuration(analysis.durationMinutes) }}</div>
-          <div><span>Cruise</span>{{ flightLevel(analysis.cruiseAltitudeFt) }}</div>
-          <div><span>Aircraft</span>{{ aircraftLabel }}</div>
-          <div v-if="response.basis === 'type'" class="wide">
-            <span>Ride</span>{{ responseLabel(response) }}
-          </div>
-          <div class="wide">
-            <span>Max EDR</span>{{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}
-            <template v-if="analysis.summary.worstMinute !== undefined">
-              at {{ formatDuration(analysis.summary.worstMinute) }}
-            </template>
-            <template v-if="worstPoint"> · <span class="ring" /> on the map</template>
+          <div class="verdict">{{ analysis.summary.verdict }}</div>
+          <div v-if="pathLabel" class="muted small mt-1">
+            Along: <b>{{ pathLabel }}</b>
           </div>
         </div>
-        <div class="mt-2">
-          <div v-for="c in shownCategories" :key="c" class="cat-row">
-            <span class="swatch" :style="{ background: categoryColors[c] }" />
-            <span class="cat-name">{{ categoryLabels[c] }}</span>
-            <span>{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</span>
-            <span class="muted">({{ analysis.summary.percentByCategory[c] ?? 0 }}%)</span>
+        <div class="vp-perf" />
+        <div class="vp-main">
+          <div class="vp-tabs" role="tablist">
+            <button
+              v-for="t in verdictTabs"
+              :key="t.id"
+              type="button"
+              role="tab"
+              :aria-selected="verdictTab === t.id"
+              :class="{ on: verdictTab === t.id }"
+              @click="verdictTab = t.id"
+            >
+              {{ t.label }}
+            </button>
+          </div>
+          <div class="vp-panes">
+            <div class="vp-pane" :class="{ off: verdictTab !== 'summary' }">
+              <div class="vp-lbl">Route at a glance</div>
+              <div class="vp-glance">
+                <div
+                  v-for="(s, i) in analysis.segments"
+                  :key="i"
+                  class="vp-seg"
+                  :style="{
+                    left: `${(100 * s.startMinute) / analysis.durationMinutes}%`,
+                    width: `${(100 * (s.endMinute - s.startMinute)) / analysis.durationMinutes}%`,
+                    background: categoryColors[s.category]
+                  }"
+                />
+                <span
+                  v-if="worstPoint && analysis.summary.worstMinute !== undefined"
+                  class="ring vp-worst"
+                  :style="{
+                    left: `${(100 * analysis.summary.worstMinute) / analysis.durationMinutes}%`
+                  }"
+                />
+                <span
+                  v-if="hoverMinute !== undefined"
+                  class="vp-cursor"
+                  :style="{ left: `${(100 * hoverMinute) / analysis.durationMinutes}%` }"
+                />
+              </div>
+              <div class="vp-glance-ends">
+                <span>{{ analyzedOrigin?.code }} {{ localTime(analysis.start) }}</span>
+                <span>Max EDR {{ analysis.summary.maxEdr?.toFixed(3) ?? '–' }}</span>
+                <span>{{ analyzedDestination?.code }} {{ localTime(arrival) }}</span>
+              </div>
+              <div class="vp-fields">
+                <div>
+                  <span>Distance</span
+                  ><b>{{ Math.round(analysis.totalDistanceKm).toLocaleString() }} km</b>
+                </div>
+                <div>
+                  <span>Flight time</span><b>{{ formatDuration(analysis.durationMinutes) }}</b>
+                </div>
+                <div>
+                  <span>Cruise</span><b>{{ flightLevel(analysis.cruiseAltitudeFt) }}</b>
+                </div>
+                <div>
+                  <span>Aircraft</span><b>{{ aircraftLabel }}</b>
+                </div>
+              </div>
+              <div v-if="response.basis === 'type'" class="muted small mt-2">
+                <b>Ride:</b> {{ responseLabel(response) }}
+              </div>
+              <div class="vp-acts">
+                <v-btn
+                  v-if="downloaded"
+                  :color="downloadedStatus?.ready ? 'green-darken-2' : '#10324f'"
+                  variant="flat"
+                  :prepend-icon="downloadedStatus?.ready ? 'mdi-check-circle' : 'mdi-download'"
+                  :to="{ path: '/analyze', query: { flight: downloaded.id } }"
+                >
+                  {{ downloadedStatus?.ready ? 'Open downloaded flight' : downloadedStatus?.text }}
+                </v-btn>
+                <v-btn
+                  v-else
+                  color="#10324f"
+                  variant="flat"
+                  prepend-icon="mdi-download"
+                  :loading="downloading"
+                  @click="downloadForOffline"
+                >
+                  Download for offline
+                </v-btn>
+                <v-btn
+                  variant="outlined"
+                  color="#10324f"
+                  prepend-icon="mdi-cube-outline"
+                  @click="explore3d"
+                >
+                  3D
+                </v-btn>
+              </div>
+            </div>
+            <div class="vp-pane" :class="{ off: verdictTab !== 'bumps' }">
+              <div v-for="c in shownCategories" :key="c" class="vp-cat">
+                <span class="swatch" :style="{ background: categoryColors[c] }" />
+                <span class="cat-name">{{ categoryLabels[c] }}</span>
+                <span class="vp-track"
+                  ><i
+                    :style="{
+                      width: `${analysis.summary.percentByCategory[c] ?? 0}%`,
+                      background: categoryColors[c]
+                    }"
+                /></span>
+                <b class="tnum">{{ formatDuration(analysis.summary.minutesByCategory[c] ?? 0) }}</b>
+                <span class="muted tnum vp-pc"
+                  >{{ analysis.summary.percentByCategory[c] ?? 0 }}%</span
+                >
+              </div>
+              <div class="vp-lbl mt-3">When the bumps come</div>
+              <div v-if="bumpyStretches.length === 0" class="muted small">
+                No bumpy stretches forecast.
+              </div>
+              <button
+                v-for="b in bumpyStretches"
+                :key="b.start"
+                type="button"
+                class="vp-stretch"
+                :class="{
+                  on: hoverMinute !== undefined && hoverMinute >= b.start && hoverMinute <= b.end
+                }"
+                @click="hoverMinute = (b.start + b.end) / 2"
+              >
+                <span class="swatch" :style="{ background: categoryColors[b.category] }" />
+                <b>{{ categoryLabels[b.category] }}</b>
+                <span class="tnum"
+                  >{{ formatDuration(b.start) }} → {{ formatDuration(b.end) }}</span
+                >
+                <span class="muted tnum ml-auto"
+                  >{{ clockAt(b.start) }} · {{ formatDuration(b.end - b.start) }}</span
+                >
+              </button>
+            </div>
+            <div class="vp-pane" :class="{ off: verdictTab !== 'calm' }">
+              <div class="vp-lbl">Calm windows to get up</div>
+              <div v-if="calmWindows.length === 0" class="muted small">
+                No smooth stretch of 20 minutes or more forecast.
+              </div>
+              <button
+                v-for="(w, i) in calmWindows"
+                :key="w.start"
+                type="button"
+                class="vp-stretch"
+                :class="{
+                  on: hoverMinute !== undefined && hoverMinute >= w.start && hoverMinute <= w.end
+                }"
+                @click="hoverMinute = (w.start + w.end) / 2"
+              >
+                <v-icon
+                  :icon="i === 0 ? 'mdi-star-four-points' : 'mdi-weather-sunny'"
+                  size="16"
+                  color="#16a34a"
+                />
+                <b class="tnum">{{ formatDuration(w.end - w.start) }}</b>
+                <span class="tnum"
+                  >{{ formatDuration(w.start) }} → {{ formatDuration(w.end) }}</span
+                >
+                <span class="muted tnum ml-auto">{{ clockAt(w.start) }}–{{ clockAt(w.end) }}</span>
+              </button>
+              <div class="vp-foot">
+                <div v-for="n in analysis.summary.notes" :key="n" class="vp-note">
+                  <v-icon icon="mdi-information-outline" size="14" />{{ n }}
+                </div>
+                <div class="muted">
+                  GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
+                  {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
+                  {{ fmt(analysis.dataSources.forecastUntil) }}
+                  <template v-if="analysis.dataSources.globalIssued">
+                    · outside the US: WAFS + NOAA GFS (~28 km), cycle
+                    {{ fmt(analysis.dataSources.globalIssued) }}
+                  </template>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <v-alert
-          v-for="n in analysis.summary.notes"
-          :key="n"
-          type="info"
-          variant="tonal"
-          density="compact"
-          class="mt-2 note"
-          >{{ n }}</v-alert
-        >
-        <div class="muted sources mt-2">
-          GTG-N nowcast {{ fmt(analysis.dataSources.nowcastValid) }} · GTG forecast issued
-          {{ fmt(analysis.dataSources.forecastIssued) }}, valid until
-          {{ fmt(analysis.dataSources.forecastUntil) }}
-          <template v-if="analysis.dataSources.globalIssued">
-            · outside the US: WAFS + NOAA GFS (~28 km), cycle
-            {{ fmt(analysis.dataSources.globalIssued) }}
-          </template>
-        </div>
-      </v-card>
+      </div>
       <v-card class="panel map-card pa-2">
         <RouteMap
           :points="analysis.points"
@@ -401,6 +514,66 @@ const shownCategories = computed(() =>
     (c) => c === 'Smooth' || (analysis.value?.summary.minutesByCategory[c] ?? 0) > 0
   )
 )
+/** The verdict pass's tabs: everything fits without scrolling. */
+const verdictTabs = [
+  { id: 'summary', label: 'Summary' },
+  { id: 'bumps', label: 'Bumps' },
+  { id: 'calm', label: 'Calm' }
+] as const
+const verdictTab = ref<(typeof verdictTabs)[number]['id']>('summary')
+const categoryCodes: Record<TurbulenceCategory, string> = {
+  Smooth: 'SMTH',
+  Light: 'LGT',
+  Moderate: 'MOD',
+  Severe: 'SEV',
+  Extreme: 'EXT',
+  NoData: 'N/A'
+}
+const worstCode = computed(() => categoryCodes[analysis.value?.summary.worstCategory ?? 'NoData'])
+const worstColor = computed(() => {
+  const c = analysis.value?.summary.worstCategory ?? 'NoData'
+  return c === 'Smooth' ? '#10324f' : categoryColors[c]
+})
+const compact = (m: number) =>
+  `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}`
+/** The pass's right-hand code: when the worst bump comes, or the flight time when there is none. */
+const worstAt = computed(() => {
+  const a = analysis.value
+  if (!a) return { code: '', label: '' }
+  return a.summary.worstMinute !== undefined && a.summary.worstCategory !== 'Smooth'
+    ? { code: compact(a.summary.worstMinute), label: 'into the flight' }
+    : { code: compact(a.durationMinutes), label: 'flight time' }
+})
+const clockAt = (minute: number) =>
+  analysis.value
+    ? localTime(new Date(new Date(analysis.value.start).getTime() + minute * 60000).toISOString())
+    : ''
+/** Back-to-back segments that are all bumpy (or all smooth), as one stretch with its worst category. */
+function runs(bumpy: boolean) {
+  const rank: TurbulenceCategory[] = ['Smooth', 'Light', 'Moderate', 'Severe', 'Extreme']
+  const out: { start: number; end: number; category: TurbulenceCategory }[] = []
+  for (const s of analysis.value?.segments ?? []) {
+    const isBumpy = rank.indexOf(s.category) > 0
+    if (s.category === 'NoData' || isBumpy !== bumpy) continue
+    const last = out.at(-1)
+    if (last && last.end >= s.startMinute - 0.5) {
+      last.end = s.endMinute
+      if (rank.indexOf(s.category) > rank.indexOf(last.category)) last.category = s.category
+    } else out.push({ start: s.startMinute, end: s.endMinute, category: s.category })
+  }
+  return out
+}
+/** Where the bumps come, in flight order. */
+const bumpyStretches = computed(() => runs(true).slice(0, 5))
+/** Smooth stretches long enough to stretch your legs, longest first; climb and descent don't count. */
+const calmWindows = computed(() => {
+  const end = (analysis.value?.durationMinutes ?? 0) - 30
+  return runs(false)
+    .map((w) => ({ ...w, start: Math.max(w.start, 20), end: Math.min(w.end, end) }))
+    .filter((w) => w.end - w.start >= 20)
+    .sort((x, y) => y.end - y.start - (x.end - x.start))
+    .slice(0, 4)
+})
 /** The minute being read on the timeline (hover or drag), mirrored on the map. */
 const hoverMinute = ref<number>()
 const hoverPoint = computed(() =>
@@ -1154,33 +1327,266 @@ onMounted(async () => {
   text-transform: uppercase;
   color: #334155;
 }
-.verdict-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
 .verdict {
   font-size: 17px;
   font-weight: 500;
   line-height: 1.3;
 }
-.stats {
+/* The verdict pass: a stub with the worst category and when, torn along a perforation from the tabs. */
+.vpass {
+  --notch: 12px;
+  --navy: #10324f;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  filter: drop-shadow(0 10px 18px rgba(8, 25, 40, 0.28))
+    drop-shadow(0 2px 3px rgba(8, 25, 40, 0.18));
+}
+.vp-stub,
+.vp-main {
+  background: white;
+  color: #0f172a;
+}
+.vp-stub {
+  border-radius: 12px 12px 0 0;
+  padding: 12px 18px 12px;
+  mask:
+    radial-gradient(circle var(--notch) at 0 100%, #0000 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% 100%, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+.vp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 0 12px 12px;
+  padding: 10px 14px 14px;
+  mask:
+    radial-gradient(circle var(--notch) at 0 0, #0000 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle var(--notch) at 100% 0, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+.vp-perf {
+  margin: 0 calc(var(--notch) + 4px);
+  border-top: 2px dashed rgba(16, 50, 79, 0.22);
+  position: relative;
+  z-index: 1;
+}
+.vp-ends {
+  display: flex;
+  align-items: flex-end;
+  margin: 2px 0 8px;
+}
+.vp-code {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--navy);
+}
+.vp-sub {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 2px;
+}
+.vp-right {
+  text-align: right;
+}
+.vp-arc {
+  flex: 1;
+  margin: 0 14px 20px;
+  border-top: 2px dashed rgba(91, 143, 178, 0.6);
+  position: relative;
+}
+.vp-arc .v-icon {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+  font-size: 20px;
+  color: var(--navy);
+  background: white;
+  padding: 0 4px;
+  box-sizing: content-box;
+}
+.vp-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--navy);
+}
+.vp-tabs button {
+  flex: 1;
+  border: 0;
+  padding: 7px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+  border-radius: 8px 8px 0 0;
+  background: #eef2f6;
+  box-shadow: inset 0 -3px 4px -3px rgba(16, 50, 79, 0.25);
+  cursor: pointer;
+}
+.vp-tabs button.on {
+  background: var(--navy);
+  color: white;
+  box-shadow: 0 -3px 8px rgba(16, 50, 79, 0.25);
+}
+/* Every pane sits in the same cell, so the pass keeps the tallest pane's height and the map never jumps. */
+.vp-panes {
+  display: grid;
+}
+.vp-pane {
+  grid-area: 1 / 1;
+  padding-top: 12px;
+}
+.vp-pane.off {
+  visibility: hidden;
+}
+.vp-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 6px;
+}
+/* Route at a glance: a thin frosted track with soft, rounded category pills. */
+.vp-glance {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(16, 50, 79, 0.07);
+  box-shadow: inset 0 1px 2px rgba(16, 50, 79, 0.12);
+}
+.vp-seg {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  opacity: 0.72;
+  border-left: 1px solid white;
+}
+.ring.vp-worst {
+  position: absolute;
+  top: -3px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.vp-cursor {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--navy);
+  border-radius: 1px;
+}
+.vp-glance-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #475569;
+  margin-top: 5px;
+}
+.vp-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
-  font-size: 14px;
+  gap: 10px 14px;
+  margin-top: 12px;
 }
-.stats .wide {
-  grid-column: span 2;
-}
-.stats > div > span:first-child {
+.vp-fields span {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: #475569;
+}
+.vp-fields b {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--navy);
+}
+.vp-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.vp-acts .v-btn {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  border-radius: 10px;
+}
+.vp-acts .v-btn:first-child {
+  flex: 1;
+}
+.vp-cat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  padding: 4px 0;
+}
+.vp-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(16, 50, 79, 0.07);
+  overflow: hidden;
+}
+.vp-track i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+.vp-pc {
+  width: 34px;
+  text-align: right;
+  font-size: 12px;
+}
+.vp-stretch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  color: #0f172a;
+}
+.vp-stretch:hover,
+.vp-stretch.on {
+  background: rgba(16, 50, 79, 0.06);
+}
+.vp-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(16, 50, 79, 0.18);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.vp-note {
+  display: flex;
+  gap: 4px;
+  color: #0b4f8a;
+  margin-bottom: 4px;
+}
+.vp-note .v-icon {
+  margin-top: 1px;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
 .ring {
   display: inline-block;
@@ -1189,13 +1595,6 @@ onMounted(async () => {
   border: 2.5px solid #dc2626;
   border-radius: 50%;
   vertical-align: -1px;
-}
-.cat-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 1.6;
 }
 .cat-name {
   width: 84px;
