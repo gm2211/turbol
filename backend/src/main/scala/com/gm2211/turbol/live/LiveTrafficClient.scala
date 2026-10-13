@@ -12,7 +12,7 @@ import io.circe.parser.parse
 
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.time.Instant
+import java.time.{Duration, Instant}
 import scala.util.Try
 
 /** One aircraft as reported by an ADS-B aggregator. Altitudes are barometric feet, speeds knots. */
@@ -77,13 +77,15 @@ object FlightRoute {
 
 /**
  * Keyless public data sources:
- *   - positions: adsb.lol (`/v2/lat/{lat}/lon/{lon}/dist/{nm}`, `/v2/hex`, `/v2/callsign`), ODbL, readsb JSON format
+ *   - positions: adsb.lol (`/v2/lat/{lat}/lon/{lon}/dist/{nm}`, `/v2/hex`, `/v2/callsign`), ODbL, readsb JSON format;
+ *     adsb.fi's open data API (`/api/v2/hex`, same format, 1 request/s) for one airframe while adsb.lol is rate-limiting
  *   - routes: adsbdb.com (`/v0/callsign/{callsign}`), which also accepts IATA flight numbers like "UA1"
  *   - batch routes: adsb.im's routeset (the adsb.lol project's route database), which uses each plane's position to
  *     pick the leg it is plausibly flying
  */
 object LiveTrafficClient {
   private val adsbLol = "https://api.adsb.lol/v2"
+  private val adsbFi = "https://opendata.adsb.fi/api/v2"
   private val adsbDb = "https://api.adsbdb.com/v0"
   private val routeSetUrl = "https://adsb.im/api/0/routeset"
 
@@ -112,6 +114,15 @@ object LiveTrafficClient {
         }
         waitMs > 0
       }) Thread.sleep(waitMs)
+    }
+
+    /** A token if one is free now, without waiting. */
+    def tryAcquire(): Boolean = synchronized {
+      val now = System.currentTimeMillis()
+      tokens = math.min(capacity, tokens + (now - last) / refillMs)
+      last = now
+      if (tokens >= 1) { tokens -= 1; true }
+      else false
     }
 
     def backOff(ms: Long): Unit = synchronized {
@@ -143,8 +154,42 @@ object LiveTrafficClient {
       adsbLolGet(f"$adsbLol/lat/$lat%.4f/lon/$lon%.4f/dist/$radiusNm", background = background, retry = background)
     )
 
-  def byHex(hex: String): Option[LiveAircraft] =
-    parseAircraftList(adsbLolGet(s"$adsbLol/hex/${enc(hex.toLowerCase)}"))._2.headOption
+  /** adsb.fi asks for at most one request a second. */
+  private object FiPace {
+    private var next = 0L
+    def await(): Unit = {
+      val waitMs = synchronized {
+        val now = System.currentTimeMillis()
+        val at = math.max(now, next)
+        next = at + 1100
+        at - now
+      }
+      if (waitMs > 0) Thread.sleep(waitMs)
+    }
+  }
+
+  /**
+   * One airframe's report: from adsb.lol when it has a request to spare, else from adsb.fi rather than queue behind
+   * adsb.lol's rate limit (a followed flight's updates would stall for 15 s or more), and adsb.lol after all if adsb.fi
+   * fails.
+   */
+  def byHex(hex: String): Option[LiveAircraft] = {
+    val lol = s"$adsbLol/hex/${enc(hex.toLowerCase)}"
+    def fromLol(): String = adsbLolGet(lol)
+    def fromFi(): Option[String] = Try {
+      FiPace.await(); Http.getString(s"$adsbFi/hex/${enc(hex.toLowerCase)}", Duration.ofSeconds(5), attempts = 1)
+    }.toOption
+    val body =
+      if (Throttle.tryAcquire())
+        try Http.getString(lol, attempts = 1)
+        catch {
+          case e: RuntimeException if Option(e.getMessage).exists(_.startsWith("HTTP 429")) =>
+            Throttle.backOff(15000)
+            fromFi().getOrElse(fromLol())
+        }
+      else fromFi().getOrElse(fromLol())
+    parseAircraftList(body)._2.headOption
+  }
 
   def byCallsign(callsign: String): Seq[LiveAircraft] =
     parseAircraftList(adsbLolGet(s"$adsbLol/callsign/${enc(callsign.toUpperCase)}"))._2
