@@ -204,6 +204,15 @@ resource "helm_release" "nginx-ingress" {
     name  = "controller.publishService.enabled"
     value = "true"
   }
+
+  # HTTP/2 off: CVE-2026-123633 and CVE-2026-123007 (NGINX HTTP/2 RCE, CVSS 9.2)
+  # need HTTP/2 enabled, and ingress-nginx (retired March 2026) will not ship a
+  # patched image. Clients fall back to HTTP/1.1.
+  set {
+    name  = "controller.config.use-http2"
+    value = "false"
+    type  = "string"
+  }
 }
 
 resource "kubernetes_stateful_set" "ldm" {
